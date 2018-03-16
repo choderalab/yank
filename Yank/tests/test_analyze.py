@@ -390,25 +390,23 @@ class TestPhaseAnalyzer(object):
         assert np.array_equal(analyzer._unbiased_decorrelated_u_kn, analyzer._decorrelated_u_kn)
         assert np.array_equal(analyzer._unbiased_decorrelated_N_k, analyzer._decorrelated_N_k)
 
-        # Switch unbias_restraint to True. The old cached value is
-        # invalidated and now u_kn and N_k have two extra states.
+        # Switch unbias_restraint to True. The old cached value is invalidated and
+        # now u_kn and N_k have two extra states.
         analyzer.unbias_restraint = True
         assert analyzer._unbiased_decorrelated_u_kn.shape[0] == analyzer._decorrelated_u_kn.shape[0] + 2
         assert analyzer._unbiased_decorrelated_N_k.shape[0] == analyzer._decorrelated_N_k.shape[0] + 2
-        # Since there's no cutoff, all the energies besides the
-        # extra two states should be identical
-        assert np.array_equal(analyzer._unbiased_decorrelated_u_kn[1:-1], analyzer._decorrelated_u_kn)
-        assert np.array_equal(analyzer._unbiased_decorrelated_N_k[1:-1], analyzer._decorrelated_N_k)
+        # The automatic cutoff (default value) should remove some of the iterations.
+        assert analyzer._unbiased_decorrelated_u_kn.shape[1] < analyzer._decorrelated_u_kn.shape[1]
         # The energy without the restraint should always be smaller.
         assert np.all(analyzer._unbiased_decorrelated_u_kn[0] < analyzer._unbiased_decorrelated_u_kn[1])
         assert np.all(analyzer._unbiased_decorrelated_u_kn[-1] < analyzer._unbiased_decorrelated_u_kn[-2])
         assert analyzer._unbiased_decorrelated_N_k[0] == 0
         assert analyzer._unbiased_decorrelated_N_k[-1] == 0
 
-        # With an energy cutoff, some columns are discarded.
-        analyzer.restraint_energy_cutoff = 18.22
-        analyzer.restraint_distance_cutoff = 123*unit.angstroms
-        assert analyzer._unbiased_decorrelated_u_kn.shape[1] < analyzer._decorrelated_u_kn.shape[1]
+        # With a ver big energy cutoff, all the energies besides the extra two states should be identical.
+        analyzer.restraint_energy_cutoff = 100.0  # kT
+        assert np.array_equal(analyzer._unbiased_decorrelated_u_kn[1:-1], analyzer._decorrelated_u_kn)
+        assert np.array_equal(analyzer._unbiased_decorrelated_N_k[1:-1], analyzer._decorrelated_N_k)
 
 
     def test_extract_trajectory(self):
