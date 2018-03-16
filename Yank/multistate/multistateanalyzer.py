@@ -443,8 +443,7 @@ class PhaseAnalyzer(ABC):
 
         # Cached values with dependencies.
         self._cache = {}  # This cache should be always set with _update_cache().
-        if max_n_iterations is not None:
-            self.max_n_iterations = max_n_iterations
+        self.max_n_iterations = max_n_iterations
 
     @property
     def name(self):
@@ -494,8 +493,13 @@ class PhaseAnalyzer(ABC):
         """int: Number of replicas."""
         if self._n_replicas is None:
             replica_state_indices = self._reporter.read_replica_thermodynamic_states(iteration=0)
-            _, self._n_replicas = replica_state_indices.shape
+            self._n_replicas = len(replica_state_indices)
         return self._n_replicas
+
+    @property
+    def n_states(self):
+        """int: Number of sampled thermodynamic states."""
+        return self._reporter.n_states
 
     def _get_end_thermodynamic_states(self):
         """Read thermodynamic states at the ends of the protocol."""
@@ -673,14 +677,13 @@ class PhaseAnalyzer(ABC):
 
     @staticmethod
     def _max_n_iterations_validator(instance, new_value):
-        if new_value > instance.n_iterations:
+        if new_value is None or new_value > instance.n_iterations:
             new_value = instance.n_iterations
         return new_value
 
     max_n_iterations = CachedProperty(
         name='max_n_iterations',
         validator=_max_n_iterations_validator.__func__,
-        default=lambda instance: instance.n_iterations,
         check_changes=True
     )
 
@@ -879,15 +882,17 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     """
 
-    def __init__(self, *args, restraint_energy_cutoff=None, restraint_distance_cutoff=None, **kwargs):
+    def __init__(self, *args, unbias_restraint=True, restraint_energy_cutoff=None,
+                 restraint_distance_cutoff=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Initialize cached values that are derived directly from the Reporter.
         self._restraint_data = None
-        self._restraint_energies_kn = None
-        self._restraint_distances_kn = None
+        self._restraint_energies_kn = {}
+        self._restraint_distances_kn = {}
 
         # Cached values with dependencies.
+        self.unbias_restraint = unbias_restraint
         self.restraint_energy_cutoff = restraint_energy_cutoff
         self.restraint_distance_cutoff = restraint_distance_cutoff
 
@@ -1026,6 +1031,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # This raises mmtools.forces.NoForceFoundError if there's no restraint to unbias.
         force_idx, restraint_force = mmtools.forces.find_forces(system, force_type=restraint_parent_class,
                                                                 only_one=True, include_subclasses=True)
+        # The force is owned by the System, we have to copy to avoid the memory to be deallocated.
+        restraint_force = copy.deepcopy(restraint_force)
 
         # Check that the restraint was turned on at the end states.
         if end_states[0].lambda_restraints != 1.0 or end_states[-1].lambda_restraints != 1.0:
@@ -1175,14 +1182,17 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         return self._decorrelated_u_kn, self._decorrelated_N_k
 
     def _compute_unbiased_energies(self):
-        """Unbias the restraint, apply energy/distance cutoff and cut to max_n_iterations."""
-
+        """Unbias the restraint, and apply restraint energy/distance cutoffs."""
         # Check if we need to unbias the restraint.
-        try:
-            restraint_data = self._get_restraint_data()
-        except (TypeError, mmtools.forces.NoForceFoundError) as e:
-            # If we don't need to unbias the restraint there's nothing else to do.
-            logger.info(str(e) + ' The restraint will not be unbiased.')
+        unbias_restraint = self.unbias_restraint
+        if unbias_restraint:
+            try:
+                restraint_data = self._get_restraint_data()
+            except (TypeError, mmtools.forces.NoForceFoundError) as e:
+                # If we don't need to unbias the restraint there's nothing else to do.
+                logger.info(str(e) + ' The restraint will not be unbiased.')
+                unbias_restraint = False
+        if not unbias_restraint:
             self._unbiased_decorrelated_u_kn = self._decorrelated_u_kn
             self._unbiased_decorrelated_N_k = self._decorrelated_N_k
             return self._unbiased_decorrelated_u_kn, self._unbiased_decorrelated_N_k
@@ -1193,12 +1203,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Compute the restraint energies/distances.
         restraint_force, weights_group1, weights_group2 = restraint_data
 
-        logger.debug('Found {} restraint. The restraint will be unbiased.')
+        logger.debug('Found {} restraint. The restraint will be unbiased.'.format(restraint_force.__class__.__name__))
         logger.debug('Receptor restrained atoms: {}'.format(restraint_force.restrained_atom_indices1))
         logger.debug('ligand restrained atoms: {}'.format(restraint_force.restrained_atom_indices2))
 
         # Compute restraint energies/distances.
-        distances_kn, energies_kn = self._compute_restraint_energies(
+        energies_kn, distances_kn = self._compute_restraint_energies(
             restraint_force, weights_group1, weights_group2, compute_distances=is_cutoff_distance)
 
         # Convert energies to kT unit for comparison to energy cutoff.
@@ -1282,24 +1292,42 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         ENERGY_UNIT = units.kilojoules_per_mole
         MDTRAJ_DISTANCE_UNIT = units.nanometers
         decorrelated_iterations = self._decorrelated_iterations  # Shortcut.
+        decorrelated_iterations_set = set(decorrelated_iterations)
 
-        def extract_decorrelated_iterations(cached_dict):
-            if cached_dict is None:
+        # Determine total number of energies/distances to compute.
+        # The +1 is for the minimization iteration.
+        n_frames_kn = self.n_replicas * len(decorrelated_iterations)
+
+        # Computing the restraint energies/distances is expensive and we
+        # don't want to recompute everything when _decorrelated_iterations
+        # changes (e.g. when max_n_iterations changes) so we keep the cached
+        # values of the iterations we have computed.
+        # The dictionary instead of a masked array is for memory efficiency
+        # since the matrix will be very sparse (especially with SAMS).
+
+        def extract_decorrelated(cached_dict, dtype, unit):
+            if not decorrelated_iterations_set.issubset(set(cached_dict)):
                 return None
-            # TODO
+            decorrelated = np.zeros(n_frames_kn, dtype=dtype)
+            for state_idx in range(self.n_states):
+                for iteration_idx, iteration in enumerate(decorrelated_iterations):
+                    frame_idx = state_idx*len(decorrelated_iterations) + iteration_idx
+                    decorrelated[frame_idx] = cached_dict[iteration][state_idx]
+            return decorrelated * unit
 
         # Check cached values.
-        if compute_distances and self._restraint_distances_kn is not None:
+        if compute_distances and decorrelated_iterations_set.issubset(set(self._restraint_distances_kn)):
             compute_distances = False
-        if self._restraint_energies_kn is not None and not compute_distances:
-            return self._restraint_energies_kn, self._restraint_distances_kn
+        if decorrelated_iterations_set.issubset(set(self._restraint_energies_kn)) and not compute_distances:
+            return (extract_decorrelated(self._restraint_energies_kn, dtype=np.float64, unit=ENERGY_UNIT),
+                    extract_decorrelated(self._restraint_distances_kn, dtype=np.float32, unit=MDTRAJ_DISTANCE_UNIT))
 
         # Don't modify the original restraint force.
         restraint_force = copy.deepcopy(restraint_force)
-        assert restraint_force.getDefaultGlobalParameter
 
         # Store the original indices of the restrained atoms.
-        restrained_atom_indices = restraint_force.restrained_atom_indices1 + restraint_force.restrained_atom_indices2
+        original_restrained_atom_indices = (restraint_force.restrained_atom_indices1 +
+                                            restraint_force.restrained_atom_indices2)
 
         # Create new system with only solute and restraint forces.
         reduced_system = openmm.System()
@@ -1312,23 +1340,11 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         restraint_force.restrained_atom_indices2 = list(range(n_atoms1, n_atoms))
         reduced_system.addForce(restraint_force)
 
-        # subset_particles_indices = list(self._reporter.analysis_particle_indices)
-        replica_state_indices = self._reporter.read_replica_thermodynamic_states()
-        n_correlated_iterations, self._n_replicas = replica_state_indices.shape
-
-        # Create output arrays. We unfold the replicas the same way
-        # it is done during the kln_to_kn conversion.
-        n_frames_kn = self.n_replicas * (self.n_iterations + 1)  # The +1 is for the minimization data.
-        energies_kn = np.zeros(n_frames_kn, dtype=np.float64) * ENERGY_UNIT
-        distances_kn = None
-
         if compute_distances:
             # Create topology with only the restrained atoms.
             serialized_topography = self._reporter.read_dict('metadata/topography')
             topology = mmtools.utils.deserialize(serialized_topography).topology
-            topology = topology.subset(restrained_atom_indices)
-
-            distances_kn = np.zeros(n_frames_kn, dtype=np.float32)
+            topology = topology.subset(original_restrained_atom_indices)
             # Initialize trajectory object needed for imaging molecules.
             trajectory = mdtraj.Trajectory(xyz=np.zeros((n_atoms, 3)), topology=topology)
 
@@ -1343,42 +1359,48 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Pre-computing energies/distances.
         logger.debug('Computing restraint energies...')
+        replica_state_indices = self._reporter.read_replica_thermodynamic_states()
         for iteration_idx, iteration in enumerate(decorrelated_iterations):
+            # Check if we have already computed this energy/distance.
+            if (iteration in self._restraint_energies_kn and
+                    (not compute_distances or iteration in self._restraint_distances_kn)):
+                continue
+            self._restraint_energies_kn[iteration] = {}
+            if compute_distances:
+                self._restraint_distances_kn[iteration] = {}
+
+            # Read sampler states only if we haven't computed this iteration yet.
             # Obtain solute only sampler states.
             sampler_states = self._reporter.read_sampler_states(iteration=iteration,
                                                                 analysis_particles_only=True)
 
             for replica_idx, sampler_state in enumerate(sampler_states):
-                # Deconvolute index.
                 state_idx = replica_state_indices[iteration, replica_idx]
-                frame_idx = state_idx*len(decorrelated_iterations) + iteration_idx
-
-                sliced_sampler_state = sampler_state[restrained_atom_indices]
+                sliced_sampler_state = sampler_state[original_restrained_atom_indices]
                 sliced_sampler_state.apply_to_context(context)
                 potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
-                energies_kn[frame_idx] = potential_energy
+                self._restraint_energies_kn[iteration][state_idx] = potential_energy / ENERGY_UNIT
 
                 if compute_distances:
                     # Check if an analytical solution is available.
                     try:
-                        restraint_force.distance_at_energy(potential_energy)
+                        distance = restraint_force.distance_at_energy(potential_energy) / MDTRAJ_DISTANCE_UNIT
                     except (NotImplementedError, ValueError):
                         # Update trajectory positions/box vectors.
-                        trajectory.xyz = (sampler_state.positions[restrained_atom_indices] / MDTRAJ_DISTANCE_UNIT).astype(np.float32)
-                        trajectory.unitcell_vectors = np.array([sampler_state.box_vectors / MDTRAJ_DISTANCE_UNIT], dtype=np.float32)
+                        trajectory.xyz = (sliced_sampler_state / MDTRAJ_DISTANCE_UNIT).astype(np.float32)
+                        trajectory.unitcell_vectors = np.array([sampler_state.box_vectors / MDTRAJ_DISTANCE_UNIT],
+                                                               dtype=np.float32)
                         trajectory.image_molecules(inplace=True, make_whole=False)
                         positions_group1 = trajectory.xyz[0][restraint_force.restrained_atom_indices1]
                         positions_group2 = trajectory.xyz[0][restraint_force.restrained_atom_indices2]
 
                         # Set output arrays.
-                        distances_kn[frame_idx] = compute_centroid_distance(positions_group1, positions_group2,
-                                                                            weights_group1, weights_group2)
+                        distance = compute_centroid_distance(positions_group1, positions_group2,
+                                                             weights_group1, weights_group2)
+                    self._restraint_distances_kn[iteration][state_idx] = distance
 
-        # Save cache files and set MDTraj units for distances.
-        if distances_kn is not None:
-            self._restraint_distances_kn = distances_kn * MDTRAJ_DISTANCE_UNIT
-        self._restraint_energies_kn = energies_kn
-        return self._restraint_energies_kn, self._restraint_distances_kn
+        return (extract_decorrelated(self._restraint_energies_kn, dtype=np.float64, unit=ENERGY_UNIT),
+                extract_decorrelated(self._restraint_distances_kn, dtype=np.float32, unit=MDTRAJ_DISTANCE_UNIT))
 
     # -------------------------------------------------------------------------
     # Observables.
@@ -1511,6 +1533,10 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     # Cached properties.
     # -------------------------------------------------------------------------
 
+    unbias_restraint = PhaseAnalyzer.CachedProperty(
+        name='unbias_restraint',
+        check_changes=True,
+    )
     restraint_energy_cutoff = PhaseAnalyzer.CachedProperty(
         name='restraint_energy_cutoff',
         check_changes=True,
@@ -1565,13 +1591,13 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     )
     _unbiased_decorrelated_u_kn = PhaseAnalyzer.CachedProperty(
         name='unbiased_decorrelated_u_kn',
-        dependencies=['restraint_energy_cutoff', 'restraint_distance_cutoff',
+        dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
                       'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
         default=lambda instance: instance._compute_unbiased_energies()[0]
     )
     _unbiased_decorrelated_N_k = PhaseAnalyzer.CachedProperty(
         name='unbiased_decorrelated_N_k',
-        dependencies=['restraint_energy_cutoff', 'restraint_distance_cutoff',
+        dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
                       'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
         default=lambda instance: instance._compute_unbiased_energies()[1]
     )

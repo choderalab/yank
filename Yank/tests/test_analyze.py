@@ -24,6 +24,7 @@ from simtk import unit
 
 from yank.yank import Topography
 from yank.multistate import MultiStateReporter, ReplicaExchangeSampler
+from yank.restraints import RestraintState
 import yank.analyze as analyze
 
 # ==============================================================================
@@ -110,6 +111,13 @@ class TestPhaseAnalyzer(object):
         alchemical_region = mmtools.alchemy.AlchemicalRegion(alchemical_atoms=range(126, 156))
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
 
+        # Add restraint force between host and guest.
+        restraint_force = mmtools.forces.HarmonicRestraintBondForce(
+            spring_constant=2.0 * unit.kilojoule_per_mole / unit.angstrom ** 2,
+            restrained_atom_index1=10, restrained_atom_index2=16,
+        )
+        hostguest_alchemical.addForce(copy.deepcopy(restraint_force))
+
         # Translate the sampler states to be different one from each other.
         positions = hostguest_test.positions
         box_vectors = hostguest_test.system.getDefaultPeriodicBoxVectors()
@@ -136,8 +144,14 @@ class TestPhaseAnalyzer(object):
             )
 
         # Unsampled states.
-        nonalchemical_state = mmtools.states.ThermodynamicState(hostguest_test.system, 300*unit.kelvin)
-        hostguest_unsampled_states = [copy.deepcopy(nonalchemical_state), copy.deepcopy(nonalchemical_state)]
+        nonalchemical_system = copy.deepcopy(hostguest_test.system)
+        nonalchemical_system.addForce(copy.deepcopy(restraint_force))
+        nonalchemical_state = mmtools.states.ThermodynamicState(nonalchemical_system, 300*unit.kelvin)
+        nonalchemical_compound_state = mmtools.states.CompoundThermodynamicState(
+            thermodynamic_state=nonalchemical_state,
+            composable_states=[RestraintState(lambda_restraints=1.0)]
+        )
+        hostguest_unsampled_states = [copy.deepcopy(nonalchemical_compound_state) for _ in range(2)]
 
         cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states, hostguest_unsampled_states)
 
@@ -156,7 +170,7 @@ class TestPhaseAnalyzer(object):
             'reference_state': mmtools.utils.serialize(reference_state),
             'topography': mmtools.utils.serialize(topography)
         }
-        analysis_atoms = topography.ligand_atoms
+        analysis_atoms = topography.receptor_atoms
 
         # Create simulation and storage file.
         cls.tmp_dir = tempfile.mkdtemp()
@@ -177,6 +191,7 @@ class TestPhaseAnalyzer(object):
 
     @classmethod
     def teardown_class(cls):
+        cls.reporter.close()
         shutil.rmtree(cls.tmp_dir)
 
     def test_repex_phase_initialize(self):
@@ -293,24 +308,6 @@ class TestPhaseAnalyzer(object):
         assert triple.get_standard_state_correction() == (2*full_phase.get_standard_state_correction() -
                                                           full_phase.get_standard_state_correction())
 
-    def test_extract_trajectory(self):
-        """extract_trajectory handles checkpointing and skip frame correctly."""
-        # print(self.reporter.read_last_iteration())
-        trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, skip_frame=2)
-        assert len(trajectory) == 1
-        self.reporter.close()
-        full_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=True)
-        # This should work since its pure Python integer division
-        # Follows the checkpoint interval logic
-        # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems
-        # Should this change in analyze, then this logic will need to be changed as well
-        assert len(full_trajectory) == ((self.n_steps + 1) / self.checkpoint_interval) - 1
-        self.reporter.close()
-        # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
-        solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
-        assert len(solute_trajectory) == self.n_steps - 1
-        assert solute_trajectory.n_atoms == len(self.analysis_atoms)
-
     def test_yank_registry(self):
         """Test that observable registry is implemented correctly for a given class"""
         phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
@@ -336,25 +333,97 @@ class TestPhaseAnalyzer(object):
 
         def check_cached_properties(is_in):
             for cached_property in cached_properties:
-                assert (cached_property in analyzer._cache) is is_in, '{} is not cached'.format(cached_property)
+                err_msg = '{} is cached != {}'.format(cached_property, is_in)
+                assert (cached_property in analyzer._cache) is is_in, err_msg
+            print(analyzer._computed_observables)
+            assert (analyzer._computed_observables['free_energy'] is not None) is is_in
 
         # Test-precondition: make sure the dependencies are as expected.
         assert 'equilibration_data' in analyze.YankReplicaExchangeAnalyzer._decorrelated_state_indices_kn.dependencies
         assert 'max_n_iterations' in analyze.YankReplicaExchangeAnalyzer._equilibration_data.dependencies
 
         # The cached value and its dependencies are generated lazily when calling the property.
-        cached_properties = ['decorrelated_state_indices_kn', 'equilibration_data', 'max_n_iterations']
+        cached_properties = ['mbar', 'decorrelated_state_indices_kn', 'equilibration_data']
         yield check_cached_properties, False
         analyzer._decorrelated_state_indices_kn
+        analyzer.get_free_energy()
         yield check_cached_properties, True
 
         # If we invalidate one of the dependencies, the values that depend on it are invalidated too.
         analyzer.max_n_iterations = analyzer.n_iterations - 1
-        cached_properties.remove('max_n_iterations')
         yield check_cached_properties, False
 
         # Dependent values are not invalidated if the dependency doesn't change.
         analyzer._decorrelated_state_indices_kn  # Generate dependent values.
+        analyzer.get_free_energy()
         check_cached_properties(is_in=True)  # Test pre-condition.
         analyzer.max_n_iterations = analyzer.n_iterations - 1
         yield check_cached_properties, True  # Cached values are still there.
+
+    def test_max_n_iterations(self):
+        """Test that max_n_iterations limits the number of iterations analyzed."""
+        analyzer = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+
+        # By default, all iterations are analyzed.
+        all_decorrelated_iterations = analyzer._decorrelated_iterations
+        all_decorrelated_u_kn = analyzer._decorrelated_u_kn
+        n_iterations_kn = analyzer.n_states * analyzer.n_iterations
+        assert len(all_decorrelated_iterations) == analyzer.n_iterations
+        assert all_decorrelated_u_kn.shape[1] == n_iterations_kn
+
+        # Setting max_n_iterations reduces the number of iterations analyzed
+        new_max_n_iterations = analyzer.n_iterations - 1
+        analyzer.max_n_iterations = new_max_n_iterations
+        assert len(analyzer._decorrelated_iterations) == new_max_n_iterations
+        assert np.array_equal(analyzer._decorrelated_iterations, all_decorrelated_iterations[:-1])
+        assert analyzer._decorrelated_u_kn.shape[1] == analyzer.n_states * new_max_n_iterations
+
+        expected_iterations_kn_dropped = set(range(analyzer.n_iterations-1, n_iterations_kn, analyzer.n_iterations))
+        expected_iterations_kn_kept = sorted(set(range(n_iterations_kn)) - expected_iterations_kn_dropped)
+        expected_decorrelated_u_kn = all_decorrelated_u_kn[:, expected_iterations_kn_kept]
+        assert np.array_equal(analyzer._decorrelated_u_kn, expected_decorrelated_u_kn)
+
+    def test_unbias_restraint(self):
+        """Test that restraints are unbiased correctly when unbias_restraint is True."""
+        # The energies of the unbiased restraint should be identical to the biased ones.
+        analyzer = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name, unbias_restraint=False)
+        assert np.array_equal(analyzer._unbiased_decorrelated_u_kn, analyzer._decorrelated_u_kn)
+        assert np.array_equal(analyzer._unbiased_decorrelated_N_k, analyzer._decorrelated_N_k)
+
+        # Switch unbias_restraint to True. The old cached value is
+        # invalidated and now u_kn and N_k have two extra states.
+        analyzer.unbias_restraint = True
+        assert analyzer._unbiased_decorrelated_u_kn.shape[0] == analyzer._decorrelated_u_kn.shape[0] + 2
+        assert analyzer._unbiased_decorrelated_N_k.shape[0] == analyzer._decorrelated_N_k.shape[0] + 2
+        # Since there's no cutoff, all the energies besides the
+        # extra two states should be identical
+        assert np.array_equal(analyzer._unbiased_decorrelated_u_kn[1:-1], analyzer._decorrelated_u_kn)
+        assert np.array_equal(analyzer._unbiased_decorrelated_N_k[1:-1], analyzer._decorrelated_N_k)
+        # The energy without the restraint should always be smaller.
+        assert np.all(analyzer._unbiased_decorrelated_u_kn[0] < analyzer._unbiased_decorrelated_u_kn[1])
+        assert np.all(analyzer._unbiased_decorrelated_u_kn[-1] < analyzer._unbiased_decorrelated_u_kn[-2])
+        assert analyzer._unbiased_decorrelated_N_k[0] == 0
+        assert analyzer._unbiased_decorrelated_N_k[-1] == 0
+
+        # With an energy cutoff, some columns are discarded.
+        analyzer.restraint_energy_cutoff = 18.22
+        analyzer.restraint_distance_cutoff = 123*unit.angstroms
+        assert analyzer._unbiased_decorrelated_u_kn.shape[1] < analyzer._decorrelated_u_kn.shape[1]
+
+
+    def test_extract_trajectory(self):
+        """extract_trajectory handles checkpointing and skip frame correctly."""
+        trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, skip_frame=2)
+        assert len(trajectory) == 1
+        self.reporter.close()
+        full_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=True)
+        # This should work since its pure Python integer division
+        # Follows the checkpoint interval logic
+        # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems
+        # Should this change in analyze, then this logic will need to be changed as well
+        assert len(full_trajectory) == ((self.n_steps + 1) / self.checkpoint_interval) - 1
+        self.reporter.close()
+        # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
+        solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
+        assert len(solute_trajectory) == self.n_steps - 1
+        assert solute_trajectory.n_atoms == len(self.analysis_atoms)
