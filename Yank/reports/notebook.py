@@ -7,13 +7,16 @@ mainly image formatting is passed here.
 """
 
 import os
+
 import yaml
 import numpy as np
 from scipy import interpolate
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib import gridspec
+import seaborn as sns
 from simtk import unit as units
+
 from .. import version
 from .. import analyze, utils
 
@@ -515,6 +518,55 @@ class HealthReportData(object):
             calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
                                                dDeltaH * kT / units.kilocalories_per_mole))
         self._free_energy_run = True
+
+    def restraint_distributions_plot(self):
+        ENERGIES_IDX = 0
+        DISTANCES_IDX = 1
+
+        # Find the phase that defines the restraint energies and distances.
+        for phase_name in self.phase_names:
+            analyzer = self.analyzers[phase_name]
+            lambda1_data = list(analyzer._get_restraint_energies_distances_at_state(0))
+            if len(lambda1_data[ENERGIES_IDX]) != 0:
+                break
+        # Check if we have a restraint at all.
+        if len(lambda1_data[ENERGIES_IDX]) == 0:
+            print('The restraint unbiasing was not performed for this calculation.')
+            return
+
+        # The restraint distances are not computed if there's no distance cutoff.
+        lambda0_data = list(analyzer._get_restraint_energies_distances_at_state(-1))
+        cutoffs = list(analyzer._get_restraint_cutoffs())
+        xlabels = ['Restraint energies [kT]', 'Restraint distances [Angstrom]']
+        for data in [lambda1_data, lambda0_data, cutoffs, xlabels]:
+            if len(lambda1_data[DISTANCES_IDX]) == 0:
+                del data[DISTANCES_IDX]
+            elif isinstance(data[DISTANCES_IDX], units.Quantity):
+                # Convert the distances into the units that will be printed.
+                data[DISTANCES_IDX] /= units.angstroms
+
+        # Plot the lambda=1 and lambda=0 restraints data.
+        figure, axes = plt.subplots(ncols=len(lambda1_data))
+        if len(lambda1_data) == 1:
+            axes = [axes]
+        for ax, lambda1, lambda0 in zip(axes, lambda1_data, lambda0_data):
+            sns.distplot(lambda1, ax=ax, kde=False, label='bound state')
+            sns.distplot(lambda0, ax=ax, kde=False, label='non-interacting state')
+
+        # Plot the cutoffs used for the restraint unbiasing.
+        for ax, cutoff in zip(axes, cutoffs):
+            limits = ax.get_ylim()
+            ax.plot([cutoff for _ in range(100)], np.linspace(limits[0], limits[1]/2, num=100))
+
+        # Labels and legend.
+        for i, (ax, xlabel) in zip(axes, xlabels):
+            ax.set_xlabel(xlabel)
+            if i == 0:
+                ax.set_ylabel('Number of samples')
+            elif i == 1:
+                ax.legend(loc='upper right')
+
+        return figure
 
     @staticmethod
     def report_version():

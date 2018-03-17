@@ -902,7 +902,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         ``restraint_energy_cutoff``.
 
         If ``'auto'`` and ``restraint_distance_cutoff`` is ``None``, this will
-        be set to the 99-percentile of the distribution of the restraint energies
+        be set to the 99.9-percentile of the distribution of the restraint energies
         in the bound state.
 
     restraint_distance_cutoff : simtk.unit.Quantity or 'auto', optional
@@ -912,7 +912,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         restraint distance ``restraint_distance_cutoff``.
 
         If ``'auto'`` and ``restraint_energy_cutoff`` is not specified, this will
-        be set to the 99-percentile of the distribution of the restraint distances
+        be set to the 99.9-percentile of the distribution of the restraint distances
         in the bound state.
 
     Attributes
@@ -1298,38 +1298,15 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         logger.debug('Receptor restrained atoms: {}'.format(restraint_force.restrained_atom_indices1))
         logger.debug('ligand restrained atoms: {}'.format(restraint_force.restrained_atom_indices2))
 
-        # Determine which cutoffs we need to use.
-        is_cutoff_distance = (self.restraint_distance_cutoff is not None and
-                            self.restraint_distance_cutoff != 'auto')
-        is_cutoff_energy = (self.restraint_energy_cutoff is not None and
-                            self.restraint_energy_cutoff != 'auto')
-        # When both cutoffs are auto, use distance cutoff.
-        if self.restraint_distance_cutoff == 'auto' and not is_cutoff_energy:
-            is_cutoff_distance = True
-        elif self.restraint_energy_cutoff == 'auto' and self.restraint_distance_cutoff is None:
-            is_cutoff_energy = True
 
         # Compute restraint energies/distances.
-        energies_kn, distances_kn = self._compute_restraint_energies(
-            restraint_force, weights_group1, weights_group2, compute_distances=is_cutoff_distance)
+        energies_kn, distances_kn = self._compute_restraint_energies(restraint_force, weights_group1,
+                                                                     weights_group2)
 
         # Convert energies to kT unit for comparison to energy cutoff.
         energies_kn = energies_kn / self.kT
         logger.debug('Restraint energy mean: {} kT; std: {} kT'
                      ''.format(np.mean(energies_kn), np.std(energies_kn, ddof=1)))
-
-        # Determine the automatic cutoffs to use for the simulations.
-        if is_cutoff_distance and self.restraint_distance_cutoff == 'auto':
-            _, restraint_distance_cutoff = self._determine_automatic_restraint_cutoff(compute_energy_cutoff=False)
-            logger.debug('Chosen automatically a restraint distance cutoff of {}'.format(restraint_distance_cutoff))
-        else:
-            restraint_distance_cutoff = self.restraint_distance_cutoff
-        if is_cutoff_energy and self.restraint_energy_cutoff == 'auto':
-            restraint_energy_cutoff, _ = self._determine_automatic_restraint_cutoff(compute_distance_cutoff=False)
-            restraint_energy_cutoff /= self.kT
-            logger.debug('Chosen automatically a restraint energy cutoff of {}kT'.format(restraint_energy_cutoff))
-        else:
-            restraint_energy_cutoff = self.restraint_energy_cutoff
 
         # Don't modify the cached decorrelated energies.
         u_kn = copy.deepcopy(self._decorrelated_u_kn)
@@ -1337,6 +1314,11 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         n_decorrelated_iterations_kn = u_kn.shape[1]
         assert len(energies_kn) == n_decorrelated_iterations_kn
         assert len(self._decorrelated_state_indices_kn) == n_decorrelated_iterations_kn
+
+        # Determine the cutoffs to use for the simulations.
+        restraint_energy_cutoff, restraint_distance_cutoff = self._get_restraint_cutoffs()
+        apply_energy_cutoff = restraint_energy_cutoff is not None
+        apply_distance_cutoff = restraint_distance_cutoff is not None
 
         # We need to take into account the initial unsampled states to index correctly N_k.
         state_idx_shift = 0
@@ -1346,8 +1328,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Determine which samples are outside the cutoffs or have to be truncated.
         columns_to_keep = []
         for iteration_kn_idx, state_idx in enumerate(self._decorrelated_state_indices_kn):
-            if ((is_cutoff_energy and energies_kn[iteration_kn_idx] > restraint_energy_cutoff) or
-                    (is_cutoff_distance and distances_kn[iteration_kn_idx] > restraint_distance_cutoff)):
+            if ((apply_energy_cutoff and energies_kn[iteration_kn_idx] > restraint_energy_cutoff) or
+                    (apply_distance_cutoff and distances_kn[iteration_kn_idx] > restraint_distance_cutoff)):
                 # Update the number of samples generated from its state.
                 N_k[state_idx + state_idx_shift] -= 1
             else:
@@ -1378,8 +1360,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         self._unbiased_decorrelated_N_k = N_k_new
         return self._unbiased_decorrelated_u_kn, self._unbiased_decorrelated_N_k
 
-    def _compute_restraint_energies(self, restraint_force, weights_group1, weights_group2,
-                                    compute_distances=False):
+    def _compute_restraint_energies(self, restraint_force, weights_group1, weights_group2):
         """Compute the restrain energies and distances for the uncorrelated iterations.
 
         Parameters
@@ -1390,9 +1371,6 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             The mass of the particle in the first CustomCentroidBondForce group.
         weights_group2 : list of float
             The mass of the particles in the second CustomCentroidBondForce group.
-        compute_distances : bool, optional
-            If True, the distances will be computed as well. This step is
-            unnecessary if only a cutoff on the energy was specified.
 
         Returns
         -------
@@ -1400,7 +1378,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             A (n_sampled_states * n_decorrelated_iterations)-long array with
             the restrain energies (units of energy/mole).
         restraint_distances_kn : simtk.unit.Quantity or None
-            If ``compute_distances`` is False, this is None. Otherwise, this is
+            If we are not applying a distance cutoff, this is None. Otherwise,
             a (n_sampled_states * n_decorrelated_iterations)-long array with
             the restrain distances (units of length) for each frame.
 
@@ -1428,6 +1406,9 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                     frame_idx = state_idx*len(decorrelated_iterations) + iteration_idx
                     decorrelated[frame_idx] = cached_dict[iteration][state_idx]
             return decorrelated * unit
+
+        # We compute the distances only if we are using a distance cutoff.
+        _, compute_distances = self._get_use_restraint_cutoff()
 
         # Check cached values.
         if compute_distances and decorrelated_iterations_set.issubset(set(self._restraint_distances)):
@@ -1516,32 +1497,78 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         return (extract_decorrelated(self._restraint_energies, dtype=np.float64, unit=_OPENMM_ENERGY_UNIT),
                 extract_decorrelated(self._restraint_distances, dtype=np.float32, unit=_MDTRAJ_DISTANCE_UNIT))
 
-    def _determine_automatic_restraint_cutoff(self, compute_energy_cutoff=True, compute_distance_cutoff=True):
-        """Automatically determine the restraint cutoffs.
+    def _get_use_restraint_cutoff(self):
+        """Determine if we need to apply a cutoff on the restraint energies and/or distances."""
+        apply_distance_cutoff = isinstance(self.restraint_distance_cutoff, units.Quantity)
+        apply_energy_cutoff = isinstance(self.restraint_energy_cutoff, float)
+        # When both cutoffs are auto, use distance cutoff.
+        if self.restraint_distance_cutoff == 'auto' and not apply_energy_cutoff:
+            apply_distance_cutoff = True
+        elif self.restraint_energy_cutoff == 'auto' and self.restraint_distance_cutoff is None:
+            apply_energy_cutoff = True
+        return apply_energy_cutoff, apply_distance_cutoff
 
-        This must be called after _compute_restraint_energies(). The cutoffs are
-        determine as the 99%-percentile of the distribution of the restraint
-        energies/distances in the bound state.
-        """
-        # Gather the bound state restraint energies/distances
-        state0_energies = [] if compute_energy_cutoff else None
-        state0_distances = [] if compute_distance_cutoff else None
-        for state0_data, cached_data in [(state0_energies, self._restraint_energies),
-                                         (state0_distances, self._restraint_distances)]:
-            if state0_data is None:
+    def _get_restraint_energies_distances_at_state(self, state_idx, get_energies=True, get_distances=True):
+        """Return the restraint energies and distances for a single state."""
+        # Resolve negative indices.
+        if state_idx < 0:
+            state_idx = self.n_states + state_idx
+        # Gather the state restraint energies/distances.
+        state_energies = [] if get_energies else None
+        state_distances = [] if get_distances else None
+        for state_data, cached_data in [(state_energies, self._restraint_energies),
+                                        (state_distances, self._restraint_distances)]:
+            if state_data is None:
                 continue
             for iteration, states_data in cached_data.items():
                 # SAMS may not have the energy of all states at every iteration.
                 try:
-                    state0_data.append(states_data[0])
+                    state_data.append(states_data[state_idx])
                 except KeyError:
                     pass
+        # Convert to the correct units.
+        if state_energies is not None:
+            state_energies = np.array(state_energies) * _OPENMM_ENERGY_UNIT / self.kT
+        if state_distances is not None:
+            state_distances = np.array(state_distances) * _MDTRAJ_DISTANCE_UNIT
+        return state_energies, state_distances
 
-        # Compute cutoff as the 99%-percentile of the energies/distances distributions.
-        energy_cutoff = np.percentile(state0_energies, 99) if compute_energy_cutoff else None
-        distance_cutoff = np.percentile(state0_distances, 99) if compute_distance_cutoff else None
-        return energy_cutoff * _OPENMM_ENERGY_UNIT, distance_cutoff * _MDTRAJ_DISTANCE_UNIT
+    def _determine_automatic_restraint_cutoff(self, compute_energy_cutoff=True, compute_distance_cutoff=True):
+        """Automatically determine the restraint cutoffs.
 
+        This must be called after _compute_restraint_energies(). The cutoffs are
+        determine as the 99.9%-percentile of the distribution of the restraint
+        energies/distances in the bound state.
+        """
+        # Gather the bound state restraint energies/distances.
+        state0_energies, state0_distances = self._get_restraint_energies_distances_at_state(
+            state_idx=0, get_energies=compute_energy_cutoff, get_distances=compute_distance_cutoff)
+        # Compute cutoff as the 99.9%-percentile of the energies/distances distributions.
+        energy_cutoff = np.percentile(state0_energies, 99.9) if compute_energy_cutoff else None
+        state0_distances /= _MDTRAJ_DISTANCE_UNIT
+        distance_cutoff = np.percentile(state0_distances, 99.9) if compute_distance_cutoff else None
+        return energy_cutoff, distance_cutoff * _MDTRAJ_DISTANCE_UNIT
+
+    def _get_restraint_cutoffs(self):
+        """Return the restraint energies and distance cutoff to be used for unbiasing."""
+        apply_energy_cutoff, apply_distance_cutoff = self._get_use_restraint_cutoff()
+        # Determine automatically the restraint distance cutoff is necessary.
+        if apply_distance_cutoff and self.restraint_distance_cutoff == 'auto':
+            _, restraint_distance_cutoff = self._determine_automatic_restraint_cutoff(compute_energy_cutoff=False)
+            logger.debug('Chosen automatically a restraint distance cutoff of {}'.format(restraint_distance_cutoff))
+        elif self.restraint_distance_cutoff == 'auto':
+            restraint_distance_cutoff = None
+        else:
+            restraint_distance_cutoff = self.restraint_distance_cutoff
+        # Determine automatically the restraint energy cutoff is necessary.
+        if apply_energy_cutoff and self.restraint_energy_cutoff == 'auto':
+            restraint_energy_cutoff, _ = self._determine_automatic_restraint_cutoff(compute_distance_cutoff=False)
+            logger.debug('Chosen automatically a restraint energy cutoff of {}kT'.format(restraint_energy_cutoff))
+        elif self.restraint_energy_cutoff == 'auto':
+            restraint_energy_cutoff = None
+        else:
+            restraint_energy_cutoff = self.restraint_energy_cutoff
+        return restraint_energy_cutoff, restraint_distance_cutoff
 
     # -------------------------------------------------------------------------
     # Observables.
