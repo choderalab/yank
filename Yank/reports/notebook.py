@@ -11,11 +11,11 @@ import yaml
 import numpy as np
 from scipy import interpolate
 from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, NoNorm
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib import gridspec
 from simtk import unit as units
 from .. import version
-from .. import analyze
+from .. import analyze, utils
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
@@ -24,7 +24,7 @@ class HealthReportData(object):
     """
     Class which houses the data used for the notebook and the generation of all plots including formatting
     """
-    def __init__(self, store_directory):
+    def __init__(self, store_directory, **analyzer_kwargs):
         """
         Initial data read in and object assignment
 
@@ -32,7 +32,19 @@ class HealthReportData(object):
         ----------
         store_directory : string
             Location where the analysis.yaml file is and where the NetCDF files are
+        **analyzer_kwargs
+            Keyword arguments to pass to the analyzer class. Quantities can be
+            passed as strings.
         """
+        # Convert analyzer string quantities into variables.
+        for key, value in analyzer_kwargs.items():
+            try:
+                quantity = utils.quantity_from_string(value)
+            except:
+                pass
+            else:
+                analyzer_kwargs[key] = quantity
+
         # Read in data
         analysis_script_path = os.path.join(store_directory, 'analysis.yaml')
         if not os.path.isfile(analysis_script_path):

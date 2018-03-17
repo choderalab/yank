@@ -131,7 +131,7 @@ class YankParallelTemperingAnalyzer(multistate.ParallelTemperingAnalyzer, YankMu
 # MODULE FUNCTIONS
 # =============================================================================================
 
-def get_analyzer(file_base_path):
+def get_analyzer(file_base_path, **analyzer_kwargs):
     """
     Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
 
@@ -142,6 +142,8 @@ def get_analyzer(file_base_path):
     ----------
     file_base_path : string
         Complete path to the storage file with filename and extension.
+    **analyzer_kwargs
+        Keyword arguments to pass to the analyzer.
 
     Returns
     -------
@@ -161,13 +163,13 @@ def get_analyzer(file_base_path):
     """
     # Eventually change this to auto-detect simulation from reporter:
     if True:
-        analyzer = YankReplicaExchangeAnalyzer(reporter)
+        analyzer = YankReplicaExchangeAnalyzer(reporter, **analyzer_kwargs)
     else:
         raise RuntimeError("Cannot automatically determine analyzer for Reporter: {}".format(reporter))
     return analyzer
 
 
-def analyze_directory(source_directory):
+def analyze_directory(source_directory, **analyzer_kwargs):
     """
     Analyze contents of store files to compute free energy differences.
 
@@ -177,7 +179,9 @@ def analyze_directory(source_directory):
     Parameters
     ----------
     source_directory : string
-       The location of the simulation storage files.
+        The location of the simulation storage files.
+    **analyzer_kwargs
+        Keyword arguments to pass to the analyzer.
 
     """
     analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
@@ -191,7 +195,7 @@ def analyze_directory(source_directory):
     data = dict()
     for phase_name, sign in analysis:
         phase_path = os.path.join(source_directory, phase_name + '.nc')
-        phase = get_analyzer(phase_path)
+        phase = get_analyzer(phase_path, **analyzer_kwargs)
         data[phase_name] = phase.analyze_phase()
         kT = phase.kT
 

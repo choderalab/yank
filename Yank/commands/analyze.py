@@ -13,10 +13,14 @@ Analyze YANK output file.
 # MODULE IMPORTS
 # =============================================================================================
 
-from .. import utils, analyze
+import io
 import re
 import os
+
+from simtk import unit
+
 import pkg_resources
+from .. import utils, analyze
 
 # =============================================================================================
 # COMMAND-LINE INTERFACE
@@ -26,8 +30,8 @@ usage = """
 YANK analyze
 
 Usage:
-  yank analyze (-s STORE | --store=STORE) [-v | --verbose]
-  yank analyze report (-s STORE | --store=STORE) (-o REPORT | --output=REPORT)
+  yank analyze (-s STORE | --store=STORE) [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose]
+  yank analyze report (-s STORE | --store=STORE) [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] (-o REPORT | --output=REPORT)
   yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
@@ -36,6 +40,12 @@ Description:
 
 Free Energy Required Arguments:
   -s=STORE, --store=STORE       Storage directory for NetCDF data files.
+
+Free Energy Optional Arguments:
+  --skipunbiasing               Skip the radially-symmetric restraint unbiasing. This can be an expensive step.
+  --distcutoff=DISTANCE         The restraint distance cutoff (in angstroms) to be used to unbias the restraint.
+  --energycutoff=ENERGY         The restraint unitless potential energy cutoff (i.e. in kT) to be used to unbias the
+                                restraint.
 
 YANK Health Report Arguments:
   -o=REPORT, --output=REPORT    Name of the health report Jupyter notebook or static file, can use a path + name as well
@@ -78,8 +88,26 @@ def dispatch(args):
     if args['extract-trajectory']:
         return dispatch_extract_trajectory(args)
 
-    analyze.analyze_directory(args['--store'])
+    # Configure analyzer keyword arguments.
+    analyzer_kwargs = extract_analyzer_kwargs(args)
+    analyze.analyze_directory(args['--store'], **analyzer_kwargs)
     return True
+
+
+def extract_analyzer_kwargs(args, quantities_as_strings=False):
+    """Return a dictionary with the keyword arguments to pass to the analyzer."""
+    analyzer_kwargs = {}
+    if args['skipunbiasing']:
+        analyzer_kwargs['unbias_restraint'] = False
+    if args['energycutoff']:
+        analyzer_kwargs['restraint_energy_cutoff'] = float(args['energycutoff'])
+    if args['distcutoff']:
+        if quantities_as_strings:
+            distcutoff = args['distcutoff'] + '*angstroms'
+        else:
+            distcutoff = float(args['distcutoff']) * unit.angstroms
+        analyzer_kwargs['restraint_distance_cutoff'] = distcutoff
+    return analyzer_kwargs
 
 
 def dispatch_extract_trajectory(args):
@@ -134,10 +162,13 @@ def dispatch_report(args):
     # Check modules for render
     store = args['--store']
     output = args['--output']
+    analyzer_kwargs = extract_analyzer_kwargs(args, quantities_as_strings=True)
     file_full_path, file_extension = os.path.splitext(output)
     _, file_base_name = os.path.split(file_full_path)
+
+    # If we need to pre-render the notebook, check if we have the necessary libraries.
     # PDF requires xelatex binary in the OS (provided by LaTeX such as TeXLive and MiKTeX)
-    static_extensions = [".pdf", ".html"]
+    requires_prerendering = file_extension.lower() in {'.pdf', '.html'}
     try:
         import matplotlib
         import jupyter
@@ -146,15 +177,24 @@ def dispatch_report(args):
                      " - matplotlib\n"
                      " - jupyter\n"
                      "These are not required to generate the notebook however")
-        if file_extension.lower() in static_extensions:
+        if requires_prerendering:
             error_msg += "\nRendering as static {} is not possible without the packages!".format(file_extension)
             raise ImportError(error_msg)
         else:
             print(error_msg)
+
+    # Read template notebook and inject variables.
     template_path = pkg_resources.resource_filename('yank', 'reports/YANK_Health_Report_Template.ipynb')
     with open(template_path, 'r') as template:
         notebook_text = re.sub('STOREDIRBLANK', store, template.read())
-    if file_extension.lower() in static_extensions:
+        notebook_text = re.sub('ANALYZERKWARGSBLANK', str(analyzer_kwargs), notebook_text)
+
+    # Determine whether to pre-render the notebook or not.
+    if not requires_prerendering:
+        # No pre-rendering, no need to process anything
+        with open(output, 'w') as notebook:
+            notebook.write(notebook_text)
+    else:
         # Cast to static output
         print("Rendering notebook as static file...")
         import nbformat
@@ -163,25 +203,20 @@ def dispatch_report(args):
         # Categorize exporters based on extension, requires exporter object and data type output
         # 'b' = byte types output, e.g. PDF
         # 't' = text based output, e.g. HTML or even raw notebook, human-readable-like
-        exporters = {".pdf": {'exporter': nbconvert.exporters.PDFExporter, 'write_type': 'b'},
-                     ".html": {'exporter': nbconvert.exporters.HTMLExporter, 'write_type': 't'}
-                     }
-        temporary_directory = analyze.mmtools.utils.temporary_directory
-        with temporary_directory() as tmp_dir_path:
-            temp_notebook_name = "tmp_notebook.ipynb"
-            tmp_nb_path = os.path.join(tmp_dir_path, temp_notebook_name)
-            # Write out temporary notebook to raw text
-            with open(tmp_nb_path, 'w') as tmp_notebook:
-                tmp_notebook.write(notebook_text)
-            # Read the temp notebook into a notebook_node object nbconvert can work with
-            with open(tmp_nb_path, 'r') as tmp_notebook:
-                loaded_notebook = nbformat.read(tmp_notebook, as_version=4)
-            ep = ExecutePreprocessor(timeout=None)
-            # Set the title name, does not appear in all exporters
-            resource_data = {'metadata': {'name': 'YANK Simulation Report: {}'.format(file_base_name)}}
-            # Process notebook
-            print("Processing notebook now, this may take a while...")
-            processed_notebook, resources = ep.preprocess(loaded_notebook, resource_data)
+        exporters = {
+            ".pdf": {'exporter': nbconvert.exporters.PDFExporter, 'write_type': 'b'},
+            ".html": {'exporter': nbconvert.exporters.HTMLExporter, 'write_type': 't'}
+        }
+
+        # Load the notebook through Jupyter.
+        loaded_notebook = nbformat.read(io.StringIO(notebook_text), as_version=4)
+        # Process the notebook.
+        ep = ExecutePreprocessor(timeout=None)
+        # Set the title name, does not appear in all exporters
+        resource_data = {'metadata': {'name': 'YANK Simulation Report: {}'.format(file_base_name)}}
+        print("Processing notebook now, this may take a while...")
+        processed_notebook, resources = ep.preprocess(loaded_notebook, resource_data)
+
         # Retrieve exporter
         exporter_data = exporters[file_extension.lower()]
         # Determine exporter and data output type
@@ -190,9 +225,5 @@ def dispatch_report(args):
         with open(output, 'w{}'.format(write_type)) as notebook:
             exported_notebook, _ = nbconvert.exporters.export(exporter, processed_notebook, resources=resources)
             notebook.write(exported_notebook)
-    else:
-        # No pre-rendering, no need to process anything
-        with open(output, 'w') as notebook:
-            notebook.write(notebook_text)
 
     return True

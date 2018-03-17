@@ -1472,7 +1472,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # iterations_groups = itertools.groupby(enumerate(decorrelated_iterations), key=lambda x: int(x[1] / chunk_size))
 
         # Pre-computing energies/distances.
-        logger.debug('Computing restraint energies...')
+        logger.debug('Computing restraint energies/distances...')
         replica_state_indices = self._reporter.read_replica_thermodynamic_states()
         for iteration_idx, iteration in enumerate(decorrelated_iterations):
             # Check if we have already computed this energy/distance.
