@@ -176,6 +176,14 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
             solvent2: vacuum
             leap:
                 parameters: [leaprc.protein.ff14SB, leaprc.gaff]
+    mcmc_moves:
+        single:
+            type: LangevinSplittingDynamicsMove
+        sequence:
+            type: SequenceMove
+            move_list:
+                - type: MCDisplacementMove
+                - type: LangevinDynamicsMove
     samplers:
         repex:
             type: ReplicaExchangeSampler
@@ -769,11 +777,15 @@ def test_validation_correct_samplers():
     samplers = [
         {'type': 'MultiStateSampler', 'locality': 3},
         {'type': 'ReplicaExchangeSampler'},
+        # MCMCMove 'single' is defined in get_template_script().
+        {'type': 'SAMSSampler', 'mcmc_move': 'single'},
         {'type': 'ReplicaExchangeSampler', 'number_of_iterations': 5, 'replica_mixing_scheme': 'swap-neighbors'},
         {'type': 'ReplicaExchangeSampler', 'number_of_iterations': 5, 'replica_mixing_scheme': None}
     ]
+    exp_builder = ExperimentBuilder(get_template_script())
     for sampler in samplers:
-        yield ExperimentBuilder._validate_samplers, {'samplers': {'sampler1': sampler}}
+        script = {'samplers': {'sampler1': sampler}}
+        yield exp_builder._validate_samplers, script
 
 
 def test_validation_wrong_samplers():
@@ -782,14 +794,17 @@ def test_validation_wrong_samplers():
     samplers = [
         ("locality must be an int",
             {'type': 'MultiStateSampler', 'locality': 3.0}),
+        ("unallowed value unknown",
+            {'type': 'ReplicaExchangeSampler', 'mcmc_move': 'unknown'}),
         ("Could not find class NonExistentSampler",
             {'type': 'NonExistentSampler'}),
         ("found unknown parameter",
             {'type': 'ReplicaExchangeSampler', 'unknown_kwarg': 5}),
     ]
+    exp_builder = ExperimentBuilder(get_template_script())
     for regexp, sampler in samplers:
         script = {'samplers': {'sampler1': sampler}}
-        yield assert_raises_regexp, YamlParseError, regexp, ExperimentBuilder._validate_samplers, script
+        yield assert_raises_regexp, YamlParseError, regexp, exp_builder._validate_samplers, script
 
 
 def test_order_phases():

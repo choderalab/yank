@@ -6,6 +6,7 @@ from datetime import date
 from collections.abc import Mapping, Sequence
 
 import cerberus
+import cerberus.errors
 import simtk.unit as unit
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2
@@ -106,6 +107,11 @@ class YANKCerberusValidator(cerberus.Validator):
         self._check_subclass_constructor(field, call_mcmc_move_constructor, constructor_description)
 
     def _validator_is_sampler_constructor(self, field, constructor_description):
+        # Check if the MCMCMove is defined (its validation is done in
+        # is_mcmc_move_constructor). Don't modify original dictionary.
+        constructor_description = copy.deepcopy(constructor_description)
+        constructor_description.pop('mcmc_move', None)
+        # Validate sampler.
         self._check_subclass_constructor(field, call_sampler_constructor, constructor_description)
 
     # ====================================================

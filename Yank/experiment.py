@@ -1937,9 +1937,12 @@ class ExperimentBuilder(object):
             valueschema:
                 type: dict
                 validator: is_sampler_constructor
-                keyschema:
-                    type: string
-        """
+                allow_unknown: yes
+                schema:
+                    mcmc_move:
+                        type: string
+                        allowed: {MCMC_MOVE_IDS}
+        """.format(MCMC_MOVE_IDS=list(self._mcmc_moves.keys()))
         sampler_schema = yaml.load(sampler_schema)
 
         sampler_validator = schema.YANKCerberusValidator(sampler_schema)
