@@ -752,6 +752,7 @@ class ExperimentBuilder(object):
         self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
 
         # Validate protocols
+        self._mcmc_moves = self._validate_mcmc_moves(yaml_content)
         self._samplers = self._validate_samplers(yaml_content)
         self._protocols = self._validate_protocols(yaml_content.get('protocols', {}))
 
@@ -1897,7 +1898,33 @@ class ExperimentBuilder(object):
         return validated_systems
 
     @classmethod
-    def _validate_samplers(cls, yaml_content):
+    def _validate_mcmc_moves(cls, yaml_content):
+        """Validate mcmc_moves section."""
+        mcmc_move_descriptions = yaml_content.get('mcmc_moves', None)
+        if mcmc_move_descriptions is None:
+            return {}
+
+        mcmc_move_schema = """
+        mcmc_moves:
+            keyschema:
+                type: string
+            valueschema:
+                type: dict
+                validator: is_mcmc_move_constructor
+                keyschema:
+                    type: string
+        """
+        mcmc_move_schema = yaml.load(mcmc_move_schema)
+
+        mcmc_move_validator = schema.YANKCerberusValidator(mcmc_move_schema)
+        if mcmc_move_validator.validate({'mcmc_moves': mcmc_move_descriptions}):
+            validated_mcmc_moves = mcmc_move_validator.document
+        else:
+            error = "MCMC moves validation failed with:\n{}"
+            raise YamlParseError(error.format(yaml.dump(mcmc_move_validator.errors)))
+        return validated_mcmc_moves['mcmc_moves']
+
+    def _validate_samplers(self, yaml_content):
         """Validate samplers section."""
         sampler_descriptions = yaml_content.get('samplers', None)
         if sampler_descriptions is None:

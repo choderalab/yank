@@ -732,6 +732,38 @@ def test_validation_wrong_systems():
         yield assert_raises_regexp, YamlParseError, regexp, exp_builder.parse, modified_script
 
 
+def test_validation_correct_mcmc_moves():
+    """Correct samplers YAML validation."""
+    mcmc_moves = [
+        {'type': 'LangevinSplittingDynamicsMove', 'reassign_velocities': False,
+         'splitting': 'VRORV', 'n_steps': 10, 'timestep': '2.0*femtosecond'},
+        {'type': 'SequenceMove', 'move_list': [
+            {'type': 'MCDisplacementMove', 'displacement_sigma': '5.0*nanometers'},
+            {'type': 'LangevinSplittingDynamicsMove'}
+        ]},
+    ]
+    for mcmc_move in mcmc_moves:
+        yield ExperimentBuilder._validate_mcmc_moves, {'mcmc_moves': {'mcmcmove1': mcmc_move}}
+
+
+def test_validation_wrong_mcmc_moves():
+    """YAML validation raises exception with wrong experiments specification."""
+    # Each test case is a pair (regexp_error, mcmc_move_description).
+    mcmc_moves = [
+        ("The expression 2.0 must be\s+ a string",
+            {'type': 'LangevinSplittingDynamicsMove', 'timestep': 2.0}),
+        ("Could not find class UnknownMoveClass",
+            {'type': 'UnknownMoveClass'}),
+        {'type': 'SequenceMove', 'move_list': [
+            {'type': 'MCDisplacementMove'},
+            {'type': 'UnknownMoveClass'}
+        ]}
+    ]
+    for regexp, mcmc_move in mcmc_moves:
+        script = {'mcmc_moves': {'mcmc_move1': mcmc_move}}
+        yield assert_raises_regexp, YamlParseError, regexp, ExperimentBuilder._validate_mcmc_moves, script
+
+
 def test_validation_correct_samplers():
     """Correct samplers YAML validation."""
     samplers = [
@@ -750,7 +782,7 @@ def test_validation_wrong_samplers():
     samplers = [
         ("locality must be an int",
             {'type': 'MultiStateSampler', 'locality': 3.0}),
-        ("Could not found class NonExistentSampler",
+        ("Could not find class NonExistentSampler",
             {'type': 'NonExistentSampler'}),
         ("found unknown parameter",
             {'type': 'ReplicaExchangeSampler', 'unknown_kwarg': 5}),
