@@ -2,13 +2,13 @@ import os
 import copy
 import inspect
 import logging
+from datetime import date
+from collections.abc import Mapping, Sequence
+
 import cerberus
 import simtk.unit as unit
-
-from datetime import date
-from openmmtools.utils import typename
+import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2
-from collections.abc import Mapping, Sequence
 
 from .. import utils, restraints, multistate
 
@@ -194,7 +194,7 @@ def call_constructor(parent_cls, constructor_description, special_conversions=No
     elif not isinstance(subcls_name, str):
         raise RuntimeError("'type' must be a string")
     try:
-        subcls = utils.find_subclass(parent_cls, subcls_name)
+        subcls = mmtools.utils.find_subclass(parent_cls, subcls_name)
     except ValueError as e:
         raise RuntimeError(str(e))
 
@@ -261,7 +261,7 @@ def generate_unknown_type_validator(a_type):
     """
     def nonstandard_type_validator(field, value, error):
         if type(value) is not a_type:
-            error(field, 'Must be of type {}'.format(typename(a_type)))
+            error(field, 'Must be of type {}'.format(mmtools.utils.typename(a_type)))
     validator_dict = {'validator': nonstandard_type_validator}
     return validator_dict
 
