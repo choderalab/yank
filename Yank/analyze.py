@@ -83,7 +83,7 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
         # Determine if we need to recompute the standard state correction.
         compute_ssc = True
         try:
-            restraint_force, _, _ = self._get_restraint_data()
+            restraint_force, _, _ = self._get_radially_symmetric_restraint_data()
         except (mmtools.forces.NoForceFoundError, TypeError):
             compute_ssc = False
 
