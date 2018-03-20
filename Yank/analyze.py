@@ -81,7 +81,7 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
             return self._computed_observables['standard_state_correction']
 
         # Determine if we need to recompute the standard state correction.
-        compute_ssc = True
+        compute_ssc = self.unbias_restraint
         try:
             restraint_force, _, _ = self._get_radially_symmetric_restraint_data()
         except (mmtools.forces.NoForceFoundError, TypeError):
