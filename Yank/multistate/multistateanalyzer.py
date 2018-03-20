@@ -847,21 +847,31 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         if np.any(neighborhoods == 0):
             raise Exception('Non-global MBAR analysis not implemented yet.')
 
-        logger.info("Reading energies...")
-        # Returns the energies in kln format
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
-        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
-        _, _, n_unsampled_states = energy_unsampled_states.shape
-        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
-        for n in range(n_iterations):
-            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
-            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
-        logger.info("Done.")
-
+        # For now number of iterations are the same in each replica
+        # But replicas can be in the same state and overwrite each other
         logger.info("Deconvoluting replicas...")
-        energy_matrix = np.zeros([n_states, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix = np.zeros([n_states, n_unsampled_states, n_iterations], np.float64)
+
+        max_samples = n_replicas * n_iterations
+        energy_matrix = np.zeros([n_states, n_states, max_samples], np.float64)
+        unsampled_energy_matrix = np.zeros([n_states, n_unsampled_states, max_samples], np.float64)
+        all_state_indices = self._reporter.read_replica_thermodynamic_states()
+        max_state_n = np.zeros(n_states, dtype=int)
+        # Loop through all iterations
+        for iteration in range(n_iterations):
+            state_indices = all_state_indices[iteration]
+            # Loop through each sampler
+            for replica_index in range(n_replicas):
+                # Get the state the sampler was in
+                replica_state = state_indices[iteration, replica_index]
+                # Transfer energy without overwriting if samplers were in the same state
+                energy_matrix[replica_state, :, max_state_n[replica_state]] = \
+                    energy_matrix_replica[replica_index, :, iteration]
+                max_state_n[replica_state] += 1
+            unsampled_energy_matrix[state_indices, :, iteration] = unsampled_energy_matrix_replica[:, :, iteration]
+
+
+
+
         for iteration in range(n_iterations):
             state_indices = self._reporter.read_replica_thermodynamic_states(iteration)
             energy_matrix[state_indices, :, iteration] = energy_matrix_replica[:, :, iteration]
