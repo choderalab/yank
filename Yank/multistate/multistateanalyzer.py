@@ -1421,8 +1421,10 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         restraint_force = copy.deepcopy(restraint_force)
 
         # Store the original indices of the restrained atoms.
-        original_restrained_atom_indices = (restraint_force.restrained_atom_indices1 +
-                                            restraint_force.restrained_atom_indices2)
+        original_restrained_atom_indices1 = restraint_force.restrained_atom_indices1
+        original_restrained_atom_indices2 = restraint_force.restrained_atom_indices2
+        original_restrained_atom_indices = (original_restrained_atom_indices1 +
+                                            original_restrained_atom_indices2)
 
         # Create new system with only solute and restraint forces.
         reduced_system = openmm.System()
@@ -1439,9 +1441,9 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             # Create topology with only the restrained atoms.
             serialized_topography = self._reporter.read_dict('metadata/topography')
             topology = mmtools.utils.deserialize(serialized_topography).topology
-            topology = topology.subset(original_restrained_atom_indices)
+            topology = topology.subset(self._reporter.analysis_particle_indices)
             # Initialize trajectory object needed for imaging molecules.
-            trajectory = mdtraj.Trajectory(xyz=np.zeros((n_atoms, 3)), topology=topology)
+            trajectory = mdtraj.Trajectory(xyz=np.zeros((topology.n_atoms, 3)), topology=topology)
 
         # Create context used to compute the energies.
         integrator = openmm.VerletIntegrator(1.0*units.femtosecond)
@@ -1482,12 +1484,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                         distance = restraint_force.distance_at_energy(potential_energy) / _MDTRAJ_DISTANCE_UNIT
                     except (NotImplementedError, ValueError):
                         # Update trajectory positions/box vectors.
-                        trajectory.xyz = (sliced_sampler_state / _MDTRAJ_DISTANCE_UNIT).astype(np.float32)
+                        trajectory.xyz = (sampler_state.positions / _MDTRAJ_DISTANCE_UNIT).astype(np.float32)
                         trajectory.unitcell_vectors = np.array([sampler_state.box_vectors / _MDTRAJ_DISTANCE_UNIT],
                                                                dtype=np.float32)
-                        trajectory.image_molecules(inplace=True, make_whole=False)
-                        positions_group1 = trajectory.xyz[0][restraint_force.restrained_atom_indices1]
-                        positions_group2 = trajectory.xyz[0][restraint_force.restrained_atom_indices2]
+                        trajectory.image_molecules(inplace=True)
+                        positions_group1 = trajectory.xyz[0][original_restrained_atom_indices1]
+                        positions_group2 = trajectory.xyz[0][original_restrained_atom_indices2]
 
                         # Set output arrays.
                         distance = compute_centroid_distance(positions_group1, positions_group2,
