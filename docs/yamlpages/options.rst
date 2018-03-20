@@ -332,28 +332,6 @@ Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 
 
 
-.. _yaml_options_integrator_splitting:
-
-.. rst-class:: html-toggle
-
-``integrator_splitting``
-------------------------
-.. code-block:: yaml
-
-   options:
-     integrator_splitting: V R O R V
-
-Sequence of "R", "V", "O" (and optionally "{", "}", "V0", "V1", ...) sub-steps to be executed each timestep with a space
-between each step. Tells the
-integrator how to subdivide the work of taking a full timestep, with optional HMC moves.
-For example: ``V R O R V`` is a `BAOAB Integrator <https://journals.aps.org/pre/abstract/10.1103/PhysRevE.75.056707>`_
-If you don't want a splitting integrator, specify ``null`` to get a standard Langevin integrator.
-For more details, see
-`the OpenMMTools documentation <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.integrators.LangevinIntegrator.html#openmmtools.integrators.LangevinIntegrator>`_.
-
-Valid options (V R O R V): <String of R, V, O, {, and/or }; white space " " delimiter>/``null``
-
-
 .. _yaml_options_hydrogen_mass:
 
 .. rst-class:: html-toggle
@@ -605,37 +583,38 @@ Valid Options (1): <Integer> or ``.inf``
 
 
 
-.. _yaml_options_nsteps_per_iteration:
+.. _yaml_options_default_nsteps_per_iteration:
 
 .. rst-class:: html-toggle
 
-``nsteps_per_iteration``
-------------------------
+``default_nsteps_per_iteration``
+--------------------------------
 .. code-block:: yaml
 
    options:
-     nsteps_per_iteration: 500
+     default_nsteps_per_iteration: 500
 
-Number of timesteps between each iteration. We highly recommend using a number greater than 1 to improve decorrelation
-between iterations. Hamiltonian Replica Exchange swaps are attempted after each iteration.
+Number of timesteps between each iteration with the default MCMC move. We highly recommend using a number greater than 1
+to improve decorrelation between iterations. Hamiltonian Replica Exchange swaps are attempted after each iteration. This
+option is ignored if a custom MCMC move is used for the experiment.
 
 Valid Options (500): <Integer>
 
 
 
 
-.. _yaml_options_timestep:
+.. _yaml_options_default_timestep:
 
 .. rst-class:: html-toggle
 
-``timestep``
-------------
+``default_timestep``
+--------------------
 .. code-block:: yaml
 
    options:
-     timestep: 2.0 * femtosecond
+     default_timestep: 2.0 * femtosecond
 
-Timestep of Langevin Dynamics production runs.
+The timestep of the Langevin Dynamics with the default MCMC move. This option is ignored when a custom MCMC move is used.
 
 Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
 
@@ -710,30 +689,6 @@ Valid Options: [swap-all]/swap-neighbors/null
 
 
 
-
-.. _yaml_options_collision_rate:
-
-.. rst-class:: html-toggle
-
-``collision_rate``
-------------------
-.. code-block:: yaml
-
-   options:
-     collision_rate: 5.0 / picosecond
-
-The collision rate used for Langevin dynamics. Default quantity of 5.0 / picosecond works well for explicit solvent.
-Implicit solvent will require a different collision rate, e.g. 91 / picosecond works well for TIP3P water.
-
-Collision rates (or friction coefficients) appear in the Langevin dynamics equation as either inverse time, or one over
-some time constant, :math:`1/\tau`.  When comparing collision rates, double check if the collision rate is in units of
-inverse time, or just time. For example: a collision rate of 5.0/ps -> :math:`\tau = 0.2 \, ps`.
-
-Valid Options (5.0 / picosecond): <Quantity Inverse Time> [1]_
-
-
-
-
 .. _yaml_options_constraint_tolerance:
 
 .. rst-class:: html-toggle
@@ -749,23 +704,6 @@ Relative tolerance on the :ref:`constraints <yaml_options_constraints>` of the s
 
 Valid Options (1.0e-6): <Scientific Notation Float>
 
-
-
-
-.. _yaml_options_mc_displacement_sigma:
-
-.. rst-class:: html-toggle
-
-``mc_displacement_sigma``
--------------------------
-.. code-block:: yaml
-
-   options:
-     mc_displacement_sigma: 10.0 * angstroms
-
-YANK will augment Langevin dynamics with MC moves rotating and displacing the ligand. This parameter controls the size of the displacement
-
-Valid Options (10 * angstroms): <Quantity Length> [1]_
 
 |
 

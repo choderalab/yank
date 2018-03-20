@@ -52,7 +52,6 @@ Detailed Options List
     * :ref:`randomize_ligand_close_cutoff <yaml_options_ligand_close_cutoff>`
     * :ref:`temperature <yaml_options_temperature>`
     * :ref:`pressure <yaml_options_pressure>`
-    * :ref:`integrator_splitting <yaml_options_integrator_splitting>`
     * :ref:`hydrogen_mass <yaml_options_hydrogen_mass>`
     * :ref:`constraints <yaml_options_constraints>`
 
@@ -65,14 +64,12 @@ Detailed Options List
     * :ref:`number_of_equilibration_iterations <yaml_options_number_of_equilibration_iterations>`
     * :ref:`equilibration_timestep <yaml_options_equilibration_timestep>`
     * :ref:`default_number_of_iterations <yaml_options_default_number_of_iterations>`
-    * :ref:`nsteps_per_iteration <yaml_options_nsteps_per_iteration>`
-    * :ref:`timestep <yaml_options_timestep>`
+    * :ref:`default_nsteps_per_iteration <yaml_options_default_nsteps_per_iteration>`
+    * :ref:`default_timestep <yaml_options_default_timestep>`
     * :ref:`checkpoint_interval <yaml_options_checkpoint_interval>`
     * :ref:`store_solute_trajectory <yaml_options_store_solute_trajectory>`
     * :ref:`replica_mixing_scheme <yaml_options_replica_mixing_scheme>`
-    * :ref:`collision_rate <yaml_options_collision_rate>`
     * :ref:`constraint_tolerance <yaml_options_constraint_tolerance>`
-    * :ref:`mc_displacement_sigma <yaml_options_mc_displacement_sigma>`
     * :ref:`yaml_options_anisotropic_dispersion_cutoff`
 
   * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`
