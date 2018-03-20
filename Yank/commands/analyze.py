@@ -97,15 +97,15 @@ def dispatch(args):
 def extract_analyzer_kwargs(args, quantities_as_strings=False):
     """Return a dictionary with the keyword arguments to pass to the analyzer."""
     analyzer_kwargs = {}
-    if args['skipunbiasing']:
+    if args['--skipunbiasing']:
         analyzer_kwargs['unbias_restraint'] = False
-    if args['energycutoff']:
-        analyzer_kwargs['restraint_energy_cutoff'] = float(args['energycutoff'])
-    if args['distcutoff']:
+    if args['--energycutoff']:
+        analyzer_kwargs['restraint_energy_cutoff'] = float(args['--energycutoff'])
+    if args['--distcutoff']:
         if quantities_as_strings:
-            distcutoff = args['distcutoff'] + '*angstroms'
+            distcutoff = args['--distcutoff'] + '*angstroms'
         else:
-            distcutoff = float(args['distcutoff']) * unit.angstroms
+            distcutoff = float(args['--distcutoff']) * unit.angstroms
         analyzer_kwargs['restraint_distance_cutoff'] = distcutoff
     return analyzer_kwargs
 
