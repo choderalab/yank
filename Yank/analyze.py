@@ -89,10 +89,11 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
 
         if compute_ssc:
             thermodynamic_state = self._get_end_thermodynamic_states()[0]
+            restraint_energy_cutoff, restraint_distance_cutoff = self._get_restraint_cutoffs()
             # TODO: Compute average box volume here to feed to max_volume?
             ssc = restraint_force.compute_standard_state_correction(
-                thermodynamic_state, square_well=True, radius_cutoff=self.restraint_distance_cutoff,
-                energy_cutoff=self.restraint_energy_cutoff, max_volume='system')
+                thermodynamic_state, square_well=True, radius_cutoff=restraint_distance_cutoff,
+                energy_cutoff=restraint_energy_cutoff, max_volume='system')
 
             # Update observable.
             self._computed_observables['standard_state_correction'] = ssc
