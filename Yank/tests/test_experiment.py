@@ -2111,6 +2111,32 @@ class TestExperimentBuilding(object):
         template_script['experiments']['system'] = 'implicit-system'
         return template_script
 
+    def check_constructor(self, yaml_script, constructor_description, object_name,
+                          complex_phase_only=False, special_check_func=None):
+        exp_builder = ExperimentBuilder(script=yaml_script)
+        for experiment in exp_builder.build_experiments():
+            phases = experiment.phases
+            if complex_phase_only:
+                phases = [phases[0]]
+            for phase in phases:
+                for k, v in constructor_description.items():
+                    # Convert constructor strings to quantities if necessary.
+                    try:
+                        v = utils.quantity_from_string(v)
+                    except:
+                        pass
+                    # Obtain instantiated object.
+                    object_instance = phase
+                    for name in object_name.split('.'):
+                        object_instance = getattr(object_instance, name)
+                    # Check class and attributes.
+                    if k == 'type':
+                        assert object_instance.__class__.__name__ == v
+                    else:
+                        assert getattr(object_instance, k) == v
+                if special_check_func is not None:
+                    special_check_func(phase, constructor_description)
+
     def test_alchemical_phase_factory_building(self):
         """Test that options are passed to AlchemicalPhaseFactory correctly."""
         with mmtools.utils.temporary_directory() as tmp_dir:
@@ -2141,17 +2167,9 @@ class TestExperimentBuilding(object):
             }
 
             # Test that options are passed to the restraint correctly.
-            exp_builder = ExperimentBuilder(script=template_script)
-            for experiment in exp_builder.build_experiments():
-                restraint = experiment.phases[0].restraint
-                assert isinstance(restraint, restraints.Harmonic)
-                assert restraint.restrained_receptor_atoms == [10, 11, 12]
-                assert restraint.restrained_ligand_atoms == 'resname MOL'
-                print(restraint.spring_constant)
-                assert restraint.spring_constant.unit.is_compatible(
-                    unit.kilojoule_per_mole/unit.nanometers**2)
-
-                assert experiment.phases[1].restraint is None
+            constructor_description = template_script['experiments']['restraint']
+            self.check_constructor(template_script, constructor_description,
+                                   object_name='restraint', complex_phase_only=True)
 
     def test_sampler_building(self):
         """Test that the experiment sampler is built correctly."""
@@ -2173,21 +2191,16 @@ class TestExperimentBuilding(object):
                 }
             }
 
+            def check_default_number_of_iterations(phase, sampler_description):
+                if 'number_of_iterations' not in sampler_description:
+                    assert phase.sampler.number_of_iterations == default_number_of_iterations
+
             # Test that options are passed to the sampler correctly.
             for sampler_id, sampler_description in template_script['samplers'].items():
                 template_script['experiments']['sampler'] = sampler_id
-                exp_builder = ExperimentBuilder(script=template_script)
-                for experiment in exp_builder.build_experiments():
-                    for phase in experiment.phases:
-                        for k, v in sampler_description.items():
-                            if k == 'type':
-                                assert phase.sampler.__class__.__name__ == v
-                            else:
-                                assert getattr(phase.sampler, k) == v
-
-                        # If number_of_iterations is not specified, the default is used.
-                        if 'number_of_iterations' not in sampler_description:
-                            assert phase.sampler.number_of_iterations == default_number_of_iterations
+                constructor_description = template_script['samplers'][sampler_id]
+                yield (self.check_constructor, template_script, constructor_description,
+                       'sampler', None, check_default_number_of_iterations)
 
     def test_mcmc_move_building(self):
         """Test that the experiment MCMCMoves are built correctly."""
@@ -2230,14 +2243,9 @@ class TestExperimentBuilding(object):
 
             # Test that custom MCMCMoves are built correctly.
             template_script['samplers']['repex']['mcmc_moves'] = 'my-move1'
-            exp_builder = ExperimentBuilder(script=template_script)
-            for experiment in exp_builder.build_experiments():
-                for phase in experiment.phases:
-                    mcmc_move = phase.sampler.mcmc_moves
-                    assert type(mcmc_move) is mmtools.mcmc.LangevinSplittingDynamicsMove
-                    assert mcmc_move.reassign_velocities is False
-                    assert mcmc_move.splitting == 'RVOVR'
-                    assert mcmc_move.timestep == 2.0*unit.femtoseconds
+            constructor_description = template_script['mcmc_moves']['my-move1']
+            self.check_constructor(template_script, constructor_description,
+                                   object_name='sampler.mcmc_moves')
 
             template_script['samplers']['repex']['mcmc_moves'] = 'my-move2'
             exp_builder = ExperimentBuilder(script=template_script)
