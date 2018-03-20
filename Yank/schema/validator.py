@@ -110,7 +110,7 @@ class YANKCerberusValidator(cerberus.Validator):
         # Check if the MCMCMove is defined (its validation is done in
         # is_mcmc_move_constructor). Don't modify original dictionary.
         constructor_description = copy.deepcopy(constructor_description)
-        constructor_description.pop('mcmc_move', None)
+        constructor_description.pop('mcmc_moves', None)
         # Validate sampler.
         self._check_subclass_constructor(field, call_sampler_constructor, constructor_description)
 

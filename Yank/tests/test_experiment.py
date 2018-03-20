@@ -778,7 +778,7 @@ def test_validation_correct_samplers():
         {'type': 'MultiStateSampler', 'locality': 3},
         {'type': 'ReplicaExchangeSampler'},
         # MCMCMove 'single' is defined in get_template_script().
-        {'type': 'SAMSSampler', 'mcmc_move': 'single'},
+        {'type': 'SAMSSampler', 'mcmc_moves': 'single'},
         {'type': 'ReplicaExchangeSampler', 'number_of_iterations': 5, 'replica_mixing_scheme': 'swap-neighbors'},
         {'type': 'ReplicaExchangeSampler', 'number_of_iterations': 5, 'replica_mixing_scheme': None}
     ]
@@ -795,7 +795,7 @@ def test_validation_wrong_samplers():
         ("locality must be an int",
             {'type': 'MultiStateSampler', 'locality': 3.0}),
         ("unallowed value unknown",
-            {'type': 'ReplicaExchangeSampler', 'mcmc_move': 'unknown'}),
+            {'type': 'ReplicaExchangeSampler', 'mcmc_moves': 'unknown'}),
         ("Could not find class NonExistentSampler",
             {'type': 'NonExistentSampler'}),
         ("found unknown parameter",
@@ -2154,7 +2154,7 @@ class TestExperimentBuilding(object):
                 assert experiment.phases[1].restraint is None
 
     def test_sampler_building(self):
-        """Test that experiment sampler is correctly."""
+        """Test that the experiment sampler is built correctly."""
         with mmtools.utils.temporary_directory() as tmp_dir:
             template_script = self.get_implicit_template_script(tmp_dir)
             template_script['options']['resume_setup'] = True
@@ -2188,6 +2188,67 @@ class TestExperimentBuilding(object):
                         # If number_of_iterations is not specified, the default is used.
                         if 'number_of_iterations' not in sampler_description:
                             assert phase.sampler.number_of_iterations == default_number_of_iterations
+
+    def test_mcmc_move_building(self):
+        """Test that the experiment MCMCMoves are built correctly."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            template_script = self.get_implicit_template_script(tmp_dir)
+            template_script['options']['resume_setup'] = True
+            template_script['experiments']['sampler'] = 'repex'
+
+            print(template_script['samplers'])
+
+            # Add tested samplers.
+            template_script['mcmc_moves'] = {
+                'my-move1': {
+                    'type': 'LangevinSplittingDynamicsMove',
+                    'reassign_velocities': False,
+                    'splitting': 'RVOVR',
+                    'n_steps': 10,
+                    'timestep': '2.0*femtosecond'
+                },
+                'my-move2': {'type': 'SequenceMove', 'move_list': [
+                    {'type': 'MCDisplacementMove', 'displacement_sigma': '5.0*nanometers'},
+                    {'type': 'LangevinDynamicsMove'}
+                ]}
+            }
+
+            # Test default MCMCMove.
+            exp_builder = ExperimentBuilder(script=template_script)
+            for experiment in exp_builder.build_experiments():
+                for phase in experiment.phases:
+                    mcmc_move = phase.sampler.mcmc_moves
+                    if len(phase.topography.ligand_atoms) > 0:
+                        assert type(mcmc_move) is mmtools.mcmc.SequenceMove
+                        assert len(mcmc_move.move_list) == 3
+                        assert type(mcmc_move.move_list[0]) is mmtools.mcmc.MCDisplacementMove
+                        assert type(mcmc_move.move_list[1]) is mmtools.mcmc.MCRotationMove
+                        assert type(mcmc_move.move_list[2]) is mmtools.mcmc.LangevinSplittingDynamicsMove
+                        assert mcmc_move.move_list[0].atom_subset == phase.topography.ligand_atoms
+                    else:
+                        assert type(mcmc_move) is mmtools.mcmc.LangevinSplittingDynamicsMove
+
+            # Test that custom MCMCMoves are built correctly.
+            template_script['samplers']['repex']['mcmc_moves'] = 'my-move1'
+            exp_builder = ExperimentBuilder(script=template_script)
+            for experiment in exp_builder.build_experiments():
+                for phase in experiment.phases:
+                    mcmc_move = phase.sampler.mcmc_moves
+                    assert type(mcmc_move) is mmtools.mcmc.LangevinSplittingDynamicsMove
+                    assert mcmc_move.reassign_velocities is False
+                    assert mcmc_move.splitting == 'RVOVR'
+                    assert mcmc_move.timestep == 2.0*unit.femtoseconds
+
+            template_script['samplers']['repex']['mcmc_moves'] = 'my-move2'
+            exp_builder = ExperimentBuilder(script=template_script)
+            for experiment in exp_builder.build_experiments():
+                for phase in experiment.phases:
+                    mcmc_move = phase.sampler.mcmc_moves
+                    assert type(mcmc_move) is mmtools.mcmc.SequenceMove
+                    assert len(mcmc_move.move_list) == 2
+                    assert type(mcmc_move.move_list[0]) is mmtools.mcmc.MCDisplacementMove
+                    assert type(mcmc_move.move_list[1]) is mmtools.mcmc.LangevinDynamicsMove
+                    assert mcmc_move.move_list[0].displacement_sigma == 5.0*unit.nanometers
 
 
 # ==============================================================================
