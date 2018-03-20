@@ -600,11 +600,8 @@ class ExperimentBuilder(object):
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
         'hydrogen_mass': 1 * unit.amu,
-        'nsteps_per_iteration': 500,
-        'timestep': 2.0 * unit.femtosecond,
-        'collision_rate': 1.0 / unit.picosecond,
-        'mc_displacement_sigma': 10.0 * unit.angstroms,
-        'integrator_splitting': 'V R O R V',
+        'default_nsteps_per_iteration': 500,
+        'default_timestep': 2.0 * unit.femtosecond,
         'default_number_of_iterations': 5000
     }
 
@@ -2793,9 +2790,9 @@ class ExperimentBuilder(object):
         """Instantiate the default MCMCMove."""
         experiment_options = self._determine_experiment_options(experiment_description)[0]
         integrator_move = mmtools.mcmc.LangevinSplittingDynamicsMove(
-            timestep=experiment_options['timestep'],
+            timestep=experiment_options['default_timestep'],
             collision_rate=1.0 / unit.picosecond,
-            n_steps=experiment_options['nsteps_per_iteration'],
+            n_steps=experiment_options['default_nsteps_per_iteration'],
             reassign_velocities=True,
             n_restart_attempts=6,
             measure_shadow_work=False,
@@ -2803,10 +2800,8 @@ class ExperimentBuilder(object):
         )
         # Apply MC rotation displacement to ligand if there are MC atoms.
         if len(mc_atoms) > 0:
-            displacement_sigma = experiment_options['mc_displacement_sigma']
             move_list = [
-                mmtools.mcmc.MCDisplacementMove(displacement_sigma=displacement_sigma,
-                                                atom_subset=mc_atoms),
+                mmtools.mcmc.MCDisplacementMove(atom_subset=mc_atoms),
                 mmtools.mcmc.MCRotationMove(atom_subset=mc_atoms),
                 integrator_move
             ]

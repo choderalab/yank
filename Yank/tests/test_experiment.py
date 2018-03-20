@@ -106,7 +106,7 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
         pressure: 1*atmosphere
         minimize: no
         verbose: no
-        nsteps_per_iteration: 1
+        default_nsteps_per_iteration: 1
     molecules:
         benzene:
             filepath: {benzene_path}
@@ -258,7 +258,7 @@ def get_functionality_script(output_directory=',', number_of_iter=0, experiment_
       verbose: no
       output_dir: {output_directory}
       default_number_of_iterations: {number_of_iter}
-      nsteps_per_iteration: 10
+      default_nsteps_per_iteration: 10
       temperature: 300*kelvin
       pressure: null
       anisotropic_dispersion_cutoff: null
@@ -357,11 +357,9 @@ def test_yaml_parsing():
         randomize_ligand: yes
         randomize_ligand_sigma_multiplier: 1.0e-2
         randomize_ligand_close_cutoff: 1.5 * angstrom
-        mc_displacement_sigma: 10.0 * angstroms
         anisotropic_dispersion_cutoff: null
-        collision_rate: 5.0 / picosecond
-        timestep: 2.0 * femtosecond
-        nsteps_per_iteration: 2500
+        default_timestep: 2.0 * femtosecond
+        default_nsteps_per_iteration: 2500
         default_number_of_iterations: .inf
         equilibration_timestep: 1.0 * femtosecond
         number_of_equilibration_iterations: 100
@@ -375,7 +373,7 @@ def test_yaml_parsing():
     """
 
     exp_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
-    assert len(exp_builder._options) == 35
+    assert len(exp_builder._options) == 32
 
     # The global context cache has been set.
     assert mmtools.cache.global_context_cache.capacity == 9
@@ -385,10 +383,10 @@ def test_yaml_parsing():
     assert exp_builder._options['pressure'] is None
     assert exp_builder._options['constraints'] == openmm.app.AllBonds
     assert exp_builder._options['anisotropic_dispersion_cutoff'] is None
-    assert exp_builder._options['timestep'] == 2.0 * unit.femtoseconds
+    assert exp_builder._options['default_timestep'] == 2.0 * unit.femtoseconds
     assert exp_builder._options['randomize_ligand_sigma_multiplier'] == 1.0e-2
-    assert exp_builder._options['nsteps_per_iteration'] == 2500
-    assert type(exp_builder._options['nsteps_per_iteration']) is int
+    assert exp_builder._options['default_nsteps_per_iteration'] == 2500
+    assert type(exp_builder._options['default_nsteps_per_iteration']) is int
     assert exp_builder._options['default_number_of_iterations'] == float('inf')
     assert exp_builder._options['number_of_equilibration_iterations'] == 100
     assert type(exp_builder._options['number_of_equilibration_iterations']) is int
@@ -2236,10 +2234,14 @@ class TestExperimentBuilding(object):
                         assert len(mcmc_move.move_list) == 3
                         assert type(mcmc_move.move_list[0]) is mmtools.mcmc.MCDisplacementMove
                         assert type(mcmc_move.move_list[1]) is mmtools.mcmc.MCRotationMove
-                        assert type(mcmc_move.move_list[2]) is mmtools.mcmc.LangevinSplittingDynamicsMove
                         assert mcmc_move.move_list[0].atom_subset == phase.topography.ligand_atoms
+                        langevin_move = mcmc_move.move_list[2]
                     else:
-                        assert type(mcmc_move) is mmtools.mcmc.LangevinSplittingDynamicsMove
+                        langevin_move = mcmc_move
+                    # Check default parameters LangevinMove
+                    assert type(langevin_move) is mmtools.mcmc.LangevinSplittingDynamicsMove
+                    assert langevin_move.timestep == exp_builder._options['default_timestep']
+                    assert langevin_move.n_steps == exp_builder._options['default_nsteps_per_iteration']
 
             # Test that custom MCMCMoves are built correctly.
             template_script['samplers']['repex']['mcmc_moves'] = 'my-move1'
