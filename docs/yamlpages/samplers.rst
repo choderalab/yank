@@ -1,11 +1,11 @@
 .. _yaml_samplers_head:
 
 Samplers Header for YAML Files
-*******************************
+******************************
 
 The ``samplers`` section tells YANK how it should sample multiple thermodynamic states in order to estimate free
 energies between states of interest.
-Together with the :doc:`mcmc <mcmc>` section, this section provides a flexible way to control how
+Together with the :doc:`mcmc_moves <mcmc>` section, this section provides a flexible way to control how
 thermodynamic states are efficiently sampled.
 
 This block is fully optional for those who do not wish to fiddle with such settings and to
@@ -18,7 +18,7 @@ used.
 .. _yaml_samplers_example:
 
 Samplers Syntax
-================
+===============
 .. code-block:: yaml
 
     samplers:

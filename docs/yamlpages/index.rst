@@ -163,11 +163,9 @@ Detailed Options List
     * :ref:`solvent <yaml_systems_user_defined>`
     * :ref:`gromacs_include_dir <yaml_systems_user_defined>`
 
-* :doc:`mcmc <mcmc>`
+* :doc:`mcmc_moves <mcmc>`
 
-.. todo::
-
-   This section needs to be completed
+  * :ref:`MCMC Moves Syntax <_yaml_mcmc_example>`
 
 * :doc:`samplers <samplers>`
 
