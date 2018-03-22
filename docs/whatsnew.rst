@@ -8,8 +8,11 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 Development
 -----------
-- Renamed global option ``number_of_iterations`` to ``default_number_of_iterations``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_number_of_iterations>`__
-- Added support for automatic determination of ``processes_per_experiment`` (now the default). `(docs) <http://getyank.org/latest/yamlpages/options.html#processes_per_experiment>`__
+- Renamed global option ``number_of_iterations`` to ``default_number_of_iterations``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_number_of_iterations>`_
+- Renamed global option ``timestep`` to ``default_timestep``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_timestep>`_
+- Renamed global option ``nsteps_per_iteration`` to ``default_nsteps_per_iteration``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_nsteps_per_iteration>`_
+- The global options ``collision_rate``, ``mc_displacement_sigma``, and ``integration_splitting`` are not supported anymore, but they can still be specified in the `mcmc_moves`` block.
+- Added support for automatic determination of ``processes_per_experiment`` (now the default). `(docs) <http://getyank.org/latest/yamlpages/options.html#processes_per_experiment>`_
 
 0.20.1 Alchemical factory options and fast computation of the energy matrix
 ---------------------------------------------------------------------------

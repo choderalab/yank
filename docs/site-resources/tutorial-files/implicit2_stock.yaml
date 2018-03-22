@@ -3,10 +3,10 @@ options:
   verbose: yes
   output_dir: fxr-imp-34
   default_number_of_iterations: 3000
-  nsteps_per_iteration: 500
+  default_nsteps_per_iteration: 500
   temperature: 300*kelvin
   pressure: null
-  timestep: 1.5*femtoseconds
+  default_timestep: 1.5*femtoseconds
   resume_setup: yes
   resume_simulation: yes
 

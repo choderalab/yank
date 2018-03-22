@@ -2,13 +2,14 @@ import os
 import copy
 import inspect
 import logging
-import cerberus
-import simtk.unit as unit
-
 from datetime import date
-from openmmtools.utils import typename
-from openmoltools.utils import unwrap_py2
 from collections.abc import Mapping, Sequence
+
+import cerberus
+import cerberus.errors
+import simtk.unit as unit
+import openmmtools as mmtools
+from openmoltools.utils import unwrap_py2
 
 from .. import utils, restraints, multistate
 
@@ -102,7 +103,15 @@ class YANKCerberusValidator(cerberus.Validator):
     def _validator_is_restraint_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
 
+    def _validator_is_mcmc_move_constructor(self, field, constructor_description):
+        self._check_subclass_constructor(field, call_mcmc_move_constructor, constructor_description)
+
     def _validator_is_sampler_constructor(self, field, constructor_description):
+        # Check if the MCMCMove is defined (its validation is done in
+        # is_mcmc_move_constructor). Don't modify original dictionary.
+        constructor_description = copy.deepcopy(constructor_description)
+        constructor_description.pop('mcmc_moves', None)
+        # Validate sampler.
         self._check_subclass_constructor(field, call_sampler_constructor, constructor_description)
 
     # ====================================================
@@ -148,6 +157,15 @@ def to_integer_or_infinity_coercer(value):
 # OBJECT CONSTRUCTORS PARSING
 # ==============================================================================
 
+def _check_type_keyword(constructor_description):
+    """Raise RuntimeError if 'type' is not in the description"""
+    subcls_name = constructor_description.get('type', None)
+    if subcls_name is None:
+        raise RuntimeError("'type' must be specified")
+    elif not isinstance(subcls_name, str):
+        raise RuntimeError("'type' must be a string")
+
+
 def call_constructor(parent_cls, constructor_description, special_conversions=None,
                      convert_quantity_strings=False):
     """Convert the constructor representation into an object.
@@ -185,16 +203,13 @@ def call_constructor(parent_cls, constructor_description, special_conversions=No
     """
     if special_conversions is None:
         special_conversions = {}
+    _check_type_keyword(constructor_description)
 
     # Check Retrieve subclass from 'type' keyword.
     constructor_description = copy.deepcopy(constructor_description)
     subcls_name = constructor_description.pop('type', None)
-    if subcls_name is None:
-        raise RuntimeError("'type' must be specified")
-    elif not isinstance(subcls_name, str):
-        raise RuntimeError("'type' must be a string")
     try:
-        subcls = utils.find_subclass(parent_cls, subcls_name)
+        subcls = mmtools.utils.find_subclass(parent_cls, subcls_name)
     except ValueError as e:
         raise RuntimeError(str(e))
 
@@ -233,6 +248,29 @@ def call_restraint_constructor(constructor_description):
                             convert_quantity_strings=True)
 
 
+def call_mcmc_move_constructor(constructor_description):
+    # Check if this is a sequence of moves and we need to unnest the constructors.
+    # If we end up with other nested constructors, we'll probably need a general strategy.
+    _check_type_keyword(constructor_description)
+    is_sequence_move = constructor_description['type'] == 'SequenceMove'
+    if is_sequence_move and 'move_list' not in constructor_description:
+        raise RuntimeError('A SequenceMove must specify a "move_list" keyword '
+                           'containing a list of MCMCMoves')
+    # Prepare nested MCMCMoves.
+    if is_sequence_move:
+        mcmc_moves_constructors = constructor_description['move_list']
+    else:
+        mcmc_moves_constructors = [constructor_description]
+    # Call constructor of all moves.
+    moves = []
+    for mcmc_move_constructor in mcmc_moves_constructors:
+        moves.append(call_constructor(mmtools.mcmc.MCMCMove, mcmc_move_constructor,
+                                      convert_quantity_strings=True))
+    if is_sequence_move:
+        return mmtools.mcmc.SequenceMove(move_list=moves)
+    return moves[0]
+
+
 def call_sampler_constructor(constructor_description):
     special_conversions = {'number_of_iterations': to_integer_or_infinity_coercer}
     return call_constructor(multistate.MultiStateSampler, constructor_description,
@@ -261,7 +299,7 @@ def generate_unknown_type_validator(a_type):
     """
     def nonstandard_type_validator(field, value, error):
         if type(value) is not a_type:
-            error(field, 'Must be of type {}'.format(typename(a_type)))
+            error(field, 'Must be of type {}'.format(mmtools.utils.typename(a_type)))
     validator_dict = {'validator': nonstandard_type_validator}
     return validator_dict
 
