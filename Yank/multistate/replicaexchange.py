@@ -209,7 +209,7 @@ class ReplicaExchangeSampler(MultiStateSampler):
             if replica_mixing_scheme not in supported_schemes:
                 raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
                                  "are {}.".format(replica_mixing_scheme, supported_schemes))
-            if instance.locality != None:
+            if instance.locality is not None:
                 if replica_mixing_scheme not in ['swap-neighbors']:
                     raise ValueError("replica_mixing_scheme must be 'swap-neighbors' if locality is used")
             return replica_mixing_scheme

@@ -216,68 +216,6 @@ class MultiStateSampler(object):
         # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
         return sampler
 
-
-        # # Handle case in which storage is a string.
-        # reporter = cls._reporter_from_storage(storage, check_exist=True)
-        #
-        # # Open a reporter to read the data.
-        # reporter.open(mode='r')
-        #
-        # # Retrieve options and create new simulation.
-        # options = reporter.read_dict('options')
-        # options['mcmc_moves'] = reporter.read_mcmc_moves()
-        # sampler = cls(**options)
-        #
-        # # Display papers to be cited.
-        # sampler._display_citations()
-        #
-        # # Read the last iteration reported to ensure we don't include junk
-        # # data written just before a crash.
-        # iteration = reporter.read_last_iteration()
-        #
-        # # Retrieve other attributes.
-        # logger.debug("Reading storage file {}...".format(reporter.filepath))
-        # thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
-        # sampler_states = reporter.read_sampler_states(iteration=iteration)
-        # state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
-        # energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
-        # n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
-        # metadata = reporter.read_dict('metadata')
-        #
-        # # Search for last cached free energies only if online analysis is activated.
-        # if sampler.online_analysis_interval is not None:
-        #     online_analysis_info = sampler._read_last_free_energy(reporter, iteration)
-        #     last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
-        # else:
-        #     last_mbar_f_k, last_err_free_energy = None, None
-        #
-        # # Close reading reporter.
-        # reporter.close()
-        #
-        # # Assign attributes.
-        # sampler._iteration = iteration
-        # sampler._thermodynamic_states = thermodynamic_states
-        # sampler._unsampled_states = unsampled_states
-        # sampler._sampler_states = sampler_states
-        # sampler._replica_thermodynamic_states = state_indices
-        # sampler._energy_thermodynamic_states = energy_thermodynamic_states
-        # sampler._neighborhoods = neighborhoods
-        # sampler._energy_unsampled_states = energy_unsampled_states
-        # sampler._n_accepted_matrix = n_accepted_matrix
-        # sampler._n_proposed_matrix = n_proposed_matrix
-        # sampler._metadata = metadata
-        #
-        # sampler._last_mbar_f_k = last_mbar_f_k
-        # sampler._last_err_free_energy = last_err_free_energy
-        #
-        # # We open the reporter only in node 0.
-        # sampler._reporter = reporter
-        # mpi.run_single_node(0, sampler._reporter.open, mode='a',
-        #                     broadcast_result=False, sync_nodes=False)
-        #
-        # # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
-        # return sampler
-
     # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
     Status = typing.NamedTuple('Status', [
         ('iteration', int),

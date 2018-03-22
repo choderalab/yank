@@ -8,18 +8,18 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 Development
 -----------
-- Renamed global option ``number_of_iterations`` to ``default_number_of_iterations``. `[docs] <http://getyank.org/latest/yamlpages/options.html#default_number_of_iterations>`_
-- Renamed global option ``timestep`` to ``default_timestep``. `[docs] <http://getyank.org/latest/yamlpages/options.html#default_timestep>`_
-- Renamed global option ``nsteps_per_iteration`` to ``default_nsteps_per_iteration``. `[docs] <http://getyank.org/latest/yamlpages/options.html#default_nsteps_per_iteration>`_
-- The global options ``collision_rate``, ``mc_displacement_sigma``, and ``integration_splitting`` are not supported anymore.
-- Added support for automatic determination of ``processes_per_experiment`` (now the default). `[docs] <http://getyank.org/latest/yamlpages/options.html#processes_per_experiment>`_
+- Renamed global option ``number_of_iterations`` to ``default_number_of_iterations``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_number_of_iterations>`_
+- Renamed global option ``timestep`` to ``default_timestep``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_timestep>`_
+- Renamed global option ``nsteps_per_iteration`` to ``default_nsteps_per_iteration``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_nsteps_per_iteration>`_
+- The global options ``collision_rate``, ``mc_displacement_sigma``, and ``integration_splitting`` are not supported anymore, but they can still be specified in the `mcmc_moves`` block.
+- Added support for automatic determination of ``processes_per_experiment`` (now the default). `(docs) <http://getyank.org/latest/yamlpages/options.html#processes_per_experiment>`_
 
 0.20.1 Alchemical factory options and fast computation of the energy matrix
 ---------------------------------------------------------------------------
 - Allow user to specify options for ``openmmtools.alchemy.AbsoluteAlchemicalFactory`` in the YAML file. In particular,
-  this introduces exact treatment of PME electrostatics for charged ligands. `[docs] <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`_
+  this introduces exact treatment of PME electrostatics for charged ligands. `(docs) <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`__
 - Major optimization of the computation of the energy matrix.
-- Added the option ``max_n_contexts``. `[docs] <http://getyank.org/latest/yamlpages/options.html#max_n_contexts>`_
+- Added the option ``max_n_contexts``. `(docs) <http://getyank.org/latest/yamlpages/options.html#max_n_contexts>`__
 - Bumped minimum required version of ``openmmtools`` to ``0.14.0``.
 
 0.20.0 Support for processing proteins through PDBFixer

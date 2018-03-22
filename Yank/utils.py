@@ -921,7 +921,7 @@ def get_keyword_args(function, try_mro_from_class=None):
         Try and trace the method resolution order (MRO) of the ``function_to_inspect`` by inferring a method stack from
         the supplied class.
         The signature of the function is checked in every MRO up the stack so long as there exists as
-        **kwargs in the method call. This is setting will yield expected results in every case, for instance, if
+        ``**kwargs`` in the method call. This is setting will yield expected results in every case, for instance, if
         the method does not call `super()`, or the Super class has a different function name.
         In the case of conflicting keywords, the lower MRO function is preferred.
 
