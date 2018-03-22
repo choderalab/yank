@@ -431,40 +431,11 @@ The algorithm is as follows, given an upper and lower bound for a set of alchemi
 #. If the standard deviation is outside the tolerance, a new state is proposed is repeated without updating the simulated state.
 #. The cycle continues until the parameters' lower bounds are reached.
 
-Hamiltonian exchange with Gibbs sampling
-========================================
-
-The theory for this section is taken from a single source and summarized here :cite:`Chodera2011`
-
-Hamiltonian Replica Exchange (HREX) is carried out to improve sampling between different alchemical states. In the basic version
-of this scheme,
-a proposed swap of configurations between two alchemical states, *i* and *j*, made by comparing the energy of each
-configuration in each replica and swapping with a basic Metropolis criteria of
-
-.. math::
-    P_{\text{accept}}(i, x_i, j, x_j) &= \text{min}\begin{cases}
-                               1, \frac{ e^{-\left[u_i(x_j) + u_j(x_i)\right]}}{e^{-\left[u_i(x_i) + u_j(x_j)\right]}}
-                               \end{cases} \\
-        &= \text{min}\begin{cases}
-          1, \exp\left[\Delta u_{ji}(x_i) + \Delta u_{ij}(x_j)\right]
-          \end{cases}
-
-where :math:`x` is the configuration of the subscripted states :math:`i` or :math:`j`, and :math:`u` is the reduced
-potential energy. We have added the second equality to improve readability.
-This scheme is typically carried out on neighboring states only.
-
-YANK's HREX scheme instead samples with Gibbs Sampling by attempting swaps between ALL :math:`K` states simultaneously. However,
-instead of trying to directly sample the unnormalized probability distribution across all states and configurations, then
-performing an all-state-to-all-state swap, YANK draws from an approximate distribution by attempting :math:`K^5` swaps
-between uniformly chosen pairs of states. The acceptance criteria for each swap is the same as above, but you can
-show with this state selection scheme and number of swap attempts, that you will effectively draw from the correct
-distribution without too much computational overhead :cite:`Chodera2011`.
-This speeds up mixing and reduces the total number of samples you need to get uncorrelated samples.
-
 Sampling from multiple alchemical (or other thermodynamic) states
 =================================================================
 
 YANK provides several schemes for sampling from multiple thermodynamic states within a single calculation:
+
 * ``MultistateSampler``: Independent simulations at distinct thermodynamic states
 * ``ReplicaExchangeSampler``: Replica exchange among thermodynamic states (also called Hamiltonian exchange if only the Hamiltonian is changing)
 * ``SAMSSampler``: Self-adjusted mixture sampling (also known as optimally-adjusted mixture sampling)
@@ -499,27 +470,42 @@ If a restricted neighborhood is used (in order to reduce the amount of time spen
 ``ReplicaExchangeSampler``: Replica exchange among thermodynamic states
 -----------------------------------------------------------------------
 
-The ``ReplicaExchangeSampler`` implements a replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic states in a manner that improves mixing of the overall Markov chain.
+The ``ReplicaExchangeSampler`` implements a Hamiltonian replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic states in a manner that improves mixing of the overall Markov chain.
 By allowing replicas to execute a random walk in thermodynamic state space, correlation times may be reduced when sampling certain thermodynamic states (such as those with alchemically-softened potentials or elevated temperatures).
+
+In the basic version of this scheme, a proposed swap of configurations between two alchemical states, *i* and *j*, made by comparing the energy of each configuration in each replica and swapping with a basic Metropolis criteria of
+
+.. math::
+    P_{\text{accept}}(i, x_i, j, x_j) &= \text{min}\begin{cases}
+                               1, \frac{ e^{-\left[u_i(x_j) + u_j(x_i)\right]}}{e^{-\left[u_i(x_i) + u_j(x_j)\right]}}
+                               \end{cases} \\
+        &= \text{min}\begin{cases}
+          1, \exp\left[\Delta u_{ji}(x_i) + \Delta u_{ij}(x_j)\right]
+          \end{cases}
+
+where :math:`x` is the configuration of the subscripted states :math:`i` or :math:`j`, and :math:`u` is the reduced potential energy.
+While this scheme is typically carried out on neighboring states only, we also implement a much more efficient form of Gibbs sampling in which many swaps are attempted to generate an approximately uncorrelated sample of the state permutation over all :math:`K` :cite:`Chodera2011`.
+This speeds up mixing and reduces the total number of samples needed to produce uncorrelated samples.
 
 ``SAMSSampler``: Self-adjusted mixture sampling
 -----------------------------------------------
 
-The ``SAMSSampler`` implements self-adjusted mixture sampling (SAMS; also known as optimally adjusted mixture sampling) [CITE].
+The ``SAMSSampler`` implements self-adjusted mixture sampling (SAMS; also known as optimally adjusted mixture sampling) :cite:`Tan2017:SAMS`.
 This combines one or more replicas that sample from an expanded ensemble with an asymptotically optimal Wang-Landau-like weight update scheme.
 
 .. math::
 
-   s_{k,n+1} = p(s | x_{k,n}
+   s_{k,n+1} = p(s | x_{k,n}) \\
    x_{k,n+1} \sim p(x | s_{k, n+1})
 
 SAMS state update schemes
 """""""""""""""""""""""""
 
 Several state update schemes are available:
+
 * ``global-jump`` (default): The sampler can jump to any thermodynamic state (RECOMMENDED)
-* ``restricted-range-jump``: The sampler can jump to any thermodynamic state within the specified local neighborhood (EXPERIMENTAL)
-* ``local-jump``: Only proposals within the specified neighborhood are considered, but rejection rates may be high
+* ``restricted-range-jump``: The sampler can jump to any thermodynamic state within the specified local neighborhood (EXPERIMENTAL; DISABLED)
+* ``local-jump``: Only proposals within the specified neighborhood are considered, but rejection rates may be high (EXPERIMENTAL; DISABLED)
 
 SAMS Locality
 """""""""""""
@@ -533,6 +519,7 @@ SAMS weight adaptation algorithm
 """""""""""""""""""""""""""""""""
 
 SAMS provides two ways of accumulating log weights each iteration:
+
 * ``optimal`` accumulates weight only in the currently visited state ``s``
 * ``rao-blackwellized`` accumulates fractional weight in all states within the energy evaluation neighborhood
 
@@ -541,6 +528,7 @@ SAMS initial weight adaptation stage
 
 Because the asymptotically-optimal weight adaptation scheme works best only when the log weights are close to optimal, a heuristic initial stage is used to more rapidly adapt the log weights before the asymptotically optimal scheme is used.
 The behavior of this first stage can be controlled by setting two parameters:
+
 * ``gamma0`` controls the initial rate of weight adaptation. By default, this is 1.0, but can be set larger (e.g., 10.0) if the free energy differences between states are much larger.
 * ``flatness_threshold`` controls the number of (fractional) visits to each thermodynamic state that must be accumulated before the asymptotically optimal weight adaptation scheme is used.
 
@@ -564,7 +552,6 @@ truly exact in the limit of infinitely small timestep.
 
 See the `OpenMMTools documentation on Langevin Dynamics Moves <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.mcmc.LangevinDynamicsMove.html#openmmtools.mcmc.LangevinDynamicsMove>`_
 for more information.
-
 
 Metropolis Monte Carlo displacement and rotation moves
 ------------------------------------------------------
