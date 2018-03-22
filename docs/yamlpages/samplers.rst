@@ -36,12 +36,8 @@ The ``{Sampler}`` can be one of the following:
 
 The above block is the **minimum syntax** needed for any definition for any of the options.
 
-.. todo::
-
-    Add link to the MCMC block when docs are ready.
-
 The ``{MCMCName}`` denotes the name of an MCMC scheme block to be used to update the replicas at fixed thermodynamic state.
-By default, this uses ``LangevinIntegrator`` with default splitting scheme (g-BAOAB [CITE]).
+See :ref:`MCMC defaults <yaml_mcmc_head>` for more information about MCMC schemes.
 
 The ``{NumberOfIterations}`` is a non-negative integer that denotes the maximum number of iterations to be run.
 When this block is not given and :ref:`default_number_of_iterations <yaml_options_default_number_of_iterations>` is set
@@ -373,4 +369,3 @@ By default the log target probabilities are all equal, resulting in SAMS attempt
 sample all thermodynamic states.
 
 Valid Options (0.2): float > 0
-
