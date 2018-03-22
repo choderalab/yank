@@ -62,5 +62,11 @@ Long-range dispersion corrections for explicit solvent free energy calculations
 Bibliography
 ############
 
+.. The :all: directive searches subfolders for uses of :cite: for correct reference
+   However, this has the effect of dropping all citations in the .bib file in here and
+   the compiler complains about unused citations.
+   As such, unused articles in the .bib file are simply commented so as not to delete them if needed in the future.
+
 .. bibliography:: references.bib
    :style: unsrt
+   :all:

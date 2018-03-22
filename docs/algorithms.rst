@@ -499,7 +499,7 @@ This combines one or more replicas that sample from an expanded ensemble with an
    x_{k,n+1} \sim p(x | s_{k, n+1})
 
 SAMS state update schemes
-"""""""""""""""""""""""""
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Several state update schemes are available:
 
@@ -508,7 +508,7 @@ Several state update schemes are available:
 * ``local-jump``: Only proposals within the specified neighborhood are considered, but rejection rates may be high (EXPERIMENTAL; DISABLED)
 
 SAMS Locality
-"""""""""""""
+^^^^^^^^^^^^^
 
 The local neighborhood is specified by the ``locality`` parameter.
 If this is a positive integer, the neighborhood will be defined by state indices ``[k - locality, k + locality]``.
@@ -516,7 +516,7 @@ Reducing locality will restrict the range of states for which reduced potentials
 By default, the ``locality`` is global, such that energies at all thermodynamic states are computed; this allows the use of MBAR in data analysis.
 
 SAMS weight adaptation algorithm
-"""""""""""""""""""""""""""""""""
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 SAMS provides two ways of accumulating log weights each iteration:
 
@@ -524,7 +524,7 @@ SAMS provides two ways of accumulating log weights each iteration:
 * ``rao-blackwellized`` accumulates fractional weight in all states within the energy evaluation neighborhood
 
 SAMS initial weight adaptation stage
-""""""""""""""""""""""""""""""""""""
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Because the asymptotically-optimal weight adaptation scheme works best only when the log weights are close to optimal, a heuristic initial stage is used to more rapidly adapt the log weights before the asymptotically optimal scheme is used.
 The behavior of this first stage can be controlled by setting two parameters:
@@ -721,7 +721,7 @@ Automated convergence detection
 
 YANK has the ability to run a simulation until the free energy difference in a phase reaches a user-specified target
 uncertainty.
-If this option is set, either through the :ref:`yaml options <yaml_options_online_analysis_parameters>` or
+If this option is set, either through the :ref:`yaml options <yaml_samplers_online_analysis_parameters>` or
 :meth:`the Sampling API <yank.multistate.MultiStateSampler`, then each phase will be simulated until either the
 error free energy difference reaches the target, or the maximum number of iterations has been reached.
 
