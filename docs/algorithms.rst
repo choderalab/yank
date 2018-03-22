@@ -460,7 +460,7 @@ In this case, the MCMC scheme is used to propagate each replica by sampling from
 
 .. math::
 
-   s_{k,n+1} = s_{k, n}
+   s_{k,n+1} = s_{k, n} \\
    x_{k,n+1} \sim p(x | s_{k, n+1})
 
 An inclusive "neighborhood" of thermodynamic states around this specified state can be used to define which thermodynamic states the reduced potential should be computed for after each iteration.
