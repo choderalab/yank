@@ -1,8 +1,8 @@
 .. _benchmarks:
 
-*************************
-Validation and Benchmarks
-*************************
+**********************************
+Validation and Accuracy Benchmarks
+**********************************
 
 We are working on a set of validation simulations to ensure that YANK correctly reproduces converged free energy estimates from previous studies.
 You can find input files in `the yank-validation repo <https://github.com/choderalab/yank-validation>`_.
