@@ -293,6 +293,7 @@ class ObservablesRegistry(object):
         assert obs_error is None or obs_error in self._errors, \
             "{} not a known observable error class!".format(obs_error)
 
+
 # Create a default registry and register some stock values
 default_observables_registry = ObservablesRegistry()
 default_observables_registry.register_two_state_observable('free_energy', error_class='quad')
@@ -469,6 +470,41 @@ class PhaseAnalyzer(ABC):
         """Make sure users cannot overwrite the reporter."""
         raise ValueError("You cannot re-assign the reporter for this analyzer!")
 
+    def read_energies(self):
+        """
+        Extract energies from the ncfile and order them by replica, state, iteration
+
+        Returns
+        -------
+        energy_matrix : np.ndarray of shape [n_replicas, n_states, n_iterations]
+            Potential energy matrix of the sampled states
+        unsampled_energy_matrix : np.ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
+            Potential energy matrix of the unsampled states
+            Energy from each drawn sample n, evaluated at unsampled state l
+            If no unsampled states were drawn, this will be shape (0,N)
+        neighborhoods : np.ndarray of shape [n_replicas, n_states, n_iterations]
+            Neighborhood energies were computed at, uses a boolean mask over the energy_matrix
+        sampled_states : np.ndarray of shape [n_replicas, n_iterations]
+            States sampled by the replicas in the energy_matrix
+        """
+        logger.info("Reading energies...")
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
+        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
+        _, _, n_unsampled_states = energy_unsampled_states.shape
+        energy_matrix = np.zeros([n_replicas, n_states, n_iterations], np.float64)
+        unsampled_energy_matrix = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
+        for n in range(n_iterations):
+            energy_matrix[:, :, n] = energy_thermodynamic_states[n, :, :]
+            unsampled_energy_matrix[:, :, n] = energy_unsampled_states[n, :, :]
+        logger.info("Done.")
+
+        # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
+        # For now, we simply can't handle analysis of non-global calculations.
+        if np.any(neighborhoods == 0):
+            raise Exception('Non-global MBAR analysis not implemented yet.')
+
+        return energy_matrix, unsampled_energy_matrix
+
     @abc.abstractmethod
     def _create_mbar_from_scratch(self):
         """
@@ -480,16 +516,31 @@ class PhaseAnalyzer(ABC):
 
         Returns nothing, but the self.mbar object should be set after this.
         """
+        energy_sampled, energy_unsampled = self.read_energies()
+        all_state_indices = self._reporter.read_replica_thermodynamic_states()
+        # Generate decorrelation data
+        self._get_equilibration_data_auto(input_data=energy_sampled, sampled_states=all_state_indices)
+        number_equilibrated, g_t, Neff_max = self._equilibration_data
+        # Remove equilibrated data
+        energy_sampled = utils.remove_unequilibrated_data(energy_sampled, number_equilibrated, -1)
+        energy_unsampled = utils.remove_unequilibrated_data(energy_unsampled, number_equilibrated, -1)
+        # Subsample along the decorrelation data
+        energy_sampled = utils.subsample_data_along_axis(energy_sampled, g_t, -1)
+        energy_unsampled = utils.subsample_data_along_axis(energy_unsampled, g_t, -1)
+        mbar_kn, mbar_N_k = self._prepare_mbar_input_data(energy_sampled, energy_unsampled)
+        self._create_mbar(mbar_kn, mbar_N_k)
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _prepare_mbar_input_data(self, *args, **kwargs):
+    def _prepare_mbar_input_data(self, sampled_energy_matrix, unsampled_energy_matrix):
         """
-        Prepare a set of data for MBAR, because each analyzer may need to do something else to prepare for MBAR, it
-        should have its own function to do that with.
+        Prepare a set of data for MBAR given sampled and unsampled energy
 
         Parameters
         ----------
+        sampled_energy_matrix : np.ndarray of shape [n_replicas, n_sampled_states, n_iterations]
+            Energy of the sampled thermodynamic states by the replicas
+
         args : arguments needed to generate the appropriate Returns
         kwargs : keyword arguments needed to generate the appropriate Returns
 
@@ -503,6 +554,29 @@ class PhaseAnalyzer(ABC):
             The number of samples drawn from each kth state
             The \sum samples_per_state = N
         """
+        nstates, _, niterations = sampled_energy_matrix.shape
+        _, nunsampled, _ = unsampled_energy_matrix.shape
+        # Subsample data to obtain uncorrelated samples
+        N_k = np.zeros(nstates, np.int32)
+        N = niterations  # number of uncorrelated samples
+        N_k[:] = N
+        mbar_ready_energy_matrix = self.reformat_energies_for_mbar(sampled_energy_matrix)
+        if nunsampled > 0:
+            new_energy_matrix = np.zeros([nstates + 2, N_k.sum()])
+            N_k_new = np.zeros(nstates + 2, np.int32)
+            unsampled_kn = self.reformat_energies_for_mbar(unsampled_energy_matrix)
+            # Add augmented unsampled energies to the new matrix
+            new_energy_matrix[[0, -1], :] = unsampled_kn[[0, -1], :]
+            # Fill in the old energies to the middle states
+            new_energy_matrix[1:-1, :] = mbar_ready_energy_matrix
+            N_k_new[1:-1] = N_k
+            # Notify users
+            logger.info("Found expanded cutoff states in the energies!")
+            logger.info("Free energies will be reported relative to them instead!")
+            # Reset values, last step in case something went wrong so we dont overwrite u_kn on accident
+            mbar_ready_energy_matrix = new_energy_matrix
+            N_k = N_k_new
+        return mbar_ready_energy_matrix, N_k
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -532,6 +606,10 @@ class PhaseAnalyzer(ABC):
             where an energy drawn from replica state [k] is evaluated in un-sampled state [l] at iteration [n]
         """
         raise NotImplementedError()
+
+    @abc.abstractmethod
+    def deconvolute_energies(self, ):
+        pass
 
     @staticmethod
     @abc.abstractmethod
@@ -869,9 +947,6 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                 max_state_n[replica_state] += 1
             unsampled_energy_matrix[state_indices, :, iteration] = unsampled_energy_matrix_replica[:, :, iteration]
 
-
-
-
         for iteration in range(n_iterations):
             state_indices = self._reporter.read_replica_thermodynamic_states(iteration)
             energy_matrix[state_indices, :, iteration] = energy_matrix_replica[:, :, iteration]
@@ -911,7 +986,10 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         return u_n
 
     def _prepare_mbar_input_data(self, sampled_energy_matrix, unsampled_energy_matrix):
-        """Convert the sampled and unsampled energy matrices into MBAR ready data"""
+        """
+        Convert the sampled and unsampled energy matrices into MBAR ready data
+
+        """
         nstates, _, niterations = sampled_energy_matrix.shape
         _, nunsampled, _ = unsampled_energy_matrix.shape
         # Subsample data to obtain uncorrelated samples
@@ -1073,6 +1151,26 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         unsampled_u_kln = utils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
         mbar_ukn, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukn, mbar_N_k)
+
+        # New block
+        # Extract energies
+        energy_sampled, energy_unsampled = self.read_energies()
+        all_state_indices = self._reporter.read_replica_thermodynamic_states()
+        # Generate decorrelation data
+        self._get_equilibration_data_auto(input_data=energy_sampled, sampled_states=all_state_indices)
+        number_equilibrated, g_t, Neff_max = self._equilibration_data
+        # Remove equilibrated data
+        energy_sampled = utils.remove_unequilibrated_data(energy_sampled, number_equilibrated, -1)
+        energy_unsampled = utils.remove_unequilibrated_data(energy_unsampled, number_equilibrated, -1)
+        # Subsample along the decorrelation data
+        energy_sampled = utils.subsample_data_along_axis(energy_sampled, g_t, -1)
+        energy_unsampled = utils.subsample_data_along_axis(energy_unsampled, g_t, -1)
+        mbar_kn, mbar_N_k = self._prepare_mbar_input_data(energy_sampled, energy_unsampled)
+        self._create_mbar(mbar_kn, mbar_N_k)
+
+
+
+
 
 
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png
