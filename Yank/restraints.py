@@ -467,7 +467,8 @@ class ReceptorLigandRestraint(ABC):
 
         # If the System is full, just separate the force from nonbonded interactions.
         if len(available_force_groups) == 0:
-            nonbonded_force = mmtools.forces.find_nonbonded_force(system)
+            _, nonbonded_force = mmtools.forces.find_forces(system, openmm.NonbondedForce,
+                                                            only_one=True)
             available_force_groups = set(range(32))
             available_force_groups.discard(nonbonded_force.getForceGroup())
 
