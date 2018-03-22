@@ -165,7 +165,7 @@ Detailed Options List
 
 * :doc:`mcmc_moves <mcmc>`
 
-  * :ref:`MCMC Moves Syntax <_yaml_mcmc_example>`
+  * :ref:`MCMC Moves Syntax <yaml_mcmc_example>`
 
 * :doc:`samplers <samplers>`
 
