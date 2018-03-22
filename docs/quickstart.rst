@@ -12,7 +12,7 @@ out our detailed :doc:`installation <installation>` section):
 
    $ conda install -c conda-forge -c omnia yank
 
-Go to the ``examples/p-xylene-implicit`` directory to find an example of computing the binding affinity of p-xylene to T4 lysozyme L99A:
+Go to the ``examples/p-xylene-implicit`` directory to find an example of computing the binding affinity of p-xylene to T4 lysozyme L99A in implicit solvent:
 
 .. code-block:: bash
 

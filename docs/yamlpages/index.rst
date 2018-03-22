@@ -21,6 +21,8 @@ All Pages
    molecules <molecules>
    solvents <solvents>
    systems <systems>
+   mcmc <mcmc>
+   samplers <samplers>
    protocols <protocols>
    experiments <experiments>
    Combinatorial Options <combinatorial>
@@ -69,7 +71,6 @@ Detailed Options List
     * :ref:`timestep <yaml_options_timestep>`
     * :ref:`checkpoint_interval <yaml_options_checkpoint_interval>`
     * :ref:`store_solute_trajectory <yaml_options_store_solute_trajectory>`
-    * :ref:`replica_mixing_scheme <yaml_options_replica_mixing_scheme>`
     * :ref:`collision_rate <yaml_options_collision_rate>`
     * :ref:`constraint_tolerance <yaml_options_constraint_tolerance>`
     * :ref:`mc_displacement_sigma <yaml_options_mc_displacement_sigma>`
@@ -90,12 +91,6 @@ Detailed Options List
     * :ref:`alchemical_pme_treatment <yaml_options_alchemical_pme_treatment>`
     * :ref:`disable_alchemical_dispersion_correction <yaml_options_disable_alchemical_dispersion_correction>`
     * :ref:`split_alchemical_forces <yaml_options_split_alchemical_forces>`
-
-  * :ref:`Online Analysis Parameters <yaml_options_online_analysis_parameters>`
-
-    * :ref:`online_analysis_interval <yaml_options_online_analysis_interval>`
-    * :ref:`online_analysis_target_error <yaml_options_online_analysis_target_error>`
-    * :ref:`online_analysis_minimum_iterations <yaml_options_online_analysis_minimum_iterations>`
 
 * :doc:`molecules <molecules>`
 
@@ -168,6 +163,34 @@ Detailed Options List
     * :ref:`solvent <yaml_systems_user_defined>`
     * :ref:`gromacs_include_dir <yaml_systems_user_defined>`
 
+* :doc:`mcmc_moves <mcmc>`
+
+  * :ref:`MCMC Moves Syntax <_yaml_mcmc_example>`
+
+* :doc:`samplers <samplers>`
+
+  * :ref:`Samplers syntax <yaml_samplers_example>`
+  * :ref:`yaml_samplers_multistatesampler`
+
+    .. note:: All options under here are global to the other samplers
+
+    * :ref:`yaml_samplers_locality`
+    * :ref:`yaml_samplers_online_analysis_parameters`
+
+      * :ref:`yaml_samplers_online_analysis_interval`
+      * :ref:`yaml_samplers_online_analysis_target_error`
+      * :ref:`yaml_samplers_online_analysis_minimum_iterations`
+
+  * :ref:`yaml_samplers_repexsampler`
+
+    * :ref:`yaml_samplers_replica_mixing_scheme`
+
+  * :ref:`yaml_samplers_samssampler`
+
+    * :ref:`yaml_samplers_state_update_scheme`
+    * :ref:`yaml_samplers_gamm0`
+    * :ref:`yaml_samplers_flatness_threshold`
+
 * :doc:`protocols <protocols>`
 
   * :ref:`Protocols Syntax <yaml_protocols_example>`
@@ -181,11 +204,12 @@ Detailed Options List
 
   * :ref:`How-To Video <yaml_protocols_video>`
 
-* :doc:`experiements <experiments>`
+* :doc:`experiments <experiments>`
 
   * :ref:`Experiments Syntax <yaml_experiments_syntax>`
 
     * :ref:`system <yaml_experiments_syntax>`
+    * :ref:`sampler <yaml_experiments_syntax>`
     * :ref:`protocol <yaml_experiments_syntax>`
     * :ref:`options <yaml_experiments_syntax>`
     * :ref:`restraint <yaml_experiments_syntax>`

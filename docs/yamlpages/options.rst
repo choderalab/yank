@@ -553,7 +553,8 @@ Valid Options (1.0 * femtosecond): <Quantity Time> [1]_
    options:
      default_number_of_iterations: 1
 
-Default number of iterations for the samplers that do not explicitly specify the option ``number_of_iterations``.
+Default number of iterations for the :ref:`samplers that do not explicitly specify <yaml_samplers_example>`
+the option ``number_of_iterations``.
 Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is set, this option can be used to extend previous
 simulations past their original number of iterations.
 
@@ -562,7 +563,7 @@ initial configurations (if specified), but will not run any production simulatio
 
 Set this to ``.inf`` (note the prepended dot character) to run an unlimited number of iterations. The simulation will
 not stop unless some other criteria is stops it. We **strongly** recommend specifying either
-:ref:`online free energy analysis <yaml_options_online_analysis_parameters>` and/or
+:ref:`online free energy analysis <yaml_samplers_online_analysis_parameters>` and/or
 :ref:`a phase switching interval <yaml_options_switch_phase_interval>` to ensure there is at least some stop criteria,
 and all phases yield some samples.
 
@@ -688,27 +689,6 @@ instance, an implicit solvent simulation with ``checkpoint_interval: 1`` will re
 complete trajectory.
 
 Valid Options: [yes]/no
-
-
-.. _yaml_options_replica_mixing_scheme:
-
-.. rst-class:: html-toggle
-
-``replica_mixing_scheme``
--------------------------
-.. code-block:: yaml
-
-   options:
-     replica_mixing_scheme: swap-all
-
-Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas.
-``swap-all`` will attempt to exchange every state with every other state. ``swap-neighbors``  will attempt only
-exchanges between adjacent states. If ``null`` is specified, no mixing is done, and effectively disables all replica
-exchange functionality.
-
-Valid Options: [swap-all]/swap-neighbors/null
-
-
 
 
 .. _yaml_options_collision_rate:
@@ -862,7 +842,7 @@ Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer preferred, Float accept
 
 
 
-.. _yaml_options_alchemical_pme_treatment
+.. _yaml_options_alchemical_pme_treatment:
 
 .. rst-class:: html-toggle
 
@@ -928,81 +908,3 @@ Valid Options: [yes]/no
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
 
 |
-
-
-
-.. _yaml_options_online_analysis_parameters:
-
-Online Analysis Parameters
-==========================
-
-YANK also supports an online free energy analysis framework which allows running simulations up to some target error
-in the free energy. Note that this will pause the simulation to run this analysis. The longer the simulation gets,
-the slower this process becomes.
-
-
-.. _yaml_options_online_analysis_interval:
-
-.. rst-class:: html-toggle
-
-``online_analysis_interval``
-----------------------------
-.. code-block:: yaml
-
-   options:
-      online_analysis_interval: 100
-
-Both the toggle and iteration count between online analysis operations. Every interval, the Multistate Bennet Acceptance
-Ratio estimate for the free energy is calculated and the error is computed. Some data is preserved each iteration to
-speed up future calculations, but this operation will still slow down as more iterations are added. We recommend
-choosing an interval of *at least* 100, if not more.
-
-If set to ``null`` (default), then online analysis is not run.
-
-Valid Options (``null``): ``null`` or <Int >= 1>
-
-
-.. rst-class:: html-toggle
-
-.. _yaml_options_online_analysis_target_error:
-
-``online_analysis_target_error``
---------------------------------
-.. code-block:: yaml
-
-   options:
-      online_analysis_target_error: 1.0
-
-The target error for the online analysis measured in kT per phase. Once the free energy is at or below this value,
-the phase will be considered complete.
-This value should be a number greater than 0, even though 0 is a valid option. The error free energy estimate between states
-is never zero except in very rare cases, so your simulation may never converge if you set this to 0.
-
-If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
-
-Valid Options (0.2): <Float >= 0>
-
-
-
-.. _yaml_options_online_analysis_minimum_iterations:
-
-.. rst-class:: html-toggle
-
-``online_analysis_minimum_iterations``
---------------------------------------
-.. code-block:: yaml
-
-   options:
-      online_analysis_minimum_iterations: 50
-
-Number of iterations that are skipped at the beginning of the simulation before online analysis is attempted. This is
-a speed option since most of the initial iterations will be either equilibration or under sampled. We recommend choosing
-an initial number that is *at least* one or two :ref:`yaml_options_online_analysis_interval`'s for speed's sake.
-
-The first iteration at which online analysis is performed is not affected by this number and always tracked as the
-modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100`` and
-``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200 first, not iteration 250.
-
-If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
-
-Valid Options (50): <Int >=1>
