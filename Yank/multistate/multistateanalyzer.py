@@ -293,6 +293,7 @@ class ObservablesRegistry(object):
         assert obs_error is None or obs_error in self._errors, \
             "{} not a known observable error class!".format(obs_error)
 
+
 # Create a default registry and register some stock values
 default_observables_registry = ObservablesRegistry()
 default_observables_registry.register_two_state_observable('free_energy', error_class='quad')
@@ -383,19 +384,9 @@ class PhaseAnalyzer(ABC):
         if not reporter.is_open():
             reporter.open(mode='r')
         self._reporter = reporter
-        observables = []
-        # Auto-determine the computable observables by inspection of non-flagged methods
-        # We determine valid observables by negation instead of just having each child implement the method to enforce
-        # uniform function naming conventions.
-        self._computed_observables = {}  # Cache of observables so the phase can be retrieved once computed
-        for observable in self.registry.observables:
-            if hasattr(self, "get_" + observable):
-                observables.append(observable)
-                self._computed_observables[observable] = None
-        # Cast observables to an immutable
-        self._observables = tuple(observables)
         # Internal properties
         self._name = name
+        self._initialize_observables()
         # Start as default sign +, handle all sign conversion at preparation time
         self._sign = '+'
         self._equilibration_data = None  # Internal tracker so the functions can get this data without recalculating it
@@ -407,6 +398,24 @@ class PhaseAnalyzer(ABC):
         if type(analysis_kwargs) not in [type(None), dict]:
             raise ValueError('analysis_kwargs must be either None or a dictionary')
         self._extra_analysis_kwargs = analysis_kwargs if (analysis_kwargs is not None) else dict()
+
+    def _initialize_observables(self):
+        observables = []
+        # Auto-determine the computable observables by inspection of non-flagged methods
+        # We determine valid observables by negation instead of just having each child implement the method to enforce
+        # uniform function naming conventions.
+        self._computed_observables = {}  # Cache of observables so the phase can be retrieved once computed
+        for observable in self.registry.observables:
+            if hasattr(self, "get_" + observable):
+                observables.append(observable)
+                self._computed_observables[observable] = None
+        # Cast observables to an immutable
+        self._observables = tuple(observables)
+
+    def clear(self):
+        """Reset the MBAR and observables object"""
+        self._initialize_observables()
+        self._mbar = None
 
     @property
     def name(self):
@@ -469,6 +478,45 @@ class PhaseAnalyzer(ABC):
         """Make sure users cannot overwrite the reporter."""
         raise ValueError("You cannot re-assign the reporter for this analyzer!")
 
+    def read_energies(self):
+        """
+        Extract energies from the ncfile and order them by replica, state, iteration
+
+        Returns
+        -------
+        energy_matrix : np.ndarray of shape [n_replicas, n_states, n_iterations]
+            Potential energy matrix of the sampled states
+        unsampled_energy_matrix : np.ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
+            Potential energy matrix of the unsampled states
+            Energy from each drawn sample n, evaluated at unsampled state l
+            If no unsampled states were drawn, this will be shape (0,N)
+        neighborhoods : np.ndarray of shape [n_replicas, n_states, n_iterations]
+            Neighborhood energies were computed at, uses a boolean mask over the energy_matrix
+        sampled_states : np.ndarray of shape [n_replicas, n_iterations]
+            States sampled by the replicas in the energy_matrix
+        """
+        logger.info("Reading energies...")
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
+        # n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
+        # _, _, n_unsampled_states = energy_unsampled_states.shape
+        # energy_matrix = np.zeros([n_replicas, n_states, n_iterations], np.float64)
+        # unsampled_energy_matrix = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
+        energy_matrix = np.moveaxis(energy_thermodynamic_states, 0, -1)
+        unsampled_energy_matrix = np.moveaxis(energy_unsampled_states, 0, -1)
+        # for n in range(n_iterations):
+        #     energy_matrix[:, :, n] = energy_thermodynamic_states[n, :, :]
+        #     unsampled_energy_matrix[:, :, n] = energy_unsampled_states[n, :, :]
+        # 2D matrix, can transpose to get the matrix in the right place
+        sampled_states = self._reporter.read_replica_thermodynamic_states().T
+        logger.info("Done.")
+
+        # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
+        # For now, we simply can't handle analysis of non-global calculations.
+        if np.any(neighborhoods == 0):
+            raise Exception('Non-global MBAR analysis not implemented yet.')
+
+        return energy_matrix, unsampled_energy_matrix, neighborhoods, sampled_states
+
     @abc.abstractmethod
     def _create_mbar_from_scratch(self):
         """
@@ -482,16 +530,18 @@ class PhaseAnalyzer(ABC):
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def _prepare_mbar_input_data(self, *args, **kwargs):
+    def _prepare_mbar_input_data(self, sampled_energy_matrix, unsampled_energy_matrix, sampled_states):
         """
-        Prepare a set of data for MBAR, because each analyzer may need to do something else to prepare for MBAR, it
-        should have its own function to do that with.
+        Prepare a set of data for MBAR given sampled and unsampled energy
 
         Parameters
         ----------
-        args : arguments needed to generate the appropriate Returns
-        kwargs : keyword arguments needed to generate the appropriate Returns
+        sampled_energy_matrix : np.ndarray of shape [n_replicas, n_sampled_states, n_iterations]
+            Energy of the sampled thermodynamic states by the replicas
+        unsampled_energy_matrix : np.ndarray of shale [n_replicas, n_unsampled_states, n_iterations]
+            Energy of the unsampled thermodynamic states by every replica
+        sampled_states : np.ndarray of shape [n_replicas, n_iterations
+            Integer array of of the state sampled by each replica at each iteration
 
         Returns
         -------
@@ -503,39 +553,29 @@ class PhaseAnalyzer(ABC):
             The number of samples drawn from each kth state
             The \sum samples_per_state = N
         """
-        raise NotImplementedError()
+        n_replica, n_sampled_states, n_iterations = sampled_energy_matrix.shape
+        _, n_unsampled_states, _ = unsampled_energy_matrix.shape
+        # Initialize the states
+        total_states = n_sampled_states + n_unsampled_states
+        energy_matrix = np.zeros([total_states, n_iterations*n_replica])
+        samples_per_state = np.zeros([total_states], dtype=int)
+        # Compute shift index for how many unsampled states there were
+        first_sampled_state = int(n_unsampled_states/2.0)
+        last_sampled_state = total_states - first_sampled_state
+        # Cast the sampled states into the energy matrix
+        energy_matrix[first_sampled_state:last_sampled_state, :] = self.reformat_energies_for_mbar(sampled_energy_matrix)
+        # Determine how many samples and which states they were drawn from
+        unique_sampled_states, counts = np.unique(sampled_states, return_counts=True)
+        # Assign those counts to the correct range of states
+        samples_per_state[first_sampled_state:last_sampled_state][unique_sampled_states] = counts
+        if n_unsampled_states > 0:
+            energy_matrix[[0, -1], :] = self.reformat_energies_for_mbar(unsampled_energy_matrix)
+            logger.info("Found expanded cutoff states in the energies!")
+            logger.info("Free energies will be reported relative to them instead!")
+        return energy_matrix, samples_per_state
 
     @abc.abstractmethod
-    def get_states_energies(self):
-        """
-        Extract the deconvoluted energies from a phase.
-
-        Energies from this are NOT decorrelated.
-
-        Returns
-        -------
-        sampled_energy_matrix : numpy.ndarray of shape K,L,N'
-            Deconvoluted energy of sampled states evaluated at other sampled states.
-
-            Has shape (K,L,N') = (number of replica samplers,
-                                 number of sampled thermodynamic states,
-                                 number of iterations from state k)
-
-            Indexed by [k,l,n] where an energy drawn from replica sampler [k] is evaluated in thermodynamic state [l] at
-            iteration [n]
-        unsampled_energy_matrix : numpy.ndarray of shape K,L,N
-            Has shape (K, L, N) = (number of replica samplers,
-                                   number of UN-sampled thermodynamic states,
-                                   number of iterations)
-
-            Indexed by [k,l,n]
-            where an energy drawn from replica state [k] is evaluated in un-sampled state [l] at iteration [n]
-        """
-        raise NotImplementedError()
-
-    @staticmethod
-    @abc.abstractmethod
-    def get_timeseries(passed_timeseries):
+    def get_timeseries(self, passed_timeseries, sampled_states):
         """
         Generate the timeseries that is generated for this phase
 
@@ -547,10 +587,26 @@ class PhaseAnalyzer(ABC):
 
         raise NotImplementedError("This class has not implemented this function")
 
+    @abc.abstractmethod
+    def get_timeseries_weights(self, *args):
+        """
+        Get the weights for a given timeseries based on this class'es desires
+
+        Parameters
+        ----------
+        args : arguments to pass to the function to get information out
+
+        Returns
+        -------
+        weights : np.ndarray of shape [K, N]
+            Weights for each sample drawn from each sampler
+        """
+        raise NotImplementedError("This class has not implemented this function")
+
     @staticmethod
     def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None):
         """
-        Convert u_kln formatted energies into u_ln formatted energies.
+        Convert [replica, state, iteration] data into [state, total_iteration] data
 
         This method assumes that the first dimension are all samplers,
         the second dimension are all the thermodynamic states energies were evaluated at
@@ -570,7 +626,7 @@ class PhaseAnalyzer(ABC):
             If this is None, assumes ALL samplers have the same number of samples
             such that N_k = N' for all k
 
-            **WARNING**: N_k is number of samples the SAMPLER drew,
+            **WARNING**: N_k is number of samples the SAMPLER drew in total,
             NOT how many samples were drawn from each thermodynamic state L.
             This method knows nothing of how many samples were drawn from each state.
 
@@ -815,70 +871,22 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         logger.info('Replica state index statistical inefficiency is '
                     '{:.3f}'.format(mixing_statistics.statistical_inefficiency))
 
-    def get_states_energies(self):
+    def get_timeseries_weights(self, sampled_states_at_iteration, iteration):
         """
-        Extract and decorrelate energies from the ncfile to gather energies common data for other functions
+        Return the weights of the timeseries from disk
 
-        Returns
-        -------
-        energy_matrix : ndarray of shape [n_replicas, n_states, n_iterations]
-            Potential energy matrix of the sampled states
-            Energy is from each drawn sample n, evaluated at every sampled state k
-        unsampled_energy_matrix : ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
-            Potential energy matrix of the unsampled states
-            Energy from each drawn sample n, evaluated at unsampled state l
-            If no unsampled states were drawn, this will be shape (0,N)
-
+        For now this is just a placeholder, but may be more complex in the future
         """
-        logger.info("Reading energies...")
-        # Returns the energies in kln format
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
-        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
-        _, _, n_unsampled_states = energy_unsampled_states.shape
-        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
-        for n in range(n_iterations):
-            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
-            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
-        logger.info("Done.")
+        return np.zeros(sampled_states_at_iteration.shape)
 
-        # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
-        # For now, we simply can't handle analysis of non-global calculations.
-        if np.any(neighborhoods == 0):
-            raise Exception('Non-global MBAR analysis not implemented yet.')
-
-        logger.info("Reading energies...")
-        # Returns the energies in kln format
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
-        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
-        _, _, n_unsampled_states = energy_unsampled_states.shape
-        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
-        for n in range(n_iterations):
-            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
-            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
-        logger.info("Done.")
-
-        logger.info("Deconvoluting replicas...")
-        energy_matrix = np.zeros([n_states, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix = np.zeros([n_states, n_unsampled_states, n_iterations], np.float64)
-        for iteration in range(n_iterations):
-            state_indices = self._reporter.read_replica_thermodynamic_states(iteration)
-            energy_matrix[state_indices, :, iteration] = energy_matrix_replica[:, :, iteration]
-            unsampled_energy_matrix[state_indices, :, iteration] = unsampled_energy_matrix_replica[:, :, iteration]
-        logger.info("Done.")
-
-        return energy_matrix, unsampled_energy_matrix
-
-    @staticmethod
-    def get_timeseries(passed_timeseries):
+    def get_timeseries(self, passed_timeseries, sampled_states):
         """
         Compute the timeseries of a simulation from the Replica Exchange simulation. This is the sum of energies
         for each sample from the state it was drawn from.
 
         Parameters
         ----------
-        passed_timeseries : ndarray of shape (K,L,N), indexed by k,l,n
+        passed_timeseries : np.ndarray of shape (K,L,N), indexed by k,l,n
             K is the total number of sampled states
 
             L is the total states we want MBAR to analyze
@@ -888,43 +896,24 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             The kth sample was drawn from state k at iteration n, the nth configuration of kth state is evaluated in
             thermodynamic state l
 
+        sampled_states : np.ndarray of shape (K,N), indexed by k,n
+            Which thermodynamic state l each sample n was drawn from
+
         Returns
         -------
         u_n : ndarray of shape (N,)
             Timeseries to compute decorrelation and equilibration data from.
         """
-        niterations = passed_timeseries.shape[-1]
-        u_n = np.zeros([niterations], np.float64)
+        n_samplers, _, total_iterations = passed_timeseries.shape
+        u_n = np.zeros([total_iterations], np.float64)
+        sample_slice = range(n_samplers)
         # Compute total negative log probability over all iterations.
-        for iteration in range(niterations):
-            u_n[iteration] = np.sum(np.diagonal(passed_timeseries[:, :, iteration]))
+        for iteration in range(total_iterations):
+            weights = self.get_timeseries_weights(sampled_states[:, iteration], iteration)
+            # range(X) needed over : since we want the specific slice and : is too greedy
+            sampled_energy = passed_timeseries[sample_slice, sampled_states[:, iteration], iteration] + weights
+            u_n[iteration] = np.sum(sampled_energy)
         return u_n
-
-    def _prepare_mbar_input_data(self, sampled_energy_matrix, unsampled_energy_matrix):
-        """Convert the sampled and unsampled energy matrices into MBAR ready data"""
-        nstates, _, niterations = sampled_energy_matrix.shape
-        _, nunsampled, _ = unsampled_energy_matrix.shape
-        # Subsample data to obtain uncorrelated samples
-        N_k = np.zeros(nstates, np.int32)
-        N = niterations  # number of uncorrelated samples
-        N_k[:] = N
-        mbar_ready_energy_matrix = self.reformat_energies_for_mbar(sampled_energy_matrix)
-        if nunsampled > 0:
-            new_energy_matrix = np.zeros([nstates + 2, N_k.sum()])
-            N_k_new = np.zeros(nstates + 2, np.int32)
-            unsampled_kn = self.reformat_energies_for_mbar(unsampled_energy_matrix)
-            # Add augmented unsampled energies to the new matrix
-            new_energy_matrix[[0, -1], :] = unsampled_kn[[0, -1], :]
-            # Fill in the old energies to the middle states
-            new_energy_matrix[1:-1, :] = mbar_ready_energy_matrix
-            N_k_new[1:-1] = N_k
-            # Notify users
-            logger.info("Found expanded cutoff states in the energies!")
-            logger.info("Free energies will be reported relative to them instead!")
-            # Reset values, last step in case something went wrong so we dont overwrite u_kn on accident
-            mbar_ready_energy_matrix = new_energy_matrix
-            N_k = N_k_new
-        return mbar_ready_energy_matrix, N_k
 
     def _compute_free_energy(self):
         """
@@ -1032,7 +1021,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         entropy_dict = self._computed_observables['entropy']
         return entropy_dict['value'], entropy_dict['error']
 
-    def _get_equilibration_data_auto(self, input_data=None):
+    def _get_equilibration_data_auto(self, input_data=None, sampled_states=None):
         """
         Automatically generate the equilibration data from best practices, part of the :func:`_create_mbar_from_scratch`
         routine.
@@ -1044,25 +1033,32 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         Returns nothing, but sets self._equilibration_data
         """
-        if input_data is None:
-            input_data, _ = self.get_states_energies()
-        u_n = self.get_timeseries(input_data)
+        if input_data is None or sampled_states is None:
+            input_data, _, _, sampled_states = self.read_energies()
+        u_n = self.get_timeseries(input_data, sampled_states)
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
         self._equilibration_data = utils.get_equilibration_data(u_n[1:])
 
     def _create_mbar_from_scratch(self):
-        u_kln, unsampled_u_kln = self.get_states_energies()
-        self._get_equilibration_data_auto(input_data=u_kln)
+        # Extract energies
+        energy_sampled, energy_unsampled, neighborhood, sampled_states = self.read_energies()
+        # Generate decorrelation data
+        self._get_equilibration_data_auto(input_data=energy_sampled, sampled_states=sampled_states)
         number_equilibrated, g_t, Neff_max = self._equilibration_data
-        u_kln = utils.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
-        unsampled_u_kln = utils.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
-        # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
-        u_kln = utils.subsample_data_along_axis(u_kln, g_t, -1)
-        unsampled_u_kln = utils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
-        mbar_ukn, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
-        self._create_mbar(mbar_ukn, mbar_N_k)
+        # Remove equilibrated data
+        energy_sampled = utils.remove_unequilibrated_data(energy_sampled, number_equilibrated, -1)
+        energy_unsampled = utils.remove_unequilibrated_data(energy_unsampled, number_equilibrated, -1)
+        sampled_states = utils.remove_unequilibrated_data(sampled_states, number_equilibrated, -1)
+        neighborhood = utils.remove_unequilibrated_data(neighborhood, number_equilibrated, -1)
+        # Subsample along the decorrelation data
+        energy_sampled = utils.subsample_data_along_axis(energy_sampled, g_t, -1)
+        energy_unsampled = utils.subsample_data_along_axis(energy_unsampled, g_t, -1)
+        sampled_states = utils.subsample_data_along_axis(sampled_states, g_t, -1)
+        neighborhood = utils.subsample_data_along_axis(neighborhood, g_t, -1)
+        mbar_kn, mbar_N_k = self._prepare_mbar_input_data(energy_sampled, energy_unsampled, sampled_states)
+        self._create_mbar(mbar_kn, mbar_N_k)
 
 
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png
@@ -1211,6 +1207,13 @@ class MultiPhaseAnalyzer(object):
         List of signs that are used by the :class:`MultiPhaseAnalyzer` to
         """
         return self._signs
+
+    def clear(self):
+        """
+        Clear the individual phases of their observables and estimators for re-computing quantities
+        """
+        for phase in self.phases:
+            phase.clear()
 
     def _combine_phases(self, other, operator='+'):
         """
