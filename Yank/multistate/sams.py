@@ -155,8 +155,10 @@ class SAMSSampler(MultiStateSampler):
     def __init__(self,
                  number_of_iterations=1,
                  log_target_probabilities=None,
-                 state_update_scheme='global-jump', locality=5,
-                 update_stages='two-stage', flatness_threshold=0.2,
+                 state_update_scheme='global-jump',
+                 locality=5,
+                 update_stages='two-stage',
+                 flatness_threshold=0.2,
                  weight_update_method='rao-blackwellized',
                  adapt_target_probabilities=False,
                  gamma0=1.0,
@@ -218,6 +220,7 @@ class SAMSSampler(MultiStateSampler):
         @staticmethod
         def _state_update_scheme_validator(instance, scheme):
             supported_schemes = ['global-jump', 'local-jump', 'restricted-range-jump']
+            supported_schemes = ['global-jump'] # TODO: Eliminate this after release
             if scheme not in supported_schemes:
                 raise ValueError("Unknown update scheme '{}'. Supported values "
                                  "are {}.".format(scheme, supported_schemes))

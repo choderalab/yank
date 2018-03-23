@@ -1625,8 +1625,8 @@ class TestSingleReplicaSAMS(TestMultiStateSampler):
         """Test that storage is kept in sync with options. Unique to SAMSSampler"""
         additional_values = {}
         options = {
-            'state_update_scheme': 'local-jump',
-            'locality': 2,
+            'state_update_scheme': 'global-jump',
+            'locality': None,
             'update_stages': 'one-stage',
             'weight_update_method': 'optimal',
             'adapt_target_probabilities': False,
@@ -1676,8 +1676,8 @@ class TestMultipleReplicaSAMS(TestSingleReplicaSAMS):
         """Test that storage is kept in sync with options. Unique to SAMSSampler"""
         additional_values = {}
         options = {
-            'state_update_scheme': 'restricted-range-jump',
-            'locality': 3,
+            'state_update_scheme': 'global-jump',
+            'locality': None,
             'update_stages': 'two-stage',
             'weight_update_method' : 'rao-blackwellized',
             'adapt_target_probabilities': False,

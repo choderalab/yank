@@ -19,13 +19,12 @@ Features
 --------
 * Modular Python framework to facilitate development and testing of new algorithms
 * GPU-accelerated via the `OpenMM toolkit <http://openmm.org>`_ (see `benchmarks <http://openmm.org/about.html#benchmarks>`_)
-* `Alchemical free energy calculations <http://alchemistry.org>`_ in both **explicit** and **implicit** solvent
-* Hamiltonian exchange among alchemical intermediates with `Gibbs sampling framework <http://dx.doi.org/10.1063/1.3660669>`_
-* General `Markov chain Monte Carlo <http://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo>`_ framework for exploring enhanced sampling methods
-* Built-in equilibration detection and convergence diagnostics
-* Support for AMBER ``prmtop/inpcrd`` files
-* Support for absolute binding free energy calculations
-* Support for transfer free energies (such as hydration or partition free energies)
+* `Alchemical free energy calculations <http://alchemistry.org>`_ in both **explicit** (PME, reaction field) and **implicit** (GBSA) solvent
+* Multi-state sampling schemes, including replica exchange with `Gibbs sampling <http://dx.doi.org/10.1063/1.3660669>`_ and `self-adjusted mixture sampling (SAMS) <https://doi.org/10.1080/10618600.2015.1113975>`_
+* Extensible `Markov chain Monte Carlo <http://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo>`_ framework for exploring enhanced sampling methods
+* Built-in [automated equilibration detection](http://dx.doi.org/10.1021/acs.jctc.5b00784) and convergence diagnostics
+* Support for reading Amber, gromacs, and CHARMM input files
+* Support for absolute binding free energy calculations and transfer free energies (such as hydration, partition, or relative solvation free energies)
 
 Get going
 ---------

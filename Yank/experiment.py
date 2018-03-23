@@ -600,11 +600,8 @@ class ExperimentBuilder(object):
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
         'hydrogen_mass': 1 * unit.amu,
-        'nsteps_per_iteration': 500,
-        'timestep': 2.0 * unit.femtosecond,
-        'collision_rate': 1.0 / unit.picosecond,
-        'mc_displacement_sigma': 10.0 * unit.angstroms,
-        'integrator_splitting': 'V R O R V',
+        'default_nsteps_per_iteration': 500,
+        'default_timestep': 2.0 * unit.femtosecond,
         'default_number_of_iterations': 5000
     }
 
@@ -752,6 +749,7 @@ class ExperimentBuilder(object):
         self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
 
         # Validate protocols
+        self._mcmc_moves = self._validate_mcmc_moves(yaml_content)
         self._samplers = self._validate_samplers(yaml_content)
         self._protocols = self._validate_protocols(yaml_content.get('protocols', {}))
 
@@ -1897,7 +1895,33 @@ class ExperimentBuilder(object):
         return validated_systems
 
     @classmethod
-    def _validate_samplers(cls, yaml_content):
+    def _validate_mcmc_moves(cls, yaml_content):
+        """Validate mcmc_moves section."""
+        mcmc_move_descriptions = yaml_content.get('mcmc_moves', None)
+        if mcmc_move_descriptions is None:
+            return {}
+
+        mcmc_move_schema = """
+        mcmc_moves:
+            keyschema:
+                type: string
+            valueschema:
+                type: dict
+                validator: is_mcmc_move_constructor
+                keyschema:
+                    type: string
+        """
+        mcmc_move_schema = yaml.load(mcmc_move_schema)
+
+        mcmc_move_validator = schema.YANKCerberusValidator(mcmc_move_schema)
+        if mcmc_move_validator.validate({'mcmc_moves': mcmc_move_descriptions}):
+            validated_mcmc_moves = mcmc_move_validator.document
+        else:
+            error = "MCMC moves validation failed with:\n{}"
+            raise YamlParseError(error.format(yaml.dump(mcmc_move_validator.errors)))
+        return validated_mcmc_moves['mcmc_moves']
+
+    def _validate_samplers(self, yaml_content):
         """Validate samplers section."""
         sampler_descriptions = yaml_content.get('samplers', None)
         if sampler_descriptions is None:
@@ -1910,9 +1934,12 @@ class ExperimentBuilder(object):
             valueschema:
                 type: dict
                 validator: is_sampler_constructor
-                keyschema:
-                    type: string
-        """
+                allow_unknown: yes
+                schema:
+                    mcmc_moves:
+                        type: string
+                        allowed: {MCMC_MOVE_IDS}
+        """.format(MCMC_MOVE_IDS=list(self._mcmc_moves.keys()))
         sampler_schema = yaml.load(sampler_schema)
 
         sampler_validator = schema.YANKCerberusValidator(sampler_schema)
@@ -2759,47 +2786,27 @@ class ExperimentBuilder(object):
             return schema.call_restraint_constructor(restraint_description)
         return None
 
-    def _create_experiment_mcmc_move(self, experiment_description, mc_atoms):
-        """Create the MCMCMove for the experiment sampler."""
-        # TODO this will take an mcmc_move_id instead of experiment_description
-        # TODO          once the mcmc_moves section will be added to the YAML script.
+    def _create_default_mcmc_move(self, experiment_description, mc_atoms):
+        """Instantiate the default MCMCMove."""
         experiment_options = self._determine_experiment_options(experiment_description)[0]
-
-        # Apply MC rotation displacement to ligand.
+        integrator_move = mmtools.mcmc.LangevinSplittingDynamicsMove(
+            timestep=experiment_options['default_timestep'],
+            collision_rate=1.0 / unit.picosecond,
+            n_steps=experiment_options['default_nsteps_per_iteration'],
+            reassign_velocities=True,
+            n_restart_attempts=6,
+            measure_shadow_work=False,
+            measure_heat=False
+        )
+        # Apply MC rotation displacement to ligand if there are MC atoms.
         if len(mc_atoms) > 0:
-            displacement_sigma = experiment_options['mc_displacement_sigma']
             move_list = [
-                mmtools.mcmc.MCDisplacementMove(displacement_sigma=displacement_sigma,
-                                                atom_subset=mc_atoms),
-                mmtools.mcmc.MCRotationMove(atom_subset=mc_atoms)
+                mmtools.mcmc.MCDisplacementMove(atom_subset=mc_atoms),
+                mmtools.mcmc.MCRotationMove(atom_subset=mc_atoms),
+                integrator_move
             ]
         else:
-            move_list = []
-
-        # Creating Langevin integrator move.
-        integrator_splitting = experiment_options['integrator_splitting']
-        if integrator_splitting is not None:
-            logger.debug('Using Langevin integrator with splitting {}'.format(integrator_splitting))
-            move_list.append(mmtools.mcmc.LangevinSplittingDynamicsMove(
-                timestep=experiment_options['timestep'],
-                collision_rate=experiment_options['collision_rate'],
-                n_steps=experiment_options['nsteps_per_iteration'],
-                reassign_velocities=True,
-                n_restart_attempts=6,
-                splitting=integrator_splitting,
-                measure_shadow_work=False,
-                measure_heat=False)
-            )
-        else:
-            logger.debug('Using OpenMM Langevin integrator.')
-            move_list.append(mmtools.mcmc.LangevinDynamicsMove(
-                timestep=experiment_options['timestep'],
-                collision_rate=experiment_options['collision_rate'],
-                n_steps=experiment_options['nsteps_per_iteration'],
-                reassign_velocities=True,
-                n_restart_attempts=6)
-            )
-
+            return integrator_move
         return mmtools.mcmc.SequenceMove(move_list=move_list)
 
     def _get_experiment_sampler_constructor(self, experiment_description):
@@ -2828,12 +2835,16 @@ class ExperimentBuilder(object):
         constructor_description = self._get_experiment_sampler_constructor(experiment_description)
         return constructor_description['number_of_iterations']
 
-    def _create_experiment_sampler(self, experiment_description, mc_atoms):
+    def _create_experiment_sampler(self, experiment_description, default_mc_atoms):
         """Create the sampler object associated to the given experiment."""
         # Obtain the sampler's constructor description.
         constructor_description = self._get_experiment_sampler_constructor(experiment_description)
         # Create the MCMCMove for the sampler.
-        mcmc_move = self._create_experiment_mcmc_move(experiment_description, mc_atoms)
+        mcmc_move_id = constructor_description.get('mcmc_moves', None)
+        if mcmc_move_id is None:
+            mcmc_move = self._create_default_mcmc_move(experiment_description, default_mc_atoms)
+        else:
+            mcmc_move = schema.call_mcmc_move_constructor(self._mcmc_moves[mcmc_move_id])
         constructor_description['mcmc_moves'] = mcmc_move
         # Create the sampler.
         return schema.call_sampler_constructor(constructor_description)
