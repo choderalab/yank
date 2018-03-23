@@ -760,10 +760,11 @@ def test_validation_wrong_mcmc_moves():
             {'type': 'LangevinSplittingDynamicsMove', 'timestep': 2.0}),
         ("Could not find class UnknownMoveClass",
             {'type': 'UnknownMoveClass'}),
-        {'type': 'SequenceMove', 'move_list': [
-            {'type': 'MCDisplacementMove'},
-            {'type': 'UnknownMoveClass'}
-        ]}
+        ("Could not find class NestedUnknownMoveClass",
+            {'type': 'SequenceMove', 'move_list': [
+                {'type': 'MCDisplacementMove'},
+                {'type': 'NestedUnknownMoveClass'}
+        ]})
     ]
     for regexp, mcmc_move in mcmc_moves:
         script = {'mcmc_moves': {'mcmc_move1': mcmc_move}}
@@ -2696,15 +2697,6 @@ def test_run_solvation_experiment():
     """Test solvation free energy experiment run."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         solvation_stock(tmp_dir)
-
-
-def test_splitting():
-    """Test that different integrator splittings work"""
-    for replacement in [{'options': {'integrator_splitting': None}},
-                        {'options': {'integrator_splitting': "O { V R V } O"}}]:
-        with mmtools.utils.temporary_directory() as tmp_dir:
-            replacement['options']['default_number_of_iterations'] = 1
-            solvation_stock(tmp_dir, overwrite_options=replacement)
 
 
 def test_automatic_alchemical_path():
