@@ -41,6 +41,8 @@ Optional Arguments:
                                 Alternatively, a zero-indexed environment variable name can be specified, in which
                                 case the jobid will be taken from this variable (0 <= environment variable < n_jobs).
   --njobs=INTEGER               Specify the total number of parallel executions. jobid has to be specified too.
+                                Alternatively, an environment variable name can be specified, in which
+                                case the number of jobs jobid will be taken from this variable.
   -o, --override=OVERRIDE       Override a single option in the script file. May be specified multiple times.
                                 Specified as a nested dictionary of the form:
                                 top_option:sub_option:value
