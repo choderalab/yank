@@ -209,10 +209,10 @@ class TestPhaseAnalyzer(object):
         # Assert transition matrix values are all 0 <= x <= 1
         assert np.all(np.logical_and(t >= 0, t <= 1))
         # Assert all rows add to 1
-        for row in range(self.n_states):
-            assert t[row, :].sum() == 1
-        # Assert all eigenvalues are all <= 1
         # Floating point error can lead mu[0] to be not exactly 1.0, but like 0.99999998 or something
+        for row in range(self.n_states):
+            assert np.isclose(t[row, :].sum(), 1.0)
+        # Assert all eigenvalues are all <= 1
         assert np.allclose(mu[0], 1)
 
     def test_mbar_creation_process(self):
@@ -220,7 +220,8 @@ class TestPhaseAnalyzer(object):
 
         We do this in one function since the test for each part would be a bunch of repeated recreation of the phase
         """
-        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name,
+                                                    unbias_restraint=False)
         u_sampled, u_unsampled = phase.get_states_energies()
         # Test energy output matches appropriate MBAR shapes
         assert u_sampled.shape == (self.n_states, self.n_states, self.n_steps)
@@ -237,14 +238,15 @@ class TestPhaseAnalyzer(object):
         # Generate MBAR from phase
         phase_mbar = phase.mbar
         # Assert mbar object is formed of nstates + unsampled states, Number of effective samples
-        assert phase_mbar.u_kn.shape == (self.n_states + 2, Neff_max*self.n_states)
+        n_effective_samples = Neff_max - discard  # The analysis discards the minimization frame.
+        assert phase_mbar.u_kn.shape == (self.n_states + 2, n_effective_samples*self.n_states)
         # Check that Free energies are returned correctly
         fe, dfe = phase.get_free_energy()
         assert fe.shape == (self.n_states + 2, self.n_states + 2)
         stored_fe_dict = phase._computed_observables['free_energy']
         stored_fe, stored_dfe = stored_fe_dict['value'], stored_fe_dict['error']
-        assert np.all(stored_fe == fe)
-        assert np.all(stored_dfe == dfe)
+        assert np.all(stored_fe == fe), '{}, {}'.format(stored_fe, fe)
+        assert np.all(stored_dfe == dfe), '{}, {}'.format(stored_dfe, dfe)
         # Test reference states and full work up creation
         iinit, jinit = phase.reference_states
         output = phase.analyze_phase()
