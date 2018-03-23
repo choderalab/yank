@@ -220,6 +220,7 @@ class SAMSSampler(MultiStateSampler):
         @staticmethod
         def _state_update_scheme_validator(instance, scheme):
             supported_schemes = ['global-jump', 'local-jump', 'restricted-range-jump']
+            supported_schemes = ['global-jump'] # TODO: Eliminate this after release
             if scheme not in supported_schemes:
                 raise ValueError("Unknown update scheme '{}'. Supported values "
                                  "are {}.".format(scheme, supported_schemes))
