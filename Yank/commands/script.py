@@ -105,11 +105,20 @@ def dispatch(args):
                 job_id = int(os.environ[job_id]) + 1
             else:
                 raise ValueError("--jobid '%s' unknown" % job_id)
-
     else:
         job_id = None
+
     if args['--njobs']:
-        n_jobs = int(args['--njobs'])
+        n_jobs = args['--njobs']
+        try:
+            # Try processing it as an integer
+            n_jobs = int(n_jobs)
+        except ValueError:
+            if n_jobs in os.environ:
+                # Take the value of the environment variable
+                n_jobs = int(os.environ[n_jobs])
+            else:
+                raise ValueError("--njobs '%s' unknown" % njobs)
     else:
         n_jobs = None
 
