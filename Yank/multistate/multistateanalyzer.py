@@ -30,6 +30,9 @@ import numpy as np
 import simtk.unit as units
 from pymbar import MBAR, timeseries
 
+# TODO: Should we import this from pymbar instead?
+from scipy.misc import logsumexp
+
 from . import utils
 
 ABC = abc.ABC
@@ -517,6 +520,60 @@ class PhaseAnalyzer(ABC):
 
         return energy_matrix, unsampled_energy_matrix, neighborhoods, sampled_states
 
+    @property
+    def has_log_weights(self):
+        """
+        Return True if the storage has log weights, False otherwise
+        """
+        # TODO: Add general API points for reporter so we don't have to access NetCDF variables directly
+        groups = self._reporter._storage_analysis.groups
+        if ('online_analysis' in groups) and ('logZ' in groups['online_analysis'].variables) and ('log_weights_history' in groups['online_analysis'].variables):
+            return True
+        return False
+
+    def read_log_weights(self):
+        """
+        Extract log weights from the ncfile, if present.
+        Returns ValueError if not present.
+
+        Returns
+        -------
+        log_weights : np.ndarray of shape [n_states, n_iterations]
+            log_weights[l,n] is the log weight applied to state ``l`` during the collection of samples at iteration ``n``
+
+        """
+        # TODO: Add general API points for reporter so we don't have to access NetCDF variables directly
+        log_weights = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['log_weights_history'])
+        log_weights = np.moveaxis(log_weights, 0, -1)
+        return log_weights
+
+    def read_logZ(self, iteration=None):
+        """
+        Extract logZ estimates from the ncfile, if present.
+        Returns ValueError if not present.
+
+        Parameters
+        ----------
+        iteration : int or slice, optional, default=None
+            If specified, iteration or slice of iterations to extract
+
+        Returns
+        -------
+        logZ : np.ndarray of shape [n_states, n_iterations]
+            logZ[l,n] is the online logZ estimate for state ``l`` at iteration ``n``
+
+        """
+        # TODO: Add general API points for reporter so we don't have to access NetCDF variables directly
+        if iteration == -1:
+            logZ = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['logZ'])
+        elif iteration is not None:
+            logZ = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['logZ_history'][iteration,:])
+            logZ = np.moveaxis(logZ, 0, -1)
+        else:
+            logZ = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['logZ_history'])
+            logZ = np.moveaxis(logZ, 0, -1)
+        return logZ
+
     @abc.abstractmethod
     def _create_mbar_from_scratch(self):
         """
@@ -575,31 +632,22 @@ class PhaseAnalyzer(ABC):
         return energy_matrix, samples_per_state
 
     @abc.abstractmethod
-    def get_timeseries(self, passed_timeseries, sampled_states):
+    def get_effective_energy_timeseries(self):
         """
-        Generate the timeseries that is generated for this phase
+        Generate the effective energy (negative log deviance) timeseries that is generated for this phase
+
+        The effective energy for a series of samples x_n, n = 1..N, is defined as
+
+        u_n = - \ln \pi(x_n) + c
+
+        where \pi(x) is the probability density being sampled, and c is an arbitrary constant.
 
         Returns
         -------
-        generated_timeseries : 1-D iterable
-            timeseries which can be fed into get_decorrelation_time to get the decorrelation
-        """
+        u_n : ndarray of shape (N,)
+            u_n[n] is the negative log deviance of the same from iteration ``n``
+            Timeseries used to determine equilibration time and statistical inefficiency.
 
-        raise NotImplementedError("This class has not implemented this function")
-
-    @abc.abstractmethod
-    def get_timeseries_weights(self, *args):
-        """
-        Get the weights for a given timeseries based on this class'es desires
-
-        Parameters
-        ----------
-        args : arguments to pass to the function to get information out
-
-        Returns
-        -------
-        weights : np.ndarray of shape [K, N]
-            Weights for each sample drawn from each sampler
         """
         raise NotImplementedError("This class has not implemented this function")
 
@@ -871,48 +919,43 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         logger.info('Replica state index statistical inefficiency is '
                     '{:.3f}'.format(mixing_statistics.statistical_inefficiency))
 
-    def get_timeseries_weights(self, sampled_states_at_iteration, iteration):
+    def get_effective_energy_timeseries(self):
         """
-        Return the weights of the timeseries from disk
+        Generate the effective energy (negative log deviance) timeseries that is generated for this phase
 
-        For now this is just a placeholder, but may be more complex in the future
-        """
-        return np.zeros(sampled_states_at_iteration.shape)
+        The effective energy for a series of samples x_n, n = 1..N, is defined as
 
-    def get_timeseries(self, passed_timeseries, sampled_states):
-        """
-        Compute the timeseries of a simulation from the Replica Exchange simulation. This is the sum of energies
-        for each sample from the state it was drawn from.
+        u_n = - \ln \pi(x_n) + c
 
-        Parameters
-        ----------
-        passed_timeseries : np.ndarray of shape (K,L,N), indexed by k,l,n
-            K is the total number of sampled states
-
-            L is the total states we want MBAR to analyze
-
-            N is the total number of samples
-
-            The kth sample was drawn from state k at iteration n, the nth configuration of kth state is evaluated in
-            thermodynamic state l
-
-        sampled_states : np.ndarray of shape (K,N), indexed by k,n
-            Which thermodynamic state l each sample n was drawn from
+        where \pi(x) is the probability density being sampled, and c is an arbitrary constant.
 
         Returns
         -------
         u_n : ndarray of shape (N,)
-            Timeseries to compute decorrelation and equilibration data from.
+            u_n[n] is the negative log deviance of the same from iteration ``n``
+            Timeseries used to determine equilibration time and statistical inefficiency.
+
         """
-        n_samplers, _, total_iterations = passed_timeseries.shape
-        u_n = np.zeros([total_iterations], np.float64)
-        sample_slice = range(n_samplers)
-        # Compute total negative log probability over all iterations.
-        for iteration in range(total_iterations):
-            weights = self.get_timeseries_weights(sampled_states[:, iteration], iteration)
-            # range(X) needed over : since we want the specific slice and : is too greedy
-            sampled_energy = passed_timeseries[sample_slice, sampled_states[:, iteration], iteration] + weights
-            u_n[iteration] = np.sum(sampled_energy)
+        energies, _, _, states = self.read_energies()
+        n_replicas, n_states, n_iterations = energies.shape
+
+        # Check for log weights
+        has_log_weights = False
+        if self.has_log_weights:
+            has_log_weights = True
+            log_weights = self.read_log_weights()
+            f_l = - self.read_logZ(iteration=-1) # use last (best) estimate of free energies
+
+        u_n = np.zeros([n_iterations], np.float64)
+        for iteration in range(n_iterations):
+            replicas_slice = range(n_replicas) # slice of all replicas
+            states_slice = states[:, iteration] # slice of current sampled states by those replicas
+            u_n[iteration] = np.sum(energies[replicas_slice, states_slice, iteration])
+
+            # Correct for potentially-changing log weights
+            if has_log_weights:
+                u_n[iteration] += - np.sum(log_weights[states_slice, iteration]) + n_replicas * logsumexp(-f_l[:] + log_weights[:,iteration])
+
         return u_n
 
     def _compute_free_energy(self):
@@ -1021,21 +1064,15 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         entropy_dict = self._computed_observables['entropy']
         return entropy_dict['value'], entropy_dict['error']
 
-    def _get_equilibration_data_auto(self, input_data=None, sampled_states=None):
+    def _get_equilibration_data_auto(self):
         """
-        Automatically generate the equilibration data from best practices, part of the :func:`_create_mbar_from_scratch`
-        routine.
-
-        Parameters
-        ----------
-        input_data : np.ndarray-like, Optional, Default: None
-            Optionally provide the data to look at. If not provided, uses energies from :func:`extract_energies()`
+        Automatically generate the equilibration data from best practices,
+        part of the :func:`_create_mbar_from_scratch` routine.
 
         Returns nothing, but sets self._equilibration_data
         """
-        if input_data is None or sampled_states is None:
-            input_data, _, _, sampled_states = self.read_energies()
-        u_n = self.get_timeseries(input_data, sampled_states)
+        u_n = self.get_effective_energy_timeseries()
+
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
@@ -1045,7 +1082,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Extract energies
         energy_sampled, energy_unsampled, neighborhood, sampled_states = self.read_energies()
         # Generate decorrelation data
-        self._get_equilibration_data_auto(input_data=energy_sampled, sampled_states=sampled_states)
+        self._get_equilibration_data_auto()
         number_equilibrated, g_t, Neff_max = self._equilibration_data
         # Remove equilibrated data
         energy_sampled = utils.remove_unequilibrated_data(energy_sampled, number_equilibrated, -1)

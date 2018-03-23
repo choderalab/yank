@@ -576,6 +576,9 @@ class SAMSSampler(MultiStateSampler):
         """
         logger.debug('Updating logZ estimates...')
 
+        # Store log weights used at the beginning of this iteration
+        self._reporter.write_online_analysis_data(self._iteration, log_weights=self.log_weights)
+
         # Retrieve target probabilities
         log_pi_k = self.log_target_probabilities
         pi_k = np.exp(self.log_target_probabilities)

@@ -1055,7 +1055,7 @@ class MultiStateReporter(object):
         logZ : np.array with shape [n_states]
             Dimensionless logZ
         """
-        data = self.read_online_analysis_data(None, "logZ")
+        data = self.read_online_analysis_data(iteration, "logZ")
         return data['logZ']
 
     def write_logZ(self, iteration: int, logZ: np.ndarray):

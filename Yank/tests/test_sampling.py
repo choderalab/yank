@@ -196,7 +196,7 @@ def test_replica_exchange_harmonic_oscillator(verbose=False, verbose_simulation=
         simulation.run()
 
         # Create Analyzer.
-        analyzer = ReplicaExchangeAnalyzer(storage)
+        analyzer = ReplicaExchangeAnalyzer(reporter)
 
         # TODO: Check if deviations exceed tolerance.
         Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()
