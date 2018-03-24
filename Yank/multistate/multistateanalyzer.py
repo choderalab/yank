@@ -445,15 +445,24 @@ class PhaseAnalyzer(ABC):
         self.reference_states = reference_states
         self._extra_analysis_kwargs = analysis_kwargs
 
-        # Initialize cached values that are read directly from the Reporter.
+        # Initialize cached values that are read or derived from the Reporter.
+        self._cache = {}  # This cache should be always set with _update_cache().
+        self.clear()
+        self.max_n_iterations = max_n_iterations
+
+    def clear(self):
+        """Reset all cached objects.
+
+        This must to be called if the information in the reporter changes
+        after analysis.
+        """
+        # Reset cached values that are read directly from the Reporter.
         self._n_iterations = None
         self._n_replicas = None
         self._end_thermodynamic_states = None
         self._kT = None
-
-        # Cached values with dependencies.
-        self._cache = {}  # This cache should be always set with _update_cache().
-        self.max_n_iterations = max_n_iterations
+        # Reset cached values that are derived from the reporter.
+        self._invalidate_cache_values('reporter')
 
     @property
     def name(self):
@@ -577,8 +586,10 @@ class PhaseAnalyzer(ABC):
         """
         def __init__(self, name, dependencies=(), default=AttributeError,
                      validator=None, check_changes=False):
+            # Reserved names.
             # TODO make observables CachedProperties?
-            assert name != 'observables'  # Reserved name.
+            assert name != 'observables'
+            assert name != 'reporter'
             # TODO use __setname__() when dropping Python 3.5 support.
             self.name = name
             self.dependencies = dependencies
@@ -747,7 +758,7 @@ class PhaseAnalyzer(ABC):
             energy_data[i] = np.moveaxis(energies, 0, -1)
 
         # Unpack.
-        sampled_energy_matrix, unsampled_energy_matrix, neighborhoods, replicas_state_indices = energy_data
+        sampled_energy_matrix, neighborhoods, unsampled_energy_matrix, replicas_state_indices = energy_data
         # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
         # For now, we simply can't handle analysis of non-global calculations.
         if np.any(neighborhoods == 0):
@@ -922,7 +933,6 @@ class PhaseAnalyzer(ABC):
 
 
 class MultiStateSamplerAnalyzer(PhaseAnalyzer):
-
     """
     The MultiStateSamplerAnalyzer is the analyzer for a simulation generated from a MultiStateSampler simulation,
     implemented as an instance of the :class:`PhaseAnalyzer`.
@@ -973,12 +983,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     def __init__(self, *args, unbias_restraint=True, restraint_energy_cutoff='auto',
                  restraint_distance_cutoff='auto', **kwargs):
+        # super() calls clear() that initialize the cached variables.
         super().__init__(*args, **kwargs)
-
-        # Initialize cached values that are derived directly from the Reporter.
-        self._radially_symmetric_restraint_data = None
-        self._restraint_energies = {}
-        self._restraint_distances = {}
 
         # Cached values with dependencies.
         self.unbias_restraint = unbias_restraint
@@ -991,6 +997,19 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         ('eigenvalues', np.ndarray),
         ('statistical_inefficiency', np.ndarray)
     ])
+
+    def clear(self):
+        """Reset all cached objects.
+
+        This must to be called if the information in the reporter changes
+        after analysis.
+        """
+        # Reset cached values that are read directly from the Reporter.
+        # super() takes care of invalidating the cached properties.
+        super().clear()
+        self._radially_symmetric_restraint_data = None
+        self._restraint_energies = {}
+        self._restraint_distances = {}
 
     def generate_mixing_statistics(self, number_equilibrated: Union[int, None] = None) -> NamedTuple:
         """
@@ -1227,16 +1246,16 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         for i, energies in enumerate(energy_data):
             # Discard equilibration iterations.
-            energy_data[i] = utils.remove_unequilibrated_data(energies, number_equilibrated, -1)
+            energies = utils.remove_unequilibrated_data(energies, number_equilibrated, -1)
             # Subsample along the decorrelation data.
             energy_data[i] = utils.subsample_data_along_axis(energies, g_t, -1)
         sampled_energy_matrix, unsampled_energy_matrix, neighborhood, replicas_state_indices = energy_data
 
-        # Initialize the MBAR matrices in kn form.
-        n_replica, n_sampled_states, n_iterations = sampled_energy_matrix.shape
+        # Initialize the MBAR matrices in ln form.
+        n_replicas, n_sampled_states, n_iterations = sampled_energy_matrix.shape
         _, n_unsampled_states, _ = unsampled_energy_matrix.shape
         n_total_states = n_sampled_states + n_unsampled_states
-        energy_matrix = np.zeros([n_total_states, n_iterations*n_replica])
+        energy_matrix = np.zeros([n_total_states, n_iterations*n_replicas])
         samples_per_state = np.zeros([n_total_states], dtype=int)
 
         # Compute shift index for how many unsampled states there were.
@@ -1244,7 +1263,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         first_sampled_state = int(n_unsampled_states/2.0)
         last_sampled_state = n_total_states - first_sampled_state
 
-        # Cast the sampled energy matrix from kln' to kn form.
+        # Cast the sampled energy matrix from kln' to ln form.
         energy_matrix[first_sampled_state:last_sampled_state, :] = self.reformat_energies_for_mbar(sampled_energy_matrix)
         # Determine how many samples and which states they were drawn from.
         unique_sampled_states, counts = np.unique(replicas_state_indices, return_counts=True)
@@ -1258,9 +1277,9 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # These cached values speed up considerably the computation of the
         # free energy profile along the restraint distance/energy cutoff.
-        self._decorrelated_u_kn = energy_matrix
-        self._decorrelated_N_k = samples_per_state
-        return self._decorrelated_u_kn, self._decorrelated_N_k
+        self._decorrelated_u_ln = energy_matrix
+        self._decorrelated_N_l = samples_per_state
+        return self._decorrelated_u_ln, self._decorrelated_N_l
 
     def _compute_mbar_unbiased_energies(self):
         """Unbias the restraint, and apply restraint energy/distance cutoffs.
@@ -1271,12 +1290,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         Returns
         -------
-        unbiased_decorrelated_u_kn : np.array
+        unbiased_decorrelated_u_ln : np.array
             A n_states x (n_sampled_states * n_unbiased_decorrelated_iterations)
             array of energies (in kT), where n_unbiased_decorrelated_iterations
             is generally <= n_decorrelated_iterations whe a restraint cutoff is
             set.
-        unbiased_decorrelated_N_k : np.array
+        unbiased_decorrelated_N_l : np.array
             The total number of samples drawn from each state (including the
             unbiased states).
         """
@@ -1290,9 +1309,9 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                 logger.info(str(e) + ' The restraint will not be unbiased.')
                 unbias_restraint = False
         if not unbias_restraint:
-            self._unbiased_decorrelated_u_kn = self._decorrelated_u_kn
-            self._unbiased_decorrelated_N_k = self._decorrelated_N_k
-            return self._unbiased_decorrelated_u_kn, self._unbiased_decorrelated_N_k
+            self._unbiased_decorrelated_u_ln = self._decorrelated_u_ln
+            self._unbiased_decorrelated_N_l = self._decorrelated_N_l
+            return self._unbiased_decorrelated_u_ln, self._unbiased_decorrelated_N_l
 
         # Compute the restraint energies/distances.
         restraint_force, weights_group1, weights_group2 = restraint_data
@@ -1302,65 +1321,65 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
 
         # Compute restraint energies/distances.
-        energies_kn, distances_kn = self._compute_restraint_energies(restraint_force, weights_group1,
+        energies_ln, distances_ln = self._compute_restraint_energies(restraint_force, weights_group1,
                                                                      weights_group2)
 
         # Convert energies to kT unit for comparison to energy cutoff.
-        energies_kn = energies_kn / self.kT
+        energies_ln = energies_ln / self.kT
         logger.debug('Restraint energy mean: {} kT; std: {} kT'
-                     ''.format(np.mean(energies_kn), np.std(energies_kn, ddof=1)))
+                     ''.format(np.mean(energies_ln), np.std(energies_ln, ddof=1)))
 
         # Don't modify the cached decorrelated energies.
-        u_kn = copy.deepcopy(self._decorrelated_u_kn)
-        N_k = copy.deepcopy(self._decorrelated_N_k)
-        n_decorrelated_iterations_kn = u_kn.shape[1]
-        assert len(energies_kn) == n_decorrelated_iterations_kn
-        assert len(self._decorrelated_state_indices_kn) == n_decorrelated_iterations_kn
+        u_ln = copy.deepcopy(self._decorrelated_u_ln)
+        N_l = copy.deepcopy(self._decorrelated_N_l)
+        n_decorrelated_iterations_ln = u_ln.shape[1]
+        assert len(energies_ln) == n_decorrelated_iterations_ln, '{}, {}'.format(energies_ln.shape, u_ln.shape)
+        assert len(self._decorrelated_state_indices_ln) == n_decorrelated_iterations_ln
 
         # Determine the cutoffs to use for the simulations.
         restraint_energy_cutoff, restraint_distance_cutoff = self._get_restraint_cutoffs()
         apply_energy_cutoff = restraint_energy_cutoff is not None
         apply_distance_cutoff = restraint_distance_cutoff is not None
 
-        # We need to take into account the initial unsampled states to index correctly N_k.
+        # We need to take into account the initial unsampled states to index correctly N_l.
         state_idx_shift = 0
-        while N_k[state_idx_shift] == 0:
+        while N_l[state_idx_shift] == 0:
             state_idx_shift +=1
 
         # Determine which samples are outside the cutoffs or have to be truncated.
         columns_to_keep = []
-        for iteration_kn_idx, state_idx in enumerate(self._decorrelated_state_indices_kn):
-            if ((apply_energy_cutoff and energies_kn[iteration_kn_idx] > restraint_energy_cutoff) or
-                    (apply_distance_cutoff and distances_kn[iteration_kn_idx] > restraint_distance_cutoff)):
+        for iteration_ln_idx, state_idx in enumerate(self._decorrelated_state_indices_ln):
+            if ((apply_energy_cutoff and energies_ln[iteration_ln_idx] > restraint_energy_cutoff) or
+                    (apply_distance_cutoff and distances_ln[iteration_ln_idx] > restraint_distance_cutoff)):
                 # Update the number of samples generated from its state.
-                N_k[state_idx + state_idx_shift] -= 1
+                N_l[state_idx + state_idx_shift] -= 1
             else:
-                columns_to_keep.append(iteration_kn_idx)
+                columns_to_keep.append(iteration_ln_idx)
 
         # Drop all columns that exceed the cutoff(s).
-        n_discarded = n_decorrelated_iterations_kn - len(columns_to_keep)
+        n_discarded = n_decorrelated_iterations_ln - len(columns_to_keep)
         logger.debug('Discarding {}/{} samples outside the cutoffs (restraint_distance_cutoff: {}, '
-                     'restraint_energy_cutoff: {}).'.format(n_discarded, n_decorrelated_iterations_kn,
+                     'restraint_energy_cutoff: {}).'.format(n_discarded, n_decorrelated_iterations_ln,
                                                             restraint_distance_cutoff,
                                                             restraint_energy_cutoff))
-        u_kn = u_kn[:, columns_to_keep]
+        u_ln = u_ln[:, columns_to_keep]
 
         # Add new end states that don't include the restraint.
-        energies_kn = energies_kn[columns_to_keep]
-        n_states, n_iterations = u_kn.shape
+        energies_ln = energies_ln[columns_to_keep]
+        n_states, n_iterations = u_ln.shape
         n_states_new = n_states + 2
-        N_k_new = np.zeros(n_states_new, N_k.dtype)
-        u_kn_new = np.zeros((n_states_new, n_iterations), u_kn.dtype)
-        u_kn_new[0, :] = u_kn[0] - energies_kn
-        u_kn_new[-1, :] = u_kn[-1] - energies_kn
+        N_l_new = np.zeros(n_states_new, N_l.dtype)
+        u_ln_new = np.zeros((n_states_new, n_iterations), u_ln.dtype)
+        u_ln_new[0, :] = u_ln[0] - energies_ln
+        u_ln_new[-1, :] = u_ln[-1] - energies_ln
         # Copy old values.
-        N_k_new[1:-1] = N_k
-        u_kn_new[1:-1, :] = u_kn
+        N_l_new[1:-1] = N_l
+        u_ln_new[1:-1, :] = u_ln
 
         # Cache new values.
-        self._unbiased_decorrelated_u_kn = u_kn_new
-        self._unbiased_decorrelated_N_k = N_k_new
-        return self._unbiased_decorrelated_u_kn, self._unbiased_decorrelated_N_k
+        self._unbiased_decorrelated_u_ln = u_ln_new
+        self._unbiased_decorrelated_N_l = N_l_new
+        return self._unbiased_decorrelated_u_ln, self._unbiased_decorrelated_N_l
 
     def _compute_restraint_energies(self, restraint_force, weights_group1, weights_group2):
         """Compute the restrain energies and distances for the uncorrelated iterations.
@@ -1376,10 +1395,10 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         Returns
         -------
-        restraint_energies_kn : simtk.unit.Quantity
+        restraint_energies_ln : simtk.unit.Quantity
             A (n_sampled_states * n_decorrelated_iterations)-long array with
             the restrain energies (units of energy/mole).
-        restraint_distances_kn : simtk.unit.Quantity or None
+        restraint_distances_ln : simtk.unit.Quantity or None
             If we are not applying a distance cutoff, this is None. Otherwise,
             a (n_sampled_states * n_decorrelated_iterations)-long array with
             the restrain distances (units of length) for each frame.
@@ -1390,7 +1409,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Determine total number of energies/distances to compute.
         # The +1 is for the minimization iteration.
-        n_frames_kn = self.n_replicas * len(decorrelated_iterations)
+        n_frames_ln = self.n_replicas * len(decorrelated_iterations)
 
         # Computing the restraint energies/distances is expensive and we
         # don't want to recompute everything when _decorrelated_iterations
@@ -1402,11 +1421,11 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         def extract_decorrelated(cached_dict, dtype, unit):
             if not decorrelated_iterations_set.issubset(set(cached_dict)):
                 return None
-            decorrelated = np.zeros(n_frames_kn, dtype=dtype)
-            for state_idx in range(self.n_states):
+            decorrelated = np.zeros(n_frames_ln, dtype=dtype)
+            for replica_idx in range(self.n_replicas):
                 for iteration_idx, iteration in enumerate(decorrelated_iterations):
-                    frame_idx = state_idx*len(decorrelated_iterations) + iteration_idx
-                    decorrelated[frame_idx] = cached_dict[iteration][state_idx]
+                    frame_idx = replica_idx*len(decorrelated_iterations) + iteration_idx
+                    decorrelated[frame_idx] = cached_dict[iteration][replica_idx]
             return decorrelated * unit
 
         # We compute the distances only if we are using a distance cutoff.
@@ -1458,7 +1477,6 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Pre-computing energies/distances.
         logger.debug('Computing restraint energies/distances...')
-        replica_state_indices = self._reporter.read_replica_thermodynamic_states()
         for iteration_idx, iteration in enumerate(decorrelated_iterations):
             # Check if we have already computed this energy/distance.
             if (iteration in self._restraint_energies and
@@ -1474,11 +1492,10 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                                                                 analysis_particles_only=True)
 
             for replica_idx, sampler_state in enumerate(sampler_states):
-                state_idx = replica_state_indices[iteration, replica_idx]
                 sliced_sampler_state = sampler_state[original_restrained_atom_indices]
                 sliced_sampler_state.apply_to_context(context)
                 potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
-                self._restraint_energies[iteration][state_idx] = potential_energy / _OPENMM_ENERGY_UNIT
+                self._restraint_energies[iteration][replica_idx] = potential_energy / _OPENMM_ENERGY_UNIT
 
                 if compute_distances:
                     # Check if an analytical solution is available.
@@ -1496,7 +1513,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                         # Set output arrays.
                         distance = compute_centroid_distance(positions_group1, positions_group2,
                                                              weights_group1, weights_group2)
-                    self._restraint_distances[iteration][state_idx] = distance
+                    self._restraint_distances[iteration][replica_idx] = distance
 
         return (extract_decorrelated(self._restraint_energies, dtype=np.float64, unit=_OPENMM_ENERGY_UNIT),
                 extract_decorrelated(self._restraint_distances, dtype=np.float32, unit=_MDTRAJ_DISTANCE_UNIT))
@@ -1719,65 +1736,64 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     _equilibration_data = PhaseAnalyzer.CachedProperty(
         name='equilibration_data',
-        dependencies=['max_n_iterations'],
+        dependencies=['reporter', 'max_n_iterations'],
         check_changes=True,
         default=lambda instance: instance._get_equilibration_data_auto()
     )
 
     @staticmethod
-    def _decorrelated_state_indices_kn_default_func(instance):
-        """Compute the replica thermodynamic state indices in kn formats."""
+    def _decorrelated_state_indices_ln_default_func(instance):
+        """Compute the replica thermodynamic state indices in ln formats."""
         decorrelated_iterations = instance._decorrelated_iterations  # Shortcut.
         replica_state_indices = instance._reporter.read_replica_thermodynamic_states()
         n_correlated_iterations, instance._n_replicas = replica_state_indices.shape
 
         # Initialize output array.
         n_frames = instance.n_replicas * len(decorrelated_iterations)
-        decorrelated_state_indices_kn = np.zeros(n_frames, dtype=np.int32)
+        decorrelated_state_indices_ln = np.zeros(n_frames, dtype=np.int32)
 
-        # Map kn columns to the state.
+        # Map ln columns to the state.
         for iteration_idx, iteration in enumerate(decorrelated_iterations):
             for replica_idx in range(instance.n_replicas):
-                # Deconvolute index.
-                state_idx = replica_state_indices[iteration, replica_idx]
-                frame_idx = state_idx*len(decorrelated_iterations) + iteration_idx
+                frame_idx = replica_idx*len(decorrelated_iterations) + iteration_idx
                 # Set output array.
-                decorrelated_state_indices_kn[frame_idx] = state_idx
-        instance._decorrelated_state_indices_kn = decorrelated_state_indices_kn
-        return decorrelated_state_indices_kn
+                state_idx = replica_state_indices[iteration, replica_idx]
+                decorrelated_state_indices_ln[frame_idx] = state_idx
+        instance._decorrelated_state_indices_ln = decorrelated_state_indices_ln
+        return decorrelated_state_indices_ln
 
-    _decorrelated_state_indices_kn = PhaseAnalyzer.CachedProperty(
-        name='decorrelated_state_indices_kn',
+    _decorrelated_state_indices_ln = PhaseAnalyzer.CachedProperty(
+        name='decorrelated_state_indices_ln',
         dependencies=['equilibration_data'],
-        default=_decorrelated_state_indices_kn_default_func.__func__
+        default=_decorrelated_state_indices_ln_default_func.__func__
     )
-    _decorrelated_u_kn = PhaseAnalyzer.CachedProperty(
-        name='decorrelated_u_kn',
+    _decorrelated_u_ln = PhaseAnalyzer.CachedProperty(
+        name='decorrelated_u_ln',
         dependencies=['equilibration_data'],
         default=lambda instance: instance._compute_mbar_decorrelated_energies()[0]
     )
-    _decorrelated_N_k = PhaseAnalyzer.CachedProperty(
-        name='decorrelated_N_k',
+    _decorrelated_N_l = PhaseAnalyzer.CachedProperty(
+        name='decorrelated_N_l',
         dependencies=['equilibration_data'],
         default=lambda instance: instance._compute_mbar_decorrelated_energies()[1]
     )
-    _unbiased_decorrelated_u_kn = PhaseAnalyzer.CachedProperty(
-        name='unbiased_decorrelated_u_kn',
+    _unbiased_decorrelated_u_ln = PhaseAnalyzer.CachedProperty(
+        name='unbiased_decorrelated_u_ln',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
-                      'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
+                      'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l'],
         default=lambda instance: instance._compute_mbar_unbiased_energies()[0]
     )
-    _unbiased_decorrelated_N_k = PhaseAnalyzer.CachedProperty(
-        name='unbiased_decorrelated_N_k',
+    _unbiased_decorrelated_N_l = PhaseAnalyzer.CachedProperty(
+        name='unbiased_decorrelated_N_l',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
-                      'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
+                      'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l'],
         default=lambda instance: instance._compute_mbar_unbiased_energies()[1]
     )
     mbar = PhaseAnalyzer.CachedProperty(
         name='mbar',
-        dependencies=['unbiased_decorrelated_u_kn', 'unbiased_decorrelated_N_k'],
-        default=lambda instance: instance._create_mbar(instance._unbiased_decorrelated_u_kn,
-                                                       instance._unbiased_decorrelated_N_k)
+        dependencies=['unbiased_decorrelated_u_ln', 'unbiased_decorrelated_N_l'],
+        default=lambda instance: instance._create_mbar(instance._unbiased_decorrelated_u_ln,
+                                                       instance._unbiased_decorrelated_N_l)
     )
 
     # -------------------------------------------------------------------------
@@ -1949,6 +1965,13 @@ class MultiPhaseAnalyzer(object):
         List of signs that are used by the :class:`MultiPhaseAnalyzer` to
         """
         return self._signs
+
+    def clear(self):
+        """
+        Clear the individual phases of their observables and estimators for re-computing quantities
+        """
+        for phase in self.phases:
+            phase.clear()
 
     def _combine_phases(self, other, operator='+'):
         """

@@ -47,20 +47,18 @@ class BlankPhase(analyze.YankPhaseAnalyzer):
     def analyze_phase(self, *args, **kwargs):
         pass
 
-    def _create_mbar_from_scratch(self):
-        pass
-
     def get_states_energies(self):
         pass
 
     def get_timeseries(self, passed_timeseries, replica_state_indices):
         pass
 
-    def _prepare_mbar_input_data(self):
-        pass
-
     def get_timeseries_weights(self, *args):
         pass
+
+    @classmethod
+    def _get_cache_dependency_graph(cls):
+        return {'reporter': []}
 
 
 class FreeEnergyPhase(BlankPhase):
@@ -385,10 +383,11 @@ class TestMultiPhaseAnalyzer(object):
         """Test that the dependency graph used to invalidate cached values is generated correctly."""
         cache_dependency_graph = self.ANALYZER._get_cache_dependency_graph()
         test_cases = [
+            ('reporter', {'equilibration_data'}),
             ('mbar', {'observables'}),
-            ('unbiased_decorrelated_u_kn', {'mbar'}),
-            ('equilibration_data', {'decorrelated_state_indices_kn',
-                                    'decorrelated_u_kn', 'decorrelated_N_k'})
+            ('unbiased_decorrelated_u_ln', {'mbar'}),
+            ('equilibration_data', {'decorrelated_state_indices_ln',
+                                    'decorrelated_u_ln', 'decorrelated_N_l'})
         ]
         for cached_property, properties_to_invalidate in test_cases:
             assert_equal(cache_dependency_graph[cached_property], properties_to_invalidate,
@@ -402,17 +401,16 @@ class TestMultiPhaseAnalyzer(object):
             for cached_property in cached_properties:
                 err_msg = '{} is cached != {}'.format(cached_property, is_in)
                 assert (cached_property in analyzer._cache) is is_in, err_msg
-            print(analyzer._computed_observables)
             assert (analyzer._computed_observables['free_energy'] is not None) is is_in
 
         # Test-precondition: make sure the dependencies are as expected.
-        assert 'equilibration_data' in self.ANALYZER._decorrelated_state_indices_kn.dependencies
+        assert 'equilibration_data' in self.ANALYZER._decorrelated_state_indices_ln.dependencies
         assert 'max_n_iterations' in self.ANALYZER._equilibration_data.dependencies
 
         # The cached value and its dependencies are generated lazily when calling the property.
-        cached_properties = ['mbar', 'decorrelated_state_indices_kn', 'equilibration_data']
+        cached_properties = ['mbar', 'decorrelated_state_indices_ln', 'equilibration_data']
         yield check_cached_properties, False
-        analyzer._decorrelated_state_indices_kn
+        analyzer._decorrelated_state_indices_ln
         analyzer.get_free_energy()
         yield check_cached_properties, True
 
@@ -421,7 +419,7 @@ class TestMultiPhaseAnalyzer(object):
         yield check_cached_properties, False
 
         # Dependent values are not invalidated if the dependency doesn't change.
-        analyzer._decorrelated_state_indices_kn  # Generate dependent values.
+        analyzer._decorrelated_state_indices_ln  # Generate dependent values.
         analyzer.get_free_energy()
         check_cached_properties(is_in=True)  # Test pre-condition.
         analyzer.max_n_iterations = analyzer.n_iterations - 1
@@ -433,48 +431,47 @@ class TestMultiPhaseAnalyzer(object):
 
         # By default, all iterations are analyzed.
         all_decorrelated_iterations = analyzer._decorrelated_iterations
-        all_decorrelated_u_kn = analyzer._decorrelated_u_kn
-        n_iterations_kn = analyzer.n_states * analyzer.n_iterations
+        all_decorrelated_u_ln = analyzer._decorrelated_u_ln
+        n_iterations_ln = analyzer.n_replicas * analyzer.n_iterations
         assert len(all_decorrelated_iterations) == analyzer.n_iterations
-        assert all_decorrelated_u_kn.shape[1] == n_iterations_kn
+        assert all_decorrelated_u_ln.shape[1] == n_iterations_ln
 
         # Setting max_n_iterations reduces the number of iterations analyzed
         new_max_n_iterations = analyzer.n_iterations - 1
         analyzer.max_n_iterations = new_max_n_iterations
         assert len(analyzer._decorrelated_iterations) == new_max_n_iterations
         assert np.array_equal(analyzer._decorrelated_iterations, all_decorrelated_iterations[:-1])
-        assert analyzer._decorrelated_u_kn.shape[1] == analyzer.n_states * new_max_n_iterations
+        assert analyzer._decorrelated_u_ln.shape[1] == analyzer.n_replicas * new_max_n_iterations
 
-        expected_iterations_kn_dropped = set(range(analyzer.n_iterations-1, n_iterations_kn, analyzer.n_iterations))
-        expected_iterations_kn_kept = sorted(set(range(n_iterations_kn)) - expected_iterations_kn_dropped)
-        expected_decorrelated_u_kn = all_decorrelated_u_kn[:, expected_iterations_kn_kept]
-        assert np.array_equal(analyzer._decorrelated_u_kn, expected_decorrelated_u_kn)
+        expected_iterations_ln_dropped = set(range(analyzer.n_iterations-1, n_iterations_ln, analyzer.n_iterations))
+        expected_iterations_ln_kept = sorted(set(range(n_iterations_ln)) - expected_iterations_ln_dropped)
+        expected_decorrelated_u_ln = all_decorrelated_u_ln[:, expected_iterations_ln_kept]
+        assert np.array_equal(analyzer._decorrelated_u_ln, expected_decorrelated_u_ln)
 
     def test_unbias_restraint(self):
         """Test that restraints are unbiased correctly when unbias_restraint is True."""
         # The energies of the unbiased restraint should be identical to the biased ones.
         analyzer = self.ANALYZER(self.reporter, name=self.repex_name, unbias_restraint=False)
-        assert np.array_equal(analyzer._unbiased_decorrelated_u_kn, analyzer._decorrelated_u_kn)
-        assert np.array_equal(analyzer._unbiased_decorrelated_N_k, analyzer._decorrelated_N_k)
+        assert np.array_equal(analyzer._unbiased_decorrelated_u_ln, analyzer._decorrelated_u_ln)
+        assert np.array_equal(analyzer._unbiased_decorrelated_N_l, analyzer._decorrelated_N_l)
 
         # Switch unbias_restraint to True. The old cached value is invalidated and
-        # now u_kn and N_k have two extra states.
+        # now u_ln and N_l have two extra states.
         analyzer.unbias_restraint = True
-        assert analyzer._unbiased_decorrelated_u_kn.shape[0] == analyzer._decorrelated_u_kn.shape[0] + 2
-        assert analyzer._unbiased_decorrelated_N_k.shape[0] == analyzer._decorrelated_N_k.shape[0] + 2
+        assert analyzer._unbiased_decorrelated_u_ln.shape[0] == analyzer._decorrelated_u_ln.shape[0] + 2
+        assert analyzer._unbiased_decorrelated_N_l.shape[0] == analyzer._decorrelated_N_l.shape[0] + 2
         # The automatic cutoff (default value) should remove some of the iterations.
-        assert analyzer._unbiased_decorrelated_u_kn.shape[1] < analyzer._decorrelated_u_kn.shape[1]
+        assert analyzer._unbiased_decorrelated_u_ln.shape[1] < analyzer._decorrelated_u_ln.shape[1]
         # The energy without the restraint should always be smaller.
-        assert np.all(analyzer._unbiased_decorrelated_u_kn[0] < analyzer._unbiased_decorrelated_u_kn[1])
-        assert np.all(analyzer._unbiased_decorrelated_u_kn[-1] < analyzer._unbiased_decorrelated_u_kn[-2])
-        assert analyzer._unbiased_decorrelated_N_k[0] == 0
-        assert analyzer._unbiased_decorrelated_N_k[-1] == 0
+        assert np.all(analyzer._unbiased_decorrelated_u_ln[0] < analyzer._unbiased_decorrelated_u_ln[1])
+        assert np.all(analyzer._unbiased_decorrelated_u_ln[-1] < analyzer._unbiased_decorrelated_u_ln[-2])
+        assert analyzer._unbiased_decorrelated_N_l[0] == 0
+        assert analyzer._unbiased_decorrelated_N_l[-1] == 0
 
         # With a ver big energy cutoff, all the energies besides the extra two states should be identical.
         analyzer.restraint_energy_cutoff = 100.0  # kT
-        assert np.array_equal(analyzer._unbiased_decorrelated_u_kn[1:-1], analyzer._decorrelated_u_kn)
-        assert np.array_equal(analyzer._unbiased_decorrelated_N_k[1:-1], analyzer._decorrelated_N_k)
-
+        assert np.array_equal(analyzer._unbiased_decorrelated_u_ln[1:-1], analyzer._decorrelated_u_ln)
+        assert np.array_equal(analyzer._unbiased_decorrelated_N_l[1:-1], analyzer._decorrelated_N_l)
 
     def test_extract_trajectory(self):
         """extract_trajectory handles checkpointing and skip frame correctly."""
