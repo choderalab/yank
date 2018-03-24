@@ -634,7 +634,7 @@ class PhaseAnalyzer(ABC):
         return energy_matrix, samples_per_state
 
     @abc.abstractmethod
-    def get_effective_energy_timeseries(self):
+    def get_effective_energy_timeseries(self, energies=None, states=None):
         """
         Generate the effective energy (negative log deviance) timeseries that is generated for this phase
 
@@ -644,6 +644,16 @@ class PhaseAnalyzer(ABC):
 
         where \pi(x) is the probability density being sampled, and c is an arbitrary constant.
 
+        Parameters
+        ----------
+        energies : ndarray of shape (K,L,N), optional, Default: None
+            Energies from replicas K, sampled states L, and iterations N
+            If provided, then states input_sampled_states must also be provided
+        states : ndarray of shape (K,N), optional, Default: None
+            Integer indices of each sampled state (matching L dimension in input_energy)
+            that each replica K sampled every iteration N.
+            If provided, then states input_energies must also be provided
+
         Returns
         -------
         u_n : ndarray of shape (N,)
@@ -651,6 +661,7 @@ class PhaseAnalyzer(ABC):
             Timeseries used to determine equilibration time and statistical inefficiency.
 
         """
+
         raise NotImplementedError("This class has not implemented this function")
 
     @staticmethod
@@ -921,7 +932,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         logger.info('Replica state index statistical inefficiency is '
                     '{:.3f}'.format(mixing_statistics.statistical_inefficiency))
 
-    def get_effective_energy_timeseries(self):
+    def get_effective_energy_timeseries(self, energies=None, states=None):
         """
         Generate the effective energy (negative log deviance) timeseries that is generated for this phase
 
@@ -931,6 +942,16 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         where \pi(x) is the probability density being sampled, and c is an arbitrary constant.
 
+        Parameters
+        ----------
+        energies : ndarray of shape (K,L,N), optional, Default: None
+            Energies from replicas K, sampled states L, and iterations N
+            If provided, then states input_sampled_states must also be provided
+        states : ndarray of shape (K,N), optional, Default: None
+            Integer indices of each sampled state (matching L dimension in input_energy)
+            that each replica K sampled every iteration N.
+            If provided, then states input_energies must also be provided
+
         Returns
         -------
         u_n : ndarray of shape (N,)
@@ -938,7 +959,14 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             Timeseries used to determine equilibration time and statistical inefficiency.
 
         """
-        energies, _, _, states = self.read_energies()
+        if energies is None and states is None:
+            # Case where no input is provided
+            energies, _, _, states = self.read_energies()
+        elif (energies is not None) != (states is not None):
+            # XOR operator
+            raise ValueError("If input_energy or input_sampled_states are provided, then the other cannot be None "
+                             "due to ambiguity!")
+
         n_replicas, n_states, n_iterations = energies.shape
 
         # Check for log weights
