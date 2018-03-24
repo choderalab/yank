@@ -1427,9 +1427,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         apply_distance_cutoff = restraint_distance_cutoff is not None
 
         # We need to take into account the initial unsampled states to index correctly N_l.
-        state_idx_shift = 0
-        while N_l[state_idx_shift] == 0:
-            state_idx_shift +=1
+        n_unsampled_states = len(u_ln) - self.n_states
+        first_sampled_state_idx = int(n_unsampled_states / 2)
 
         # Determine which samples are outside the cutoffs or have to be truncated.
         columns_to_keep = []
@@ -1437,7 +1436,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             if ((apply_energy_cutoff and energies_ln[iteration_ln_idx] > restraint_energy_cutoff) or
                     (apply_distance_cutoff and distances_ln[iteration_ln_idx] > restraint_distance_cutoff)):
                 # Update the number of samples generated from its state.
-                N_l[state_idx + state_idx_shift] -= 1
+                N_l[state_idx + first_sampled_state_idx] -= 1
             else:
                 columns_to_keep.append(iteration_ln_idx)
 

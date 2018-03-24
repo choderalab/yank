@@ -465,7 +465,7 @@ class TestMultiPhaseAnalyzer(object):
         assert analyzer._unbiased_decorrelated_N_l[0] == 0
         assert analyzer._unbiased_decorrelated_N_l[-1] == 0
 
-        # With a ver big energy cutoff, all the energies besides the extra two states should be identical.
+        # With a very big energy cutoff, all the energies besides the extra two states should be identical.
         analyzer.restraint_energy_cutoff = 100.0  # kT
         assert np.array_equal(analyzer._unbiased_decorrelated_u_ln[1:-1], analyzer._decorrelated_u_ln)
         assert np.array_equal(analyzer._unbiased_decorrelated_N_l[1:-1], analyzer._decorrelated_N_l)
