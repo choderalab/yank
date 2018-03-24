@@ -1441,7 +1441,14 @@ class AlchemicalPhase(object):
             if (max_iterations is None) or (max_iterations == 0):
                 max_iterations = 1000
             logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
-            integrator.step(max_iterations)
+            try:
+                integrator.step(max_iterations)
+            except Exception as e:
+                if str(e) == 'Particle coordinate is nan':
+                    logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS')
+                    openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+                else:
+                    raise e
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
