@@ -31,8 +31,10 @@ import mdtraj
 import numpy as np
 from simtk import openmm
 import simtk.unit as units
+from scipy.misc import logsumexp
 from pymbar import MBAR, timeseries
 import openmmtools as mmtools
+
 
 from . import utils
 
@@ -777,33 +779,91 @@ class PhaseAnalyzer(ABC):
 
         return sampled_energy_matrix, unsampled_energy_matrix, neighborhoods, replicas_state_indices
 
-    @abc.abstractmethod
-    def get_timeseries(self, passed_timeseries, replica_state_indices):
+    @property
+    def has_log_weights(self):
         """
-        Generate the timeseries that is generated for this phase
+        Return True if the storage has log weights, False otherwise
+        """
+        try:
+            # Check that logZ and log_weights have per-iteration data
+            # If either of these return a ValueError, then no history data are available
+            _ = self._reporter.read_logZ(0)
+            _ = self._reporter.read_online_analysis_data(0, 'log_weights')
+            return True
+        except ValueError:
+            return False
+
+    def read_log_weights(self):
+        """
+        Extract log weights from the ncfile, if present.
+        Returns ValueError if not present.
 
         Returns
         -------
-        generated_timeseries : 1-D iterable
-            timeseries which can be fed into get_decorrelation_time to get the decorrelation
-        """
+        log_weights : np.ndarray of shape [n_states, n_iterations]
+            log_weights[l,n] is the log weight applied to state ``l``
+            during the collection of samples at iteration ``n``
 
-        raise NotImplementedError("This class has not implemented this function")
-
-    @abc.abstractmethod
-    def get_timeseries_weights(self, *args):
         """
-        Get the weights for a given timeseries based on this class'es desires
+        log_weights = np.array(
+            self._reporter.read_online_analysis_data(slice(None, None), 'log_weights')['log_weights'])
+        log_weights = np.moveaxis(log_weights, 0, -1)
+        return log_weights
+
+    def read_logZ(self, iteration=None):
+        """
+        Extract logZ estimates from the ncfile, if present.
+        Returns ValueError if not present.
 
         Parameters
         ----------
-        args : arguments to pass to the function to get information out
+        iteration : int or slice, optional, default=None
+            If specified, iteration or slice of iterations to extract
 
         Returns
         -------
-        weights : np.ndarray of shape [K, N]
-            Weights for each sample drawn from each sampler
+        logZ : np.ndarray of shape [n_states, n_iterations]
+            logZ[l,n] is the online logZ estimate for state ``l`` at iteration ``n``
+
         """
+        if iteration == -1:
+            log_z = self._reporter.read_logZ(iteration)
+        else:
+            if iteration is not None:
+                log_z = self._reporter.read_online_analysis_data(iteration, "logZ")["logZ"]
+            else:
+                log_z = self._reporter.read_online_analysis_data(slice(0, None), "logZ")["logZ"]
+            log_z = np.moveaxis(log_z, 0, -1)
+        return log_z
+
+    def get_effective_energy_timeseries(self, energies=None, replica_state_indices=None):
+        """
+        Generate the effective energy (negative log deviance) timeseries that is generated for this phase
+
+        The effective energy for a series of samples x_n, n = 1..N, is defined as
+
+        u_n = - \ln \pi(x_n) + c
+
+        where \pi(x) is the probability density being sampled, and c is an arbitrary constant.
+
+        Parameters
+        ----------
+        energies : ndarray of shape (K,L,N), optional, Default: None
+            Energies from replicas K, sampled states L, and iterations N
+            If provided, then states input_sampled_states must also be provided
+        replica_state_indices : ndarray of shape (K,N), optional, Default: None
+            Integer indices of each sampled state (matching L dimension in input_energy)
+            that each replica K sampled every iteration N.
+            If provided, then states input_energies must also be provided
+
+        Returns
+        -------
+        u_n : ndarray of shape (N,)
+            u_n[n] is the negative log deviance of the same from iteration ``n``
+            Timeseries used to determine equilibration time and statistical inefficiency.
+
+        """
+
         raise NotImplementedError("This class has not implemented this function")
 
     # -------------------------------------------------------------------------
@@ -1187,48 +1247,62 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     # MBAR creation.
     # -------------------------------------------------------------------------
 
-    def get_timeseries_weights(self, iteration_replica_state_indices, iteration):
+    def get_effective_energy_timeseries(self, energies=None, replica_state_indices=None):
         """
-        Return the weights of the timeseries from disk.
+        Generate the effective energy (negative log deviance) timeseries that is generated for this phase.
 
-        For now this is just a placeholder, but may be more complex in the future.
-        """
-        return np.zeros(iteration_replica_state_indices.shape)
+        The effective energy for a series of samples x_n, n = 1..N, is defined as
 
-    def get_timeseries(self, passed_timeseries, replica_state_indices):
-        """
-        Compute the timeseries of a simulation from the Replica Exchange simulation. This is the sum of energies
-        for each sample from the state it was drawn from.
+        u_n = - \ln \pi(x_n) + c
+
+        where \pi(x) is the probability density being sampled, and c is an arbitrary constant.
 
         Parameters
         ----------
-        passed_timeseries : np.ndarray of shape (K,L,N), indexed by k,l,n
-            K is the total number of sampled states
-
-            L is the total states we want MBAR to analyze
-
-            N is the total number of samples
-
-            The kth sample was drawn from state k at iteration n, the nth configuration of kth state is evaluated in
-            thermodynamic state l
-
-        replica_state_indices : np.ndarray of shape (K,N), indexed by k,n
-            Which thermodynamic state l each sample n was drawn from
+        energies : ndarray of shape (K,L,N), optional, Default: None
+            Energies from replicas K, sampled states L, and iterations N.
+            If provided, then states input_sampled_states must also be provided.
+        replica_state_indices : ndarray of shape (K,N), optional, Default: None
+            Integer indices of each sampled state (matching L dimension in input_energy).
+            that each replica K sampled every iteration N.
+            If provided, then states input_energies must also be provided.
 
         Returns
         -------
         u_n : ndarray of shape (N,)
-            Timeseries to compute decorrelation and equilibration data from.
+            u_n[n] is the negative log deviance of the same from iteration ``n``
+            Timeseries used to determine equilibration time and statistical inefficiency.
+
         """
-        n_samplers, _, total_iterations = passed_timeseries.shape
-        u_n = np.zeros([total_iterations], np.float64)
-        sample_slice = range(n_samplers)
-        # Compute total negative log probability over all iterations.
-        for iteration in range(total_iterations):
-            weights = self.get_timeseries_weights(replica_state_indices[:, iteration], iteration)
-            # range(X) needed over : since we want the specific slice and : is too greedy
-            sampled_energy = passed_timeseries[sample_slice, replica_state_indices[:, iteration], iteration] + weights
-            u_n[iteration] = np.sum(sampled_energy)
+        if energies is None and replica_state_indices is None:
+            # Case where no input is provided
+            energies, _, _, replica_state_indices = self._read_energies(truncate_max_n_iterations=True)
+        elif (energies is not None) != (replica_state_indices is not None):
+            # XOR operator
+            raise ValueError("If input_energy or input_sampled_states are provided, "
+                             "then the other cannot be None due to ambiguity!")
+
+        n_replicas, n_states, n_iterations = energies.shape
+
+        # Check for log weights
+        has_log_weights = False
+        if self.has_log_weights:
+            has_log_weights = True
+            log_weights = self.read_log_weights()
+            f_l = - self.read_logZ(iteration=-1)  # use last (best) estimate of free energies
+
+        u_n = np.zeros([n_iterations], np.float64)
+        # Slice of all replicas, have to use this as : is too greedy
+        replicas_slice = range(n_replicas)
+        for iteration in range(n_iterations):
+            # Slice the current sampled states by those replicas.
+            states_slice = replica_state_indices[:, iteration]
+            u_n[iteration] = np.sum(energies[replicas_slice, states_slice, iteration])
+
+            # Correct for potentially-changing log weights
+            if has_log_weights:
+                u_n[iteration] += - np.sum(log_weights[states_slice, iteration]) + (
+                        n_replicas * logsumexp(-f_l[:] + log_weights[:, iteration]))
         return u_n
 
     def _compute_mbar_decorrelated_energies(self):
@@ -1252,8 +1326,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Use the cached information to generate the equilibration data.
         sampled_energy_matrix, unsampled_energy_matrix, neighborhood, replicas_state_indices = energy_data
-        number_equilibrated, g_t, Neff_max = self._get_equilibration_data_auto(
-            input_data=sampled_energy_matrix, replica_state_indices=replicas_state_indices)
+        number_equilibrated, g_t, Neff_max = self._get_equilibration_data(sampled_energy_matrix,
+                                                                          replicas_state_indices)
 
         for i, energies in enumerate(energy_data):
             # Discard equilibration iterations.
@@ -1705,19 +1779,26 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         entropy_dict = self._computed_observables['entropy']
         return entropy_dict['value'], entropy_dict['error']
 
-    def _get_equilibration_data_auto(self, input_data=None, replica_state_indices=None):
-        """
-        Automatically generate the equilibration data from best practices.
+    def _get_equilibration_data(self, energies=None, replica_state_indices=None):
+        """Generate the equilibration data from best practices.
 
         Parameters
         ----------
-        input_data : np.ndarray-like, Optional, Default: None
-            Optionally provide the data to look at. If not provided, uses energies from :func:`extract_energies()`
+        energies : ndarray of shape (K,L,N), optional, Default: None
+            Energies from replicas K, sampled states L, and iterations N.
+            If provided, then replica_state_indices must also be provided.
+        replica_state_indices : ndarray of shape (K,N), optional, Default: None
+            Integer indices of each sampled state (matching L dimension in input_energy).
+            that each replica K sampled every iteration N.
+            If provided, then states input_energies must also be provided.
 
+        Returns
+        -------
+        n_equilibration_iteration : int
+        statistical_inefficiency : float
+        n_effective_iterations : int
         """
-        if input_data is None or replica_state_indices is None:
-            input_data, _, _, replica_state_indices = self._read_energies(truncate_max_n_iterations=True)
-        u_n = self.get_timeseries(input_data, replica_state_indices)
+        u_n = self.get_effective_energy_timeseries(energies, replica_state_indices)
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
@@ -1744,7 +1825,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     @_equilibration_data.default
     def _equilibration_data(self, instance):
-        return instance._get_equilibration_data_auto()
+        return instance._get_equilibration_data()
 
     _decorrelated_state_indices_ln = CachedProperty(
         name='decorrelated_state_indices_ln',

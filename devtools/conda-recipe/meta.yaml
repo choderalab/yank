@@ -21,7 +21,7 @@ requirements:
   run:
     - python
     - pandas
-    - numpy
+    - numpy >=1.11
     - scipy
     - cython
     - netcdf4

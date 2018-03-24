@@ -47,13 +47,10 @@ class BlankPhase(analyze.YankPhaseAnalyzer):
     def analyze_phase(self, *args, **kwargs):
         pass
 
-    def get_states_energies(self):
+    def get_effective_energy_timeseries(self):
         pass
 
-    def get_timeseries(self, passed_timeseries, replica_state_indices):
-        pass
-
-    def get_timeseries_weights(self, *args):
+    def _prepare_mbar_input_data(self):
         pass
 
     @classmethod
@@ -255,7 +252,7 @@ class TestMultiPhaseAnalyzer(object):
         # Test energy output matches appropriate MBAR shapes
         assert u_sampled.shape == (self.n_replicas, self.n_states, self.n_steps)
         assert u_unsampled.shape == (self.n_replicas, 2, self.n_steps)
-        u_n = phase.get_timeseries(u_sampled, sampled_states)
+        u_n = phase.get_effective_energy_timeseries()
         assert u_n.shape == (self.n_steps,)
         # This may need to be adjusted from time to time as analyze changes
         discard = 1
@@ -369,9 +366,9 @@ class TestMultiPhaseAnalyzer(object):
         # Check compound multiphase stuff
         quad_free_energy, quad_dfree_energy = quad.get_free_energy()
         assert quad_free_energy == 0
-        assert quad_dfree_energy == np.sqrt(4*full_dfree_energy**2)
-        assert triple.get_standard_state_correction() == (2*full_phase.get_standard_state_correction() -
-                                                          full_phase.get_standard_state_correction())
+        assert np.allclose(quad_dfree_energy, np.sqrt(4*full_dfree_energy**2))
+        assert np.allclose(triple.get_standard_state_correction(),
+                           (2*full_phase.get_standard_state_correction() - full_phase.get_standard_state_correction()))
 
     def test_yank_registry(self):
         """Test that observable registry is implemented correctly for a given class"""

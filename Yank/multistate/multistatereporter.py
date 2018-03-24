@@ -1055,7 +1055,7 @@ class MultiStateReporter(object):
         logZ : np.array with shape [n_states]
             Dimensionless logZ
         """
-        data = self.read_online_analysis_data(None, "logZ")
+        data = self.read_online_analysis_data(iteration, "logZ")
         return data['logZ']
 
     def write_logZ(self, iteration: int, logZ: np.ndarray):
@@ -1165,12 +1165,15 @@ class MultiStateReporter(object):
 
         Raises
         ------
-        ValueError : If no requested keys were found in the storage.
+        ValueError : If no requested keys were found in the storage or if no online analysis data was written
         """
         collected_variables = {}
         collected_iteration_failure = []
         collected_not_found = []
-        storage = self._storage_analysis.groups["online_analysis"]
+        try:
+            storage = self._storage_analysis.groups["online_analysis"]
+        except KeyError:
+            raise ValueError("Online Analysis information was never written!")
         for variable in keys:
             try:
                 data = self._read_1d_online_data(iteration, variable, storage)
