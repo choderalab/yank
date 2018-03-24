@@ -51,9 +51,6 @@ class BlankPhase(analyze.YankPhaseAnalyzer):
     def _create_mbar_from_scratch(self):
         pass
 
-    def get_states_energies(self):
-        pass
-
     def get_effective_energy_timeseries(self):
         pass
 

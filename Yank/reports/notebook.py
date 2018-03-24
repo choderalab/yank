@@ -16,6 +16,7 @@ from matplotlib import gridspec
 from simtk import unit as units
 from .. import version
 from .. import analyze
+from pymbar import MBAR
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
@@ -70,6 +71,7 @@ class HealthReportData(object):
         # Replica mixing
         self._replica_mixing_run = False
         self._free_energy_run = False
+        self._serialized_data = {}
 
     def general_simulation_data(self):
         """
@@ -79,17 +81,22 @@ class HealthReportData(object):
         iterations = {}
         nstates = {}
         natoms = {}
+        nreplicas = {}
         for phase_name in self.phase_names:
+            if phase_name not in self._serialized_data:
+                self._serialized_data[phase_name] = {}
+            self._serialized_data[phase_name]['general'] = {}
             analyzer = self.analyzers[phase_name]
             try:
                 positions = analyzer.reporter.read_sampler_states(0)[0].positions
                 natoms[phase_name], _ = positions.shape
             except AttributeError:  # Trap unloaded checkpoint file
                 natoms[phase_name] = 'No Cpt.'
-            energies, _ = analyzer.reporter.read_energies()
-            iterations[phase_name], nstates[phase_name], _ = energies.shape
+            energies, _, _, = analyzer.reporter.read_energies()
+            iterations[phase_name], nreplicas[phase_name], nstates[phase_name] = energies.shape
 
         leniter = max(len('Iterations'), *[len(str(i)) for i in iterations.values()]) + 2
+        lenreplica = max(len('Replicas'), *[len(str(i)) for i in nreplicas.values()]) + 2
         lenstates = max(len('States'), *[len(str(i)) for i in nstates.values()]) + 2
         lennatoms = max(len('Num Atoms'), *[len(str(i)) for i in natoms.values()]) + 2
         lenleftcol = max(len('Phase'), *[len(phase) for phase in self.phase_names]) + 2
@@ -98,6 +105,7 @@ class HealthReportData(object):
         headstring = ''
         headstring += ('{:^' + '{}'.format(lenleftcol) + '}').format('Phase') + '|'
         headstring += ('{:^' + '{}'.format(leniter) + '}').format('Iterations') + '|'
+        headstring += ('{:^' + '{}'.format(lenreplica) + '}').format('Replicas') + '|'
         headstring += ('{:^' + '{}'.format(lenstates) + '}').format('States') + '|'
         headstring += ('{:^' + '{}'.format(lennatoms) + '}').format('Num Atoms')
         lines.append(headstring)
@@ -106,8 +114,16 @@ class HealthReportData(object):
         lines.append(topdiv)
         for phase in self.phase_names:
             phasestring = ''
+            serial = self._serialized_data[phase]['general']
             phasestring += ('{:^' + '{}'.format(lenleftcol) + '}').format(phase) + '|'
+            phase_iter = iterations[phase]
+            serial['iterations'] = phase_iter
             phasestring += ('{:^' + '{}'.format(leniter) + '}').format(iterations[phase]) + '|'
+            phase_states = nstates[phase]
+            serial['states'] = phase_states
+            phasestring += ('{:^' + '{}'.format(lenreplica) + '}').format(nreplicas[phase]) + '|'
+            phase_atoms = natoms[phase]
+            serial['natoms'] = phase_atoms
             phasestring += ('{:^' + '{}'.format(lenstates) + '}').format(nstates[phase]) + '|'
             phasestring += ('{:^' + '{}'.format(lennatoms) + '}').format(natoms[phase])
             lines.append(phasestring)
@@ -136,22 +152,27 @@ class HealthReportData(object):
         # Add some space between the figures
         equilibration_figure.subplots_adjust(hspace=0.4)
         for i, phase_name in enumerate(self.phase_names):
+            if phase_name not in self._serialized_data:
+                self._serialized_data[phase_name] = {}
+            self._serialized_data[phase_name]['equilibration'] = {}
+            serial = self._serialized_data[phase_name]['equilibration']
             sub_grid = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=plot_grid[i])
             analyzer = self.analyzers[phase_name]
-
             # Data crunching to get timeseries
-            u_kln, _ = analyzer.get_states_energies()
             # TODO: Figure out how not to discard the first sample
             # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
             # This throws off all of the equilibrium data
-            u_kln = u_kln[:, :, discard_from_start:]
             self._n_discarded = discard_from_start
-            self.u_ns[phase_name] = analyzer.get_timeseries(u_kln)
+            self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[discard_from_start:]
             # Timeseries statistics
             g_t, Neff_t = analyze.multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
             self.Neff_maxs[phase_name] = Neff_t.max()
             self.nequils[phase_name] = Neff_t.argmax()
             self.g_ts[phase_name] = g_t[int(self.nequils[phase_name])]
+            serial['discarded_from_start'] = int(discard_from_start)
+            serial['effective_samples'] = float(self.Neff_maxs[phase_name])
+            serial['equilibration_samples'] = int(self.nequils[phase_name])
+            serial['subsample_rate'] = float(self.g_ts[phase_name])
 
             # FIRST SUBPLOT: energy scatter
             # Attach subplot to figure
@@ -223,6 +244,53 @@ class HealthReportData(object):
         self._equilibration_run = True
         return equilibration_figure
 
+    def compute_rmsds(self):
+        return NotImplementedError("This function is still a prototype and has segfault issues, please disable for now")
+        # """Compute the RMSD of the ligand and the receptor by state"""
+        # if not self._equilibration_run:
+        #     raise RuntimeError("Cannot run RMSD without first running the equilibration. Please run the "
+        #                        "corresponding function/cell first!")
+        # plt.rcParams['figure.figsize'] = 20, 6 * self.nphases * 2
+        # rmsd_figure, subplots = plt.subplots(2, 1)
+        # for i, phase_name in enumerate(self.phase_names):
+        #     if phase_name not in self._serialized_data:
+        #         self._serialized_data[phase_name] = {}
+        #     self._serialized_data[phase_name]['rmsd'] = {}
+        #     serial = self._serialized_data[phase_name]['rmsd']
+        #     analyzer = self.analyzers[phase_name]
+        #     reporter = analyzer.reporter
+        #     metadata = reporter.read_dict('metadata')
+        #     topography = mmtools.utils.deserialize(metadata['topography'])
+        #     topology = topography.topology
+        #     test_positions = reporter.read_sampler_states(0, analysis_particles_only=True)[0]
+        #     atoms_analysis = test_positions.positions.shape[0]
+        #     topology = topology.subset(range(atoms_analysis))
+        #     iterations = self.iterations[phase_name]
+        #     positions = np.zeros([iterations, atoms_analysis, 3])
+        #     for j in range(iterations):
+        #         sampler_states = reporter.read_sampler_states(j, analysis_particles_only=True)
+        #         # Deconvolute
+        #         thermo_states = reporter.read_replica_thermodynamic_states(iteration=j)
+        #         sampler = sampler_states[thermo_states[0]]
+        #         positions[j, :, :] = sampler.positions
+        #     trajectory = md.Trajectory(positions, topology)
+        #     rmsd_ligand = md.rmsd(trajectory, trajectory, frame=0, atom_indices=topography.ligand_atoms)
+        #     rmsd_recpetor = md.rmsd(trajectory, trajectory, frame=0, atom_indices=topography.receptor_atoms)
+        #     serial['ligand'] = rmsd_ligand.tolist()
+        #     serial['receptor'] = rmsd_recpetor.tolist()
+        #     p = subplots[i]
+        #     x = range(iterations)
+        #     p.set_title(phase_name + " phase", fontsize=20)
+        #     p.plot(x, rmsd_ligand, label='Ligand RMSD')
+        #     p.plot(x, rmsd_recpetor, label='Receptor RMSD')
+        #     p.legend()
+        #     p.set_xlim([0, iterations])
+        #     ylim = p.get_ylim()
+        #     p.set_ylim([0, ylim[-1]])
+        #     p.set_ylabel(r'RMSD (nm)', fontsize=20)
+        #     p.set_xlabel(r'Iteration', fontsize=20)
+        # return rmsd_figure
+
     def generate_decorrelation_plots(self, decorrelation_threshold=0.1):
         """
 
@@ -247,8 +315,8 @@ class HealthReportData(object):
         decorrelation_figure.subplots_adjust(wspace=0.2)
         plotkeys = [100 + (10 * self.nphases) + (i + 1) for i in range(self.nphases)]  # Horizonal distribution
         for phase_name, plotid in zip(self.phase_names, plotkeys):
+            serial = self._serialized_data[phase_name]['equilibration']  # This will exist because of _equilibration_run
             # Create subplot
-            analyzer = self.analyzers[phase_name]
             p = decorrelation_figure.add_subplot(plotid)
             # Determine toal number of iterations
             N = self.iterations[phase_name]
@@ -260,6 +328,12 @@ class HealthReportData(object):
             decor = int(np.floor(self.Neff_maxs[phase_name]))
             cor = N - eq - decor
             dat = np.array([decor, cor, eq]) / float(N)
+            serial['count_total_equilibration_samples'] = int(eq)
+            serial['count_decorrelated_samples'] = int(decor)
+            serial['count_correlated_samples'] = int(cor)
+            serial['percent_total_equilibration_samples'] = float(dat[2])
+            serial['percent_decorrelated_samples'] = float(dat[0])
+            serial['percent_correlated_samples'] = float(dat[1])
             if dat[0] <= decorrelation_threshold:
                 colors[0] = '#d7191c'  # Red for warning
             patch, txt, autotxt = p.pie(
@@ -350,11 +424,18 @@ class HealthReportData(object):
 
         # Plot a diffusing mixing map for each phase.
         for phase_name, subplot in zip(self.phase_names, subplots):
+            if phase_name not in self._serialized_data:
+                self._serialized_data[phase_name] = {}
+            self._serialized_data[phase_name]['mixing'] = {}
+            serial = self._serialized_data[phase_name]['mixing']
             # Generate mixing statistics.
             analyzer = self.analyzers[phase_name]
             mixing_statistics = analyzer.generate_mixing_statistics(
                 number_equilibrated=self.nequils[phase_name])
             transition_matrix, eigenvalues, statistical_inefficiency = mixing_statistics
+            serial['transitions'] = transition_matrix.tolist()
+            serial['eigenvalues'] = eigenvalues.tolist()
+            serial['stat_inefficiency'] = float(statistical_inefficiency)
 
             # Without vmin/vmax, the image normalizes the values to mixing_data.max
             # which screws up the warning colormap.
@@ -503,6 +584,133 @@ class HealthReportData(object):
             calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
                                                dDeltaH * kT / units.kilocalories_per_mole))
         self._free_energy_run = True
+
+    def free_energy_trace(self, discard_from_start=1, n_trace=10):
+        """
+        Trace the free energy by keeping fewer and fewer samples in both forward and reverse direction
+
+        Returns
+        -------
+        free_energy_trace_figure : matplotlib.figure
+            Figure showing the equilibration between both phases
+
+        """
+
+        trace_spacing = 1.0/n_trace
+
+        def format_trace_plot(plot: plt.Axes, trace_forward: np.ndarray, trace_reverse: np.ndarray):
+            x = np.arange(n_trace + 1)[1:] * trace_spacing * 100
+            plot.errorbar(x, trace_forward[:, 0], yerr=2 * trace_forward[:, 1], ecolor='b',
+                          elinewidth=0, mec='none', mew=0, linestyle='None',
+                          zorder=10)
+            plot.plot(x, trace_forward[:, 0], 'b-', marker='o', mec='b', mfc='w', label='Forward', zorder=20,)
+            plot.errorbar(x, trace_reverse[:, 0], yerr=2 * trace_reverse[:, 1], ecolor='r',
+                          elinewidth=0, mec='none', mew=0, linestyle='None',
+                          zorder=10)
+            plot.plot(x, trace_reverse[:, 0], 'r-', marker='o', mec='r', mfc='w', label='Reverse', zorder=20)
+            y_fill_upper = [trace_forward[-1, 0] + 2 * trace_forward[-1, 1]] * 2
+            y_fill_lower = [trace_forward[-1, 0] - 2 * trace_forward[-1, 1]] * 2
+            xlim = [0, 100]
+            plot.fill_between(xlim, y_fill_lower, y_fill_upper, color='orchid', zorder=5)
+            plot.set_xlim(xlim)
+            plot.legend()
+            plot.set_xlabel("% Samples Analyzed", fontsize=20)
+            plot.set_ylabel(r"$\Delta G$ in kcal/mol", fontsize=20)
+        # Adjust figure size
+        plt.rcParams['figure.figsize'] = 15, 6 * (self.nphases + 1) * 2
+        plot_grid = gridspec.GridSpec(self.nphases + 1, 1)  # Vertical distribution
+        free_energy_trace_figure = plt.figure()
+        # Add some space between the figures
+        free_energy_trace_figure.subplots_adjust(hspace=0.4)
+        traces = {}
+        for i, phase_name in enumerate(self.phase_names):
+            traces[phase_name] = {}
+            if phase_name not in self._serialized_data:
+                self._serialized_data[phase_name] = {}
+            serial = self._serialized_data[phase_name]
+            if "free_energy" not in serial:
+                serial["free_energy"] = {}
+            serial = serial["free_energy"]
+            free_energy_trace_f = np.zeros([n_trace, 2], dtype=float)
+            free_energy_trace_r = np.zeros([n_trace, 2], dtype=float)
+            p = free_energy_trace_figure.add_subplot(plot_grid[i])
+            analyzer = self.analyzers[phase_name]
+            kcal = analyzer.kT / units.kilocalorie_per_mole
+            # Data crunching to get timeseries
+            sampled_energies, _, _, states = analyzer.read_energies()
+            n_replica, n_states, _ = sampled_energies.shape
+            # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
+            # This throws off all of the equilibrium data
+            sampled_energies = sampled_energies[:, :, discard_from_start:]
+            states = states[:, discard_from_start:]
+            total_iterations = sampled_energies.shape[-1]
+            for trace_factor in range(n_trace, 0, -1):  # Reverse order tracing
+                trace_percent = trace_spacing*trace_factor
+                j = trace_factor - 1  # Indexing
+                kept_iterations = int(np.ceil(trace_percent*total_iterations))
+                u_forward = sampled_energies[:, :, :kept_iterations]
+                s_forward = states[:, :kept_iterations]
+                u_reverse = sampled_energies[:, :, -1:-kept_iterations-1:-1]
+                s_reverse = states[:, -1:-kept_iterations - 1:-1]
+                for energy_sub, state_sub, storage in [
+                        (u_forward, s_forward, free_energy_trace_f), (u_reverse, s_reverse, free_energy_trace_r)]:
+                    u_n = analyzer.get_effective_energy_timeseries(energies=energy_sub, states=state_sub)
+                    number_equilibrated, g_t, neff_max = analyze.multistate.utils.get_equilibration_data(u_n)
+                    energy_sub = analyze.multistate.utils.remove_unequilibrated_data(energy_sub,
+                                                                                     number_equilibrated,
+                                                                                     -1)
+                    state_sub = analyze.multistate.utils.remove_unequilibrated_data(state_sub, number_equilibrated, -1)
+                    energy_sub = analyze.multistate.utils.subsample_data_along_axis(energy_sub, g_t, -1)
+                    state_sub = analyze.multistate.utils.subsample_data_along_axis(state_sub, g_t, -1)
+                    samples_per_state = np.zeros([n_states], dtype=int)
+                    unique_sampled_states, counts = np.unique(state_sub, return_counts=True)
+                    # Assign those counts to the correct range of states
+                    samples_per_state[unique_sampled_states] = counts
+                    mbar = MBAR(energy_sub, samples_per_state)
+                    fe_data = mbar.getFreeEnergyDifferences(compute_uncertainty=True)
+                    # Trap theta_ij output
+                    try:
+                        fe, dfe, _ = fe_data
+                    except ValueError:
+                        fe, dfe = fe_data
+                    ref_i, ref_j = analyzer.reference_states
+                    storage[j, :] = fe[ref_i, ref_j] * kcal, dfe[ref_i, ref_j] * kcal
+            format_trace_plot(p, free_energy_trace_f, free_energy_trace_r)
+            p.set_title("{} Phase".format(phase_name.title()), fontsize=20)
+            traces[phase_name]['f'] = free_energy_trace_f
+            traces[phase_name]['r'] = free_energy_trace_r
+            serial['forward'] = free_energy_trace_f.tolist()
+            serial['reverse'] = free_energy_trace_r.tolist()
+        # Finally handle last combined plot
+        combined_trace_f = np.zeros([n_trace, 2], dtype=float)
+        combined_trace_r = np.zeros([n_trace, 2], dtype=float)
+        for phase_name in self.phase_names:
+            phase_f = traces[phase_name]['f']
+            phase_r = traces[phase_name]['r']
+            combined_trace_f[:, 0] += phase_f[:, 0]
+            combined_trace_f[:, 1] = np.sqrt(combined_trace_f[:, 1]**2 + phase_f[:, 1]**2)
+            combined_trace_r[:, 0] += phase_r[:, 0]
+            combined_trace_r[:, 1] = np.sqrt(combined_trace_r[:, 1] ** 2 + phase_r[:, 1] ** 2)
+        p = free_energy_trace_figure.add_subplot(plot_grid[-1])
+        format_trace_plot(p, combined_trace_f, combined_trace_r)
+        p.set_title("Combined Phases", fontsize=20)
+
+        return free_energy_trace_figure
+
+    def report_version(self):
+        current_version = version.version
+        self._serialized_data['yank_version'] = current_version
+        print("Rendered with YANK Version {}".format(current_version))
+
+    def dump_serial_data(self, path):
+        """Dump the serialized data to YAML file"""
+        true_path, ext = os.path.splitext(path)
+        if not ext:  # empty string check
+            ext = '.yaml'
+        true_path += ext
+        with open(true_path, 'w') as f:
+            f.write(yaml.dump(self._serialized_data))
+
 
     @staticmethod
     def report_version():
