@@ -354,9 +354,9 @@ class TestMultiPhaseAnalyzer(object):
         # Check compound multiphase stuff
         quad_free_energy, quad_dfree_energy = quad.get_free_energy()
         assert quad_free_energy == 0
-        assert quad_dfree_energy == np.sqrt(4*full_dfree_energy**2)
-        assert triple.get_standard_state_correction() == (2*full_phase.get_standard_state_correction() -
-                                                          full_phase.get_standard_state_correction())
+        assert np.allclose(quad_dfree_energy, np.sqrt(4*full_dfree_energy**2))
+        assert np.allclose(triple.get_standard_state_correction(),
+                           (2*full_phase.get_standard_state_correction() - full_phase.get_standard_state_correction()))
 
     def test_extract_trajectory(self):
         """extract_trajectory handles checkpointing and skip frame correctly."""

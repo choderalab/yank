@@ -1165,12 +1165,15 @@ class MultiStateReporter(object):
 
         Raises
         ------
-        ValueError : If no requested keys were found in the storage.
+        ValueError : If no requested keys were found in the storage or if no online analysis data was written
         """
         collected_variables = {}
         collected_iteration_failure = []
         collected_not_found = []
-        storage = self._storage_analysis.groups["online_analysis"]
+        try:
+            storage = self._storage_analysis.groups["online_analysis"]
+        except KeyError:
+            raise ValueError("Online Analysis information was never written!")
         for variable in keys:
             try:
                 data = self._read_1d_online_data(iteration, variable, storage)

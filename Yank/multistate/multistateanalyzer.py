@@ -28,10 +28,9 @@ from typing import Optional, NamedTuple, Union
 
 import numpy as np
 import simtk.unit as units
+from scipy.misc import logsumexp
 from pymbar import MBAR, timeseries
 
-# TODO: Should we import this from pymbar instead?
-from scipy.misc import logsumexp
 
 from . import utils
 
@@ -525,11 +524,14 @@ class PhaseAnalyzer(ABC):
         """
         Return True if the storage has log weights, False otherwise
         """
-        # TODO: Add general API points for reporter so we don't have to access NetCDF variables directly
-        groups = self._reporter._storage_analysis.groups
-        if ('online_analysis' in groups) and ('logZ' in groups['online_analysis'].variables) and ('log_weights_history' in groups['online_analysis'].variables):
+        try:
+            # Check that logZ and log_weights have per-iteration data
+            # If either of these return a ValueError, then no history data are available
+            _ = self._reporter.read_logZ(0)
+            _ = self._reporter.read_online_analysis_data(0, 'log_weights')
             return True
-        return False
+        except ValueError:
+            return False
 
     def read_log_weights(self):
         """
@@ -539,11 +541,12 @@ class PhaseAnalyzer(ABC):
         Returns
         -------
         log_weights : np.ndarray of shape [n_states, n_iterations]
-            log_weights[l,n] is the log weight applied to state ``l`` during the collection of samples at iteration ``n``
+            log_weights[l,n] is the log weight applied to state ``l``
+            during the collection of samples at iteration ``n``
 
         """
-        # TODO: Add general API points for reporter so we don't have to access NetCDF variables directly
-        log_weights = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['log_weights_history'])
+        log_weights = np.array(
+            self._reporter.read_online_analysis_data(slice(None, None), 'log_weights')['log_weights'])
         log_weights = np.moveaxis(log_weights, 0, -1)
         return log_weights
 
@@ -563,16 +566,15 @@ class PhaseAnalyzer(ABC):
             logZ[l,n] is the online logZ estimate for state ``l`` at iteration ``n``
 
         """
-        # TODO: Add general API points for reporter so we don't have to access NetCDF variables directly
         if iteration == -1:
-            logZ = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['logZ'])
-        elif iteration is not None:
-            logZ = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['logZ_history'][iteration,:])
-            logZ = np.moveaxis(logZ, 0, -1)
+            log_z = self._reporter.read_logZ(iteration)
         else:
-            logZ = np.array(self._reporter._storage_analysis.groups["online_analysis"].variables['logZ_history'])
-            logZ = np.moveaxis(logZ, 0, -1)
-        return logZ
+            if iteration is not None:
+                log_z = self._reporter.read_online_analysis_data(iteration, "logZ")["logZ"]
+            else:
+                log_z = self._reporter.read_online_analysis_data(slice(0, None), "logZ")["logZ"]
+            log_z = np.moveaxis(log_z, 0, -1)
+        return log_z
 
     @abc.abstractmethod
     def _create_mbar_from_scratch(self):
@@ -944,17 +946,19 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         if self.has_log_weights:
             has_log_weights = True
             log_weights = self.read_log_weights()
-            f_l = - self.read_logZ(iteration=-1) # use last (best) estimate of free energies
+            f_l = - self.read_logZ(iteration=-1)  # use last (best) estimate of free energies
 
         u_n = np.zeros([n_iterations], np.float64)
+        # Slice of all replicas, have to use this as : is too greedy
+        replicas_slice = range(n_replicas)
         for iteration in range(n_iterations):
-            replicas_slice = range(n_replicas) # slice of all replicas
-            states_slice = states[:, iteration] # slice of current sampled states by those replicas
+            states_slice = states[:, iteration]  # slice of current sampled states by those replicas
             u_n[iteration] = np.sum(energies[replicas_slice, states_slice, iteration])
 
             # Correct for potentially-changing log weights
             if has_log_weights:
-                u_n[iteration] += - np.sum(log_weights[states_slice, iteration]) + n_replicas * logsumexp(-f_l[:] + log_weights[:,iteration])
+                u_n[iteration] += - np.sum(log_weights[states_slice, iteration]) + (
+                        n_replicas * logsumexp(-f_l[:] + log_weights[:, iteration]))
 
         return u_n
 
