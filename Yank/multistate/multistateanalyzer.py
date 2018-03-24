@@ -339,6 +339,86 @@ default_observables_registry.register_two_state_observable('entropy', error_clas
 default_observables_registry.register_two_state_observable('enthalpy', error_class='quad')
 
 
+# -----------------------------------------------------------------------------
+# Cached properties descriptor.
+# -----------------------------------------------------------------------------
+
+class CachedProperty(object):
+    """Analyzer helper descriptor of a cached value with a dependency graph.
+
+    Automatically takes care of invalidating the values of the cache
+    that depend on this property.
+
+    Parameters
+    ----------
+    name : str
+        The name of the parameter in the cache.
+    dependencies : iterable of str
+        List of cached properties on which this property depends.
+    check_changes : bool, optional
+        If True, the cache dependencies will be invalidated only if
+        the new value differs from the old one (default is False).
+    default : object, optional
+        The default value in case the cache doesn't contain a value
+        for this. If a callable, this function must have the signature
+        ``default(self, instance)``. It is also possible to define a
+        callable default through the ``default`` decorator. After the
+        first cache miss, the default value is cached. By default,
+        AttributeError is raised on a cache miss.
+    validator : callable, optional
+        A function to call before setting a new value with signature
+        ``validator(self, instance, new_value)``. It is also possible
+        to define this through the ``validator`` decorator.
+
+    """
+    def __init__(self, name, dependencies=(), check_changes=False,
+                 default=AttributeError, validator=None):
+        # Reserved names.
+        # TODO make observables CachedProperties?
+        assert name != 'observables'
+        assert name != 'reporter'
+        # TODO use __setname__() when dropping Python 3.5 support.
+        self.name = name
+        self.dependencies = dependencies
+        self._default = default
+        self._validator = validator
+        self._check_changes = check_changes
+
+    def __get__(self, instance, owner_class=None):
+        # If called as a class descriptor, return the descriptor.
+        if instance is None:
+            return self
+        # Check if the value is cached and fall back to default value.
+        try:
+            value = instance._cache[self.name]
+        except KeyError:
+            value = self._get_default(instance)
+            # Cache default value for next use.
+            instance._update_cache(self.name, value, self._check_changes)
+        return value
+
+    def __set__(self, instance, new_value):
+        if self._validator is not None:
+            new_value = self._validator(self, instance, new_value)
+        instance._update_cache(self.name, new_value, self._check_changes)
+
+    def validator(self, validator):
+        return type(self)(self.name, self.dependencies, self._check_changes, self._default, validator)
+
+    def default(self, default):
+        return type(self)(self.name, self.dependencies, self._check_changes, default, self._validator)
+
+    def _get_default(self, instance):
+        if self._default is AttributeError:
+            err_msg = 'Reference before assignment {}.{}'.format(instance, self.name)
+            raise AttributeError(err_msg)
+        elif callable(self._default):
+            value = self._default(self, instance)
+        else:
+            value = self._default
+        return value
+
+
 # ---------------------------------------------------------------------------------------------
 # Phase Analyzers
 # ---------------------------------------------------------------------------------------------
@@ -560,77 +640,12 @@ class PhaseAnalyzer(ABC):
     # Cached properties functions/classes.
     # -------------------------------------------------------------------------
 
-    class CachedProperty(object):
-        """Descriptor of a cached value with a dependency graph.
-
-        Automatically takes care of invalidating the values of the cache
-        that depend on this property.
-
-        Parameters
-        ----------
-        name : str
-            The name of the parameter in the cache.
-        default : object, optional
-            The default value in case the cache doesn't contain a value
-            for this. If a callable, this function must have the signature
-            ``default(instance)``. After the first cache miss, the default
-            value is cached. By default, AttributeError is raised on a
-            cache miss.
-        validator : callable, optional
-            A function to call before setting a new value with signature
-            ``validator(instance, new_value)``.
-        check_changes : bool, optional
-            If True, the cache dependencies will be invalidated only if
-            the new value differs from the old one (default is False).
-
-        """
-        def __init__(self, name, dependencies=(), default=AttributeError,
-                     validator=None, check_changes=False):
-            # Reserved names.
-            # TODO make observables CachedProperties?
-            assert name != 'observables'
-            assert name != 'reporter'
-            # TODO use __setname__() when dropping Python 3.5 support.
-            self.name = name
-            self.dependencies = dependencies
-            self._default = default
-            self._validator = validator
-            self._check_changes = check_changes
-
-        def __get__(self, instance, owner_class=None):
-            # If called as a class descriptor, return the descriptor.
-            if instance is None:
-                return self
-            # Check if the value is cached and fall back to default value.
-            try:
-                value = instance._cache[self.name]
-            except KeyError:
-                value = self._get_default(instance)
-                # Cache default value for next use.
-                instance._update_cache(self.name, value, self._check_changes)
-            return value
-
-        def __set__(self, instance, new_value):
-            if self._validator is not None:
-                new_value = self._validator(instance, new_value)
-            instance._update_cache(self.name, new_value, self._check_changes)
-
-        def _get_default(self, instance):
-            if self._default is AttributeError:
-                err_msg = 'Reference before assignment {}.{}'.format(instance, self.name)
-                raise AttributeError(err_msg)
-            elif callable(self._default):
-                value = self._default(instance)
-            else:
-                value = self._default
-            return value
-
     @classmethod
     def _get_cache_dependency_graph(cls):
         """dict: cached_value -> list of cache values to invalidate."""
         # Retrieve all cached properties.
         cached_properties = {value for name, value in inspect.getmembers(cls)
-                             if isinstance(value, cls.CachedProperty)}
+                             if isinstance(value, CachedProperty)}
         # Build the dependency graph.
         dependency_graph = {}
         for cached_property in cached_properties:
@@ -696,18 +711,14 @@ class PhaseAnalyzer(ABC):
     # Cached properties.
     # -------------------------------------------------------------------------
 
-    @staticmethod
-    def _max_n_iterations_validator(instance, new_value):
+    max_n_iterations = CachedProperty('max_n_iterations', check_changes=True)
+
+    @max_n_iterations.validator
+    def max_n_iterations(self, instance, new_value):
         """The maximum allowed value for max_n_iterations is n_iterations."""
         if new_value is None or new_value > instance.n_iterations:
             new_value = instance.n_iterations
         return new_value
-
-    max_n_iterations = CachedProperty(
-        name='max_n_iterations',
-        validator=_max_n_iterations_validator.__func__,
-        check_changes=True
-    )
 
     # -------------------------------------------------------------------------
     # Abstract methods.
@@ -1721,28 +1732,27 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     # Cached properties.
     # -------------------------------------------------------------------------
 
-    unbias_restraint = PhaseAnalyzer.CachedProperty(
-        name='unbias_restraint',
-        check_changes=True,
-    )
-    restraint_energy_cutoff = PhaseAnalyzer.CachedProperty(
-        name='restraint_energy_cutoff',
-        check_changes=True,
-    )
-    restraint_distance_cutoff = PhaseAnalyzer.CachedProperty(
-        name='restraint_distance_cutoff',
-        check_changes=True
-    )
+    unbias_restraint = CachedProperty('unbias_restraint', check_changes=True)
+    restraint_energy_cutoff = CachedProperty('restraint_energy_cutoff', check_changes=True)
+    restraint_distance_cutoff = CachedProperty('restraint_distance_cutoff', check_changes=True)
 
-    _equilibration_data = PhaseAnalyzer.CachedProperty(
+    _equilibration_data = CachedProperty(
         name='equilibration_data',
         dependencies=['reporter', 'max_n_iterations'],
         check_changes=True,
-        default=lambda instance: instance._get_equilibration_data_auto()
     )
 
-    @staticmethod
-    def _decorrelated_state_indices_ln_default_func(instance):
+    @_equilibration_data.default
+    def _equilibration_data(self, instance):
+        return instance._get_equilibration_data_auto()
+
+    _decorrelated_state_indices_ln = CachedProperty(
+        name='decorrelated_state_indices_ln',
+        dependencies=['equilibration_data'],
+    )
+
+    @_decorrelated_state_indices_ln.default
+    def _decorrelated_state_indices_ln(self, instance):
         """Compute the replica thermodynamic state indices in ln formats."""
         decorrelated_iterations = instance._decorrelated_iterations  # Shortcut.
         replica_state_indices = instance._reporter.read_replica_thermodynamic_states()
@@ -1762,39 +1772,53 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         instance._decorrelated_state_indices_ln = decorrelated_state_indices_ln
         return decorrelated_state_indices_ln
 
-    _decorrelated_state_indices_ln = PhaseAnalyzer.CachedProperty(
-        name='decorrelated_state_indices_ln',
-        dependencies=['equilibration_data'],
-        default=_decorrelated_state_indices_ln_default_func.__func__
-    )
-    _decorrelated_u_ln = PhaseAnalyzer.CachedProperty(
+    _decorrelated_u_ln = CachedProperty(
         name='decorrelated_u_ln',
         dependencies=['equilibration_data'],
-        default=lambda instance: instance._compute_mbar_decorrelated_energies()[0]
     )
-    _decorrelated_N_l = PhaseAnalyzer.CachedProperty(
+
+    @_decorrelated_u_ln.default
+    def _decorrelated_u_ln(self, instance):
+        return instance._compute_mbar_decorrelated_energies()[0]
+
+    _decorrelated_N_l = CachedProperty(
         name='decorrelated_N_l',
         dependencies=['equilibration_data'],
-        default=lambda instance: instance._compute_mbar_decorrelated_energies()[1]
     )
-    _unbiased_decorrelated_u_ln = PhaseAnalyzer.CachedProperty(
+
+    @_decorrelated_N_l.default
+    def _decorrelated_N_l(self, instance):
+        return instance._compute_mbar_decorrelated_energies()[1]
+
+    _unbiased_decorrelated_u_ln = CachedProperty(
         name='unbiased_decorrelated_u_ln',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
                       'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l'],
-        default=lambda instance: instance._compute_mbar_unbiased_energies()[0]
     )
-    _unbiased_decorrelated_N_l = PhaseAnalyzer.CachedProperty(
+
+    @_unbiased_decorrelated_u_ln.default
+    def _unbiased_decorrelated_u_ln(self, instance):
+        return instance._compute_mbar_unbiased_energies()[0]
+
+    _unbiased_decorrelated_N_l = CachedProperty(
         name='unbiased_decorrelated_N_l',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
                       'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l'],
-        default=lambda instance: instance._compute_mbar_unbiased_energies()[1]
     )
-    mbar = PhaseAnalyzer.CachedProperty(
+
+    @_unbiased_decorrelated_N_l.default
+    def _unbiased_decorrelated_N_l(self, instance):
+        return instance._compute_mbar_unbiased_energies()[1]
+
+    mbar = CachedProperty(
         name='mbar',
         dependencies=['unbiased_decorrelated_u_ln', 'unbiased_decorrelated_N_l'],
-        default=lambda instance: instance._create_mbar(instance._unbiased_decorrelated_u_ln,
-                                                       instance._unbiased_decorrelated_N_l)
     )
+
+    @mbar.default
+    def mbar(self, instance):
+        return instance._create_mbar(instance._unbiased_decorrelated_u_ln,
+                                     instance._unbiased_decorrelated_N_l)
 
     # -------------------------------------------------------------------------
     # Dynamic properties.
