@@ -504,35 +504,45 @@ class HealthReportData(object):
             Figure showing the replica state trajectories for both phases
 
         """
+        # Determine max number of states
+        max_n_replicas = 0
+        for i, phase_name in enumerate(self.phase_names):
+            # Gather state NK
+            analyzer = self.analyzers[phase_name]
+            sampled_energies, _, _, state_kn = analyzer.read_energies()
+            n_replicas, n_states, n_iterations = sampled_energies.shape
+            max_n_replicas = max(n_replicas, max_n_replicas)
+
         # Create Parent Gridspec
         if phase_stacked_replica_plots:
             plot_grid = gridspec.GridSpec(2, 1)
-            plt.rcParams['figure.figsize'] = 20, 8 * 6
+            plt.rcParams['figure.figsize'] = 20, max_n_replicas * 6
         else:
             plot_grid = gridspec.GridSpec(1, 2)
-            plt.rcParams['figure.figsize'] = 20, 8 * 3
+            plt.rcParams['figure.figsize'] = 20, max_n_replicas * 3
         replica_figure = plt.figure()
         for i, phase_name in enumerate(self.phase_names):
             # Gather state NK
-            reporter = self.analyzers[phase_name].reporter
-            state_nk = reporter.read_replica_thermodynamic_states()[:, :]
-            N, K = state_nk.shape
+            analyzer = self.analyzers[phase_name]
+            sampled_energies, _, _, state_kn = analyzer.read_energies()
+            n_replicas, n_states, n_iterations = sampled_energies.shape
+
             # Create subgrid
-            sub_grid = gridspec.GridSpecFromSubplotSpec(K, 1, subplot_spec=plot_grid[i])
+            sub_grid = gridspec.GridSpecFromSubplotSpec(n_replicas, 1, subplot_spec=plot_grid[i])
             # Loop through all states
-            for k in range(K):
+            for replica_index in range(n_replicas):
                 # Add plot
-                plot = replica_figure.add_subplot(sub_grid[k])
+                plot = replica_figure.add_subplot(sub_grid[replica_index])
                 # Actually plot
-                plot.plot(state_nk[:, k], 'k.')
+                plot.plot(state_kn[replica_index,:], 'k.')
                 # Format plot
                 plot.set_yticks([])
-                plot.set_xlim([0, N])
-                plot.set_ylim([0, K])
-                if k < K - 1:
+                plot.set_xlim([0, n_iterations])
+                plot.set_ylim([0, n_states])
+                if replica_index < n_replicas - 1:
                     plot.set_xticks([])
-                plot.set_ylabel('{}'.format(k))
-                if k == 0:  # Title
+                plot.set_ylabel('{}'.format(replica_index))
+                if replica_index == 0:  # Title
                     plot.set_title('{} phase'.format(phase_name), fontsize=20)
         self._replica_mixing_run = True
         return replica_figure
@@ -715,4 +725,3 @@ class HealthReportData(object):
     @staticmethod
     def report_version():
         print("Rendered with YANK Version {}".format(version.version))
-
