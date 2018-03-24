@@ -701,7 +701,7 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
         pass
 
     @abc.abstractmethod
-    def minimize(self, tolerance, max_iterations, scheme='FIRE'):
+    def minimize(self, tolerance, max_iterations):
         """Minimize all states.
 
         Parameters
@@ -712,9 +712,6 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
         max_iterations : int
             Maximum number of iterations for minimization. If 0, minimization
             continues until converged.
-        scheme : str, optional, default='FIRE'
-            Minimization scheme to use
-            Implemented schemes: ['L-BFGS', 'FIRE']
 
         """
         pass
@@ -1088,7 +1085,7 @@ class AlchemicalPhase(object):
                              storage=storage, unsampled_thermodynamic_states=expanded_cutoff_states, metadata=metadata)
 
     def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
-                 max_iterations=0, scheme='FIRE'):
+                 max_iterations=0):
         """Minimize all the states.
 
         The minimization is performed in two steps. In the first one, the
@@ -1104,9 +1101,6 @@ class AlchemicalPhase(object):
         max_iterations : int, optional
             Maximum number of iterations for minimization. If 0, minimization
             continues until converged.
-        scheme : str, optional, default='FIRE'
-            Minimization scheme to use
-            Implemented schemes: ['L-BFGS', 'FIRE']
 
         """
         metadata = self._sampler.metadata
@@ -1125,7 +1119,7 @@ class AlchemicalPhase(object):
         # Distribute minimization across nodes.
         minimized_sampler_states_ids = list(similar_sampler_states.keys())
         minimized_positions = mpi.distribute(self._minimize_sampler_state, minimized_sampler_states_ids,
-                                             sampler_states, reference_state, tolerance, max_iterations, scheme,
+                                             sampler_states, reference_state, tolerance, max_iterations,
                                              send_results_to='all')
 
         # Update all sampler states.
@@ -1136,7 +1130,7 @@ class AlchemicalPhase(object):
 
         # Update sampler and perform second minimization in alchemically modified states.
         self._sampler.sampler_states = sampler_states
-        self._sampler.minimize(tolerance=tolerance, max_iterations=max_iterations, scheme=scheme)
+        self._sampler.minimize(tolerance=tolerance, max_iterations=max_iterations)
 
     def randomize_ligand(self, sigma_multiplier=2.0, close_cutoff=1.5*unit.angstrom):
         """Randomize the ligand positions in every state.
@@ -1403,27 +1397,14 @@ class AlchemicalPhase(object):
 
     @staticmethod
     def _minimize_sampler_state(sampler_state_id, sampler_states, thermodynamic_state,
-                                tolerance, max_iterations, scheme):
+                                tolerance, max_iterations):
         """Minimize the specified sampler state at the given thermodynamic state.
-
-        Parameters
-        ----------
-        scheme : str
-            Minimization scheme to use
-            Implemented schemes: ['L-BFGS', 'FIRE']
         """
         sampler_state = sampler_states[sampler_state_id]
 
-        # Retrieve a context. 
-        if scheme == 'L-BFGS':
-            # Any Integrator works for openmm.LocalEnergyMinimizer
-            context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
-        elif scheme == 'FIRE':
-            # Use the FIRE minimizer
-            integrator = FIREMinimizationIntegrator(tolerance=tolerance)
-            context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state, integrator=integrator)
-        else:
-            raise ValueError("Unknown minimization scheme '%s'" % scheme)        
+        # Use the FIRE minimizer
+        integrator = FIREMinimizationIntegrator(tolerance=tolerance)
+        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state, integrator=integrator)
 
         # Set initial positions and box vectors.
         sampler_state.apply_to_context(context)
@@ -1434,21 +1415,19 @@ class AlchemicalPhase(object):
             sampler_state_id + 1, len(sampler_states), initial_energy))
 
         # Minimize energy.
-        if scheme == 'L-BFGS':
-            logger.debug('Using L-BFGS: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
-            openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
-        elif scheme == 'FIRE':
-            if (max_iterations is None) or (max_iterations == 0):
-                max_iterations = 1000
-            logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
-            try:
-                integrator.step(max_iterations)
-            except Exception as e:
-                if str(e) == 'Particle coordinate is nan':
-                    logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS')
-                    openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
-                else:
-                    raise e
+        if (max_iterations is None) or (max_iterations == 0):
+            fire_iterations = 1000
+        else:
+            fire_iterations = max_iterations
+        logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
+        try:
+            integrator.step(max_iterations)
+        except Exception as e:
+            if str(e) == 'Particle coordinate is nan':
+                logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS')
+                openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+            else:
+                raise e
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
@@ -1457,6 +1436,8 @@ class AlchemicalPhase(object):
         final_energy = thermodynamic_state.reduced_potential(sampler_state)
         logger.debug('Sampler state {}/{}: final energy {:8.3f}kT'.format(
             sampler_state_id + 1, len(sampler_states), final_energy))
+
+        # TODO: Do we have to destroy the FIRE integrator bound context if we aren't going to use it again?
 
         # Return minimized positions.
         return sampler_state.positions

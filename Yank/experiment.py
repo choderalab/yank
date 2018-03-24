@@ -228,7 +228,7 @@ class AlchemicalPhaseFactory(object):
 
     DEFAULT_OPTIONS = {
         'anisotropic_dispersion_cutoff': 'auto',
-        'minimize': 'FIRE',
+        'minimize': True,
         'minimize_tolerance': 1.0 * unit.kilojoules_per_mole/unit.nanometers,
         'minimize_max_iterations': 1000,
         'randomize_ligand': False,
@@ -316,14 +316,10 @@ class AlchemicalPhaseFactory(object):
         alchemical_phase = self.create_alchemical_phase()
 
         # Minimize if requested.
-        if self.options['minimize']:                
+        if self.options['minimize']:
             tolerance = self.options['minimize_tolerance']
             max_iterations = self.options['minimize_max_iterations']
-            scheme = self.options['minimize']
-            if scheme in ['yes', 'YES']:
-                scheme = 'FIRE'
-            if scheme not in ['no', 'NO', False, None]:
-                alchemical_phase.minimize(tolerance=tolerance, max_iterations=max_iterations, scheme=scheme)
+            alchemical_phase.minimize(tolerance=tolerance, max_iterations=max_iterations)
 
         # Randomize ligand if requested.
         if self.options['randomize_ligand']:
