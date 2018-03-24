@@ -54,13 +54,10 @@ class BlankPhase(analyze.YankPhaseAnalyzer):
     def get_states_energies(self):
         pass
 
-    def get_timeseries(self, passed_timeseries):
+    def get_effective_energy_timeseries(self):
         pass
 
     def _prepare_mbar_input_data(self):
-        pass
-
-    def get_timeseries_weights(self, *args):
         pass
 
 
@@ -244,7 +241,7 @@ class TestMultiPhaseAnalyzer(object):
         # Test energy output matches appropriate MBAR shapes
         assert u_sampled.shape == (self.n_replicas, self.n_states, self.n_steps)
         assert u_unsampled.shape == (self.n_replicas, 2, self.n_steps)
-        u_n = phase.get_timeseries(u_sampled, sampled_states)
+        u_n = phase.get_effective_energy_timeseries()
         assert u_n.shape == (self.n_steps,)
         # This may need to be adjusted from time to time as analyze changes
         discard = 1
