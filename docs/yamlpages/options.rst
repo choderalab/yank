@@ -436,12 +436,19 @@ Valid options (0): <Integer>
 .. code-block:: yaml
 
    options:
-     minimize: yes
+     minimize: FIRE
 
-Minimize the input configuration before starting simulation. Highly recommended if a pre-minimized structure is provided,
-or if explicit solvent generation is left to YANK.
+Minimize the input configuration before starting simulation. 
+This is highly recommended if a pre-minimized structure is provided, or if explicit solvent generation is left to YANK.
 
-Valid Options: [yes]/no
+Options include:
+
+* ``FIRE``: The FIRE minimizer :cite:`FIREMinimizer`, a fast minimizer that may fail for very difficult systems
+* ``L-BFGS``: The L-BFGS minimizer :cite:`LBFGS` as `implemented in OpenMM <http://docs.openmm.org/latest/userguide/application.html#energy-minimization>`_
+* ``no``: No minimization
+
+
+Valid Options: [FIRE]/L-BFGS/no
 
 
 

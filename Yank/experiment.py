@@ -320,9 +320,10 @@ class AlchemicalPhaseFactory(object):
             tolerance = self.options['minimize_tolerance']
             max_iterations = self.options['minimize_max_iterations']
             scheme = self.options['minimize']
-            if scheme not in ['L-BFGS', 'FIRE']:
+            if scheme in ['yes', 'YES']:
                 scheme = 'FIRE'
-            alchemical_phase.minimize(tolerance=tolerance, max_iterations=max_iterations, scheme=scheme)
+            if scheme not in ['no', 'NO', False, None]:
+                alchemical_phase.minimize(tolerance=tolerance, max_iterations=max_iterations, scheme=scheme)
 
         # Randomize ligand if requested.
         if self.options['randomize_ligand']:
