@@ -4,7 +4,7 @@ MAINTAINER John Chodera <john.chodera@choderalab.org>
 
 # Install miniconda
 RUN apt-get update && apt-get install -y wget
-RUN MINICONDA="Miniconda3-3.5.5-Linux-x86_64.sh" && \
+RUN MINICONDA="Miniconda3-latest-Linux-x86_64.sh" && \
     wget --quiet https://repo.continuum.io/miniconda/$MINICONDA && \
     bash $MINICONDA -b -p /miniconda && \
     rm -f $MINICONDA

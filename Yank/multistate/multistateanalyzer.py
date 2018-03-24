@@ -331,6 +331,7 @@ class ObservablesRegistry(object):
         assert obs_error is None or obs_error in self._errors, \
             "{} not a known observable error class!".format(obs_error)
 
+
 # Create a default registry and register some stock values
 default_observables_registry = ObservablesRegistry()
 default_observables_registry.register_two_state_observable('free_energy', error_class='quad')
@@ -433,7 +434,7 @@ class PhaseAnalyzer(ABC):
             reporter.open(mode='r')
         self._reporter = reporter
 
-        # Initialize cacheed observables so the phase can be retrieved once computed.
+        # Initialize cached observables so the phase can be retrieved once computed.
         self._computed_observables = {observable: None for observable in self.observables}
 
         # Internal properties
@@ -701,37 +702,61 @@ class PhaseAnalyzer(ABC):
     # Abstract methods.
     # -------------------------------------------------------------------------
 
-    @abc.abstractmethod
-    def get_states_energies(self):
+    def read_energies(self):
         """
-        Extract the deconvoluted energies from a phase.
-
-        Energies from this are NOT decorrelated.
+        Extract energies from the ncfile and order them by replica, state, iteration.
 
         Returns
         -------
-        sampled_energy_matrix : numpy.ndarray of shape K,L,N'
-            Deconvoluted energy of sampled states evaluated at other sampled states.
+       sampled_energy_matrix : np.ndarray of shape [n_replicas, n_states, n_iterations]
+            Potential energy matrix of the sampled states.
+        unsampled_energy_matrix : np.ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
+            Potential energy matrix of the unsampled states.
+            Energy from each drawn sample n, evaluated at unsampled state l.
+            If no unsampled states were drawn, this will be shape (0,N).
+        neighborhoods : np.ndarray of shape [n_replicas, n_states, n_iterations]
+            Neighborhood energies were computed at, uses a boolean mask over the energy_matrix.
+        replica_state_indices : np.ndarray of shape [n_replicas, n_iterations]
+            States sampled by the replicas in the energy_matrix
 
-            Has shape (K,L,N') = (number of replica samplers,
-                                 number of sampled thermodynamic states,
-                                 number of iterations from state k)
-
-            Indexed by [k,l,n] where an energy drawn from replica sampler [k] is evaluated in thermodynamic state [l] at
-            iteration [n]
-        unsampled_energy_matrix : numpy.ndarray of shape K,L,N
-            Has shape (K, L, N) = (number of replica samplers,
-                                   number of UN-sampled thermodynamic states,
-                                   number of iterations)
-
-            Indexed by [k,l,n]
-            where an energy drawn from replica state [k] is evaluated in un-sampled state [l] at iteration [n]
         """
-        raise NotImplementedError()
+        # TODO: should we keep it unified and always truncate to max_n_iterations?
+        return self._read_energies(truncate_max_n_iterations=False)
 
-    @staticmethod
+    def _read_energies(self, truncate_max_n_iterations):
+        """
+        Extract energies from the ncfile and order them by replica, state, iteration.
+
+        Optionally truncate the data to self.max_n_iterations.
+
+        """
+        logger.info("Reading energies...")
+        # reporter_energies is [energy_sampled_states, neighborhoods, energy_unsampled_states].
+        energy_data = list(self._reporter.read_energies())
+        energy_data.append(self._reporter.read_replica_thermodynamic_states())
+        logger.info("Done.")
+
+        # Truncate the number of iterations to self.max_n_iterations if requested.
+        if truncate_max_n_iterations:
+            for i, energies in enumerate(energy_data):
+                # The +1 accounts for minimization iteration.
+                energy_data[i] = energies[:self.max_n_iterations+1]
+
+        # Convert from (n_iterations, n_replicas, n_states) to (n_replicas, n_states, n_iterations).
+        for i, energies in enumerate(energy_data):
+            energy_data[i] = np.moveaxis(energies, 0, -1)
+
+        # Unpack.
+        sampled_energy_matrix, unsampled_energy_matrix, neighborhoods, replicas_state_indices = energy_data
+        # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
+        # For now, we simply can't handle analysis of non-global calculations.
+        if np.any(neighborhoods == 0):
+            raise Exception('Non-global MBAR analysis not implemented yet.')
+
+        return sampled_energy_matrix, unsampled_energy_matrix, neighborhoods, replicas_state_indices
+
     @abc.abstractmethod
-    def get_timeseries(passed_timeseries):
+    def get_timeseries(self, passed_timeseries, replica_state_indices):
         """
         Generate the timeseries that is generated for this phase
 
@@ -743,6 +768,22 @@ class PhaseAnalyzer(ABC):
 
         raise NotImplementedError("This class has not implemented this function")
 
+    @abc.abstractmethod
+    def get_timeseries_weights(self, *args):
+        """
+        Get the weights for a given timeseries based on this class'es desires
+
+        Parameters
+        ----------
+        args : arguments to pass to the function to get information out
+
+        Returns
+        -------
+        weights : np.ndarray of shape [K, N]
+            Weights for each sample drawn from each sampler
+        """
+        raise NotImplementedError("This class has not implemented this function")
+
     # -------------------------------------------------------------------------
     # MBAR routines.
     # -------------------------------------------------------------------------
@@ -750,7 +791,7 @@ class PhaseAnalyzer(ABC):
     @staticmethod
     def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None):
         """
-        Convert u_kln formatted energies into u_ln formatted energies.
+        Convert [replica, state, iteration] data into [state, total_iteration] data
 
         This method assumes that the first dimension are all samplers,
         the second dimension are all the thermodynamic states energies were evaluated at
@@ -770,7 +811,7 @@ class PhaseAnalyzer(ABC):
             If this is None, assumes ALL samplers have the same number of samples
             such that N_k = N' for all k
 
-            **WARNING**: N_k is number of samples the SAMPLER drew,
+            **WARNING**: N_k is number of samples the SAMPLER drew in total,
             NOT how many samples were drawn from each thermodynamic state L.
             This method knows nothing of how many samples were drawn from each state.
 
@@ -1116,72 +1157,22 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     # MBAR creation.
     # -------------------------------------------------------------------------
 
-    def get_states_energies(self):
+    def get_timeseries_weights(self, iteration_replica_state_indices, iteration):
         """
-        Extract and deconvolute energies from the ncfile to gather energies common data for other functions.
+        Return the weights of the timeseries from disk.
 
-        Returns
-        -------
-        energy_matrix : ndarray of shape [n_replicas, n_states, n_iterations]
-            Potential energy matrix of the sampled states
-            Energy is from each drawn sample n, evaluated at every sampled state k
-        unsampled_energy_matrix : ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
-            Potential energy matrix of the unsampled states
-            Energy from each drawn sample n, evaluated at unsampled state l
-            If no unsampled states were drawn, this will be shape (0,N)
-
+        For now this is just a placeholder, but may be more complex in the future.
         """
-        # TODO: should we keep it unified and always truncate to max_n_iterations?
-        return self._get_states_energies(truncate_max_n_iterations=False)
+        return np.zeros(iteration_replica_state_indices.shape)
 
-    def _get_states_energies(self, truncate_max_n_iterations=False):
-        """Extract and deconvolute energies from nc file.
-
-        Optionally truncate the data to self.max_n_iterations.
-        """
-        logger.info("Reading energies...")
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
-        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
-        _, _, n_unsampled_states = energy_unsampled_states.shape
-
-        # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
-        # For now, we simply can't handle analysis of non-global calculations.
-        if np.any(neighborhoods == 0):
-            raise Exception('Non-global MBAR analysis not implemented yet.')
-
-        # Truncate the number of iterations to self.max_n_iterations if requested.
-        if truncate_max_n_iterations:
-            # The +1 accounts for minimization iteration.
-            n_iterations = self.max_n_iterations + 1
-
-        # Convert shape from iterations x replicas x states to replicas x states x iterations
-        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
-        for n in range(n_iterations):
-            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
-            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
-        logger.info("Done.")
-
-        logger.info("Deconvoluting replicas...")
-        energy_matrix = np.zeros([n_states, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix = np.zeros([n_states, n_unsampled_states, n_iterations], np.float64)
-        for iteration in range(n_iterations):
-            state_indices = self._reporter.read_replica_thermodynamic_states(iteration)
-            energy_matrix[state_indices, :, iteration] = energy_matrix_replica[:, :, iteration]
-            unsampled_energy_matrix[state_indices, :, iteration] = unsampled_energy_matrix_replica[:, :, iteration]
-        logger.info("Done.")
-
-        return energy_matrix, unsampled_energy_matrix
-
-    @staticmethod
-    def get_timeseries(passed_timeseries):
+    def get_timeseries(self, passed_timeseries, replica_state_indices):
         """
         Compute the timeseries of a simulation from the Replica Exchange simulation. This is the sum of energies
         for each sample from the state it was drawn from.
 
         Parameters
         ----------
-        passed_timeseries : ndarray of shape (K,L,N), indexed by k,l,n
+        passed_timeseries : np.ndarray of shape (K,L,N), indexed by k,l,n
             K is the total number of sampled states
 
             L is the total states we want MBAR to analyze
@@ -1191,81 +1182,92 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             The kth sample was drawn from state k at iteration n, the nth configuration of kth state is evaluated in
             thermodynamic state l
 
+        replica_state_indices : np.ndarray of shape (K,N), indexed by k,n
+            Which thermodynamic state l each sample n was drawn from
+
         Returns
         -------
         u_n : ndarray of shape (N,)
             Timeseries to compute decorrelation and equilibration data from.
         """
-        niterations = passed_timeseries.shape[-1]
-        u_n = np.zeros([niterations], np.float64)
+        n_samplers, _, total_iterations = passed_timeseries.shape
+        u_n = np.zeros([total_iterations], np.float64)
+        sample_slice = range(n_samplers)
         # Compute total negative log probability over all iterations.
-        for iteration in range(niterations):
-            u_n[iteration] = np.sum(np.diagonal(passed_timeseries[:, :, iteration]))
+        for iteration in range(total_iterations):
+            weights = self.get_timeseries_weights(replica_state_indices[:, iteration], iteration)
+            # range(X) needed over : since we want the specific slice and : is too greedy
+            sampled_energy = passed_timeseries[sample_slice, replica_state_indices[:, iteration], iteration] + weights
+            u_n[iteration] = np.sum(sampled_energy)
         return u_n
 
-    def _compute_equilibrated_energies(self):
-        """Return the energies after discarding equilibration and iterations > max_n_iterations."""
-        u_kln, unsampled_u_kln = self._get_states_energies(truncate_max_n_iterations=True)
-
-        # Discard equilibration iterations.
-        number_equilibrated, g_t, Neff_max = self._get_equilibration_data_auto(u_kln)
-        u_kln = utils.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
-        unsampled_u_kln = utils.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
-
-        # Subsample the energies only based on g_t so both ends up with same indices.
-        u_kln = utils.subsample_data_along_axis(u_kln, g_t, -1)
-        unsampled_u_kln = utils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
-        return u_kln, unsampled_u_kln
-
-    def _compute_decorrelated_energies(self):
+    def _compute_mbar_decorrelated_energies(self):
         """Return an MBAR-ready decorrelated energy matrix.
+
+        The data is returned after discarding equilibration and truncating
+        the iterations to self.max_n_iterations.
 
         Returns
         -------
-        decorrelated_u_kn : np.array
-            A n_states x (n_sampled_states * n_decorrelated_iterations)
-            array of energies (in kT).
-        decorrelated_N_k : np.array
-            The total number of samples drawn from each state.
+        energy_matrix : energy matrix of shape (K,N) indexed by k,n
+            K is the total number of states observables are desired.
+            N is the total number of samples drawn from ALL states.
+            The nth configuration is the energy evaluated in the kth thermodynamic state.
+        samples_per_state : 1-D iterable of shape K
+            The number of samples drawn from each kth state.
+            The \sum samples_per_state = N.
         """
-        sampled_energy_matrix, unsampled_energy_matrix = self._compute_equilibrated_energies()
-        nstates, _, niterations = sampled_energy_matrix.shape
-        _, nunsampled, _ = unsampled_energy_matrix.shape
-        # Subsample data to obtain uncorrelated samples
-        N_k = np.zeros(nstates, np.int32)
-        N = niterations  # number of uncorrelated samples
-        N_k[:] = N
-        u_kn = self.reformat_energies_for_mbar(sampled_energy_matrix)
+        # energy_data is [energy_sampled, energy_unsampled, neighborhood, replicas_state_indices]
+        energy_data = list(self._read_energies(truncate_max_n_iterations=True))
 
-        # Add unsampled states.
-        if nunsampled > 0:
-            new_energy_matrix = np.zeros([nstates + 2, N_k.sum()])
-            N_k_new = np.zeros(nstates + 2, np.int32)
-            unsampled_kn = self.reformat_energies_for_mbar(unsampled_energy_matrix)
-            # Add augmented unsampled energies to the new matrix
-            new_energy_matrix[[0, -1], :] = unsampled_kn[[0, -1], :]
-            # Fill in the old energies to the middle states
-            new_energy_matrix[1:-1, :] = u_kn
-            N_k_new[1:-1] = N_k
-            # Notify users
+        # Use the cached information to generate the equilibration data.
+        sampled_energy_matrix, unsampled_energy_matrix, neighborhood, replicas_state_indices = energy_data
+        number_equilibrated, g_t, Neff_max = self._get_equilibration_data_auto(
+            input_data=sampled_energy_matrix, replica_state_indices=replicas_state_indices)
+
+        for i, energies in enumerate(energy_data):
+            # Discard equilibration iterations.
+            energy_data[i] = utils.remove_unequilibrated_data(energies, number_equilibrated, -1)
+            # Subsample along the decorrelation data.
+            energy_data[i] = utils.subsample_data_along_axis(energies, g_t, -1)
+        sampled_energy_matrix, unsampled_energy_matrix, neighborhood, replicas_state_indices = energy_data
+
+        # Initialize the MBAR matrices in kn form.
+        n_replica, n_sampled_states, n_iterations = sampled_energy_matrix.shape
+        _, n_unsampled_states, _ = unsampled_energy_matrix.shape
+        n_total_states = n_sampled_states + n_unsampled_states
+        energy_matrix = np.zeros([n_total_states, n_iterations*n_replica])
+        samples_per_state = np.zeros([n_total_states], dtype=int)
+
+        # Compute shift index for how many unsampled states there were.
+        # This assume that we set an equal number of unsampled states at the end points.
+        first_sampled_state = int(n_unsampled_states/2.0)
+        last_sampled_state = n_total_states - first_sampled_state
+
+        # Cast the sampled energy matrix from kln' to kn form.
+        energy_matrix[first_sampled_state:last_sampled_state, :] = self.reformat_energies_for_mbar(sampled_energy_matrix)
+        # Determine how many samples and which states they were drawn from.
+        unique_sampled_states, counts = np.unique(replicas_state_indices, return_counts=True)
+        # Assign those counts to the correct range of states.
+        samples_per_state[first_sampled_state:last_sampled_state][unique_sampled_states] = counts
+        # Add energies of unsampled states to the end points.
+        if n_unsampled_states > 0:
+            energy_matrix[[0, -1], :] = self.reformat_energies_for_mbar(unsampled_energy_matrix)
             logger.info("Found expanded cutoff states in the energies!")
             logger.info("Free energies will be reported relative to them instead!")
-            # Reset values, last step in case something went wrong so we dont overwrite u_kn on accident
-            u_kn = new_energy_matrix
-            N_k = N_k_new
 
         # These cached values speed up considerably the computation of the
         # free energy profile along the restraint distance/energy cutoff.
-        self._decorrelated_u_kn = u_kn
-        self._decorrelated_N_k = N_k
+        self._decorrelated_u_kn = energy_matrix
+        self._decorrelated_N_k = samples_per_state
         return self._decorrelated_u_kn, self._decorrelated_N_k
 
-    def _compute_unbiased_energies(self):
+    def _compute_mbar_unbiased_energies(self):
         """Unbias the restraint, and apply restraint energy/distance cutoffs.
 
         When there is a restraint to unbias, the function adds two extra unbiased
         states at the end points of the energy matrix. Otherwise, the return value
-        is identical to self._compute_uncorrelated_energies().
+        is identical to self._compute_mbar_decorrelated_energies().
 
         Returns
         -------
@@ -1675,7 +1677,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         entropy_dict = self._computed_observables['entropy']
         return entropy_dict['value'], entropy_dict['error']
 
-    def _get_equilibration_data_auto(self, input_data=None):
+    def _get_equilibration_data_auto(self, input_data=None, replica_state_indices=None):
         """
         Automatically generate the equilibration data from best practices.
 
@@ -1684,11 +1686,10 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         input_data : np.ndarray-like, Optional, Default: None
             Optionally provide the data to look at. If not provided, uses energies from :func:`extract_energies()`
 
-        Returns nothing, but sets self._equilibration_data
         """
-        if input_data is None:
-            input_data, _ = self._get_states_energies(truncate_max_n_iterations=True)
-        u_n = self.get_timeseries(input_data)
+        if input_data is None or replica_state_indices is None:
+            input_data, _, _, replica_state_indices = self._read_energies(truncate_max_n_iterations=True)
+        u_n = self.get_timeseries(input_data, replica_state_indices)
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
@@ -1753,24 +1754,24 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     _decorrelated_u_kn = PhaseAnalyzer.CachedProperty(
         name='decorrelated_u_kn',
         dependencies=['equilibration_data'],
-        default=lambda instance: instance._compute_decorrelated_energies()[0]
+        default=lambda instance: instance._compute_mbar_decorrelated_energies()[0]
     )
     _decorrelated_N_k = PhaseAnalyzer.CachedProperty(
         name='decorrelated_N_k',
         dependencies=['equilibration_data'],
-        default=lambda instance: instance._compute_decorrelated_energies()[1]
+        default=lambda instance: instance._compute_mbar_decorrelated_energies()[1]
     )
     _unbiased_decorrelated_u_kn = PhaseAnalyzer.CachedProperty(
         name='unbiased_decorrelated_u_kn',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
                       'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
-        default=lambda instance: instance._compute_unbiased_energies()[0]
+        default=lambda instance: instance._compute_mbar_unbiased_energies()[0]
     )
     _unbiased_decorrelated_N_k = PhaseAnalyzer.CachedProperty(
         name='unbiased_decorrelated_N_k',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
                       'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
-        default=lambda instance: instance._compute_unbiased_energies()[1]
+        default=lambda instance: instance._compute_mbar_unbiased_energies()[1]
     )
     mbar = PhaseAnalyzer.CachedProperty(
         name='mbar',
@@ -1800,6 +1801,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         decorrelated_iterations_indices = timeseries.subsampleCorrelatedData(equilibrium_iterations,
                                                                              self.statistical_inefficiency)
         return equilibrium_iterations[decorrelated_iterations_indices]
+
 
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png
 

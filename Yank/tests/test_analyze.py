@@ -9,22 +9,21 @@ Test multistate.analyzers facility.
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import os
-import re
 import copy
 import shutil
+import os
 import tempfile
 
 import numpy as np
+from nose.tools import assert_raises, assert_equal
 import openmmtools as mmtools
 import pymbar
-from nose.tools import assert_raises, assert_equal
-from openmmtools import testsystems
+from pymbar.utils import ParameterError
 from simtk import unit
 
 from yank.yank import Topography
-from yank.multistate import MultiStateReporter, ReplicaExchangeSampler
 from yank.restraints import RestraintState
+from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, SAMSSampler
 import yank.analyze as analyze
 
 # ==============================================================================
@@ -32,6 +31,8 @@ import yank.analyze as analyze
 # ==============================================================================
 
 kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
+# quiet down some citation spam
+MultiStateSampler._global_citation_silence = True
 
 
 # ==============================================================================
@@ -52,11 +53,13 @@ class BlankPhase(analyze.YankPhaseAnalyzer):
     def get_states_energies(self):
         pass
 
-    @staticmethod
-    def get_timeseries(passed_timeseries):
+    def get_timeseries(self, passed_timeseries, replica_state_indices):
         pass
 
     def _prepare_mbar_input_data(self):
+        pass
+
+    def get_timeseries_weights(self, *args):
         pass
 
 
@@ -94,19 +97,42 @@ class FEStandardStatePhase(FreeEnergyPhase):
 # TEST ANALYZER
 # ==============================================================================
 
-class TestPhaseAnalyzer(object):
+class TestMultiPhaseAnalyzer(object):
     """Test suite for YankPhaseAnalyzer class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 3
+    N_STATES = 5
+    SAMPLER = MultiStateSampler
+    ANALYZER = analyze.YankMultiStateSamplerAnalyzer
+
+    # --------------------------------------
+    # Optional helper function to overwrite.
+    # --------------------------------------
+
+    @classmethod
+    def call_sampler_create(cls, sampler, reporter,
+                            thermodynamic_states,
+                            sampler_states,
+                            unsampled_states,
+                            metadata=None):
+        """Helper function to call the create method for the sampler"""
+        # Allows initial thermodynamic states to be handled by the built in methods
+        sampler.create(thermodynamic_states, sampler_states, reporter, unsampled_thermodynamic_states=unsampled_states,
+                       metadata=metadata)
 
     @classmethod
     def setup_class(cls):
         """Shared test cases and variables."""
-        n_states = 3
-        n_steps = 5
         checkpoint_interval = 2
+        n_steps = 5
 
         # Test case with host guest in vacuum at 3 different positions and alchemical parameters.
         # -----------------------------------------------------------------------------------------
-        hostguest_test = testsystems.HostGuestVacuum()
+        hostguest_test = mmtools.testsystems.HostGuestVacuum()
         factory = mmtools.alchemy.AbsoluteAlchemicalFactory()
         alchemical_region = mmtools.alchemy.AlchemicalRegion(alchemical_atoms=range(126, 156))
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
@@ -123,21 +149,21 @@ class TestPhaseAnalyzer(object):
         box_vectors = hostguest_test.system.getDefaultPeriodicBoxVectors()
         hostguest_sampler_states = [mmtools.states.SamplerState(positions=positions + 10*i*unit.nanometers,
                                                                 box_vectors=box_vectors)
-                                    for i in range(n_states)]
+                                    for i in range(cls.N_SAMPLERS)]
 
-        # Create the three basic thermodynamic states.
+        # Create the basic thermodynamic states.
         hostguest_thermodynamic_states = [mmtools.states.ThermodynamicState(hostguest_alchemical, 300*unit.kelvin)
-                                          for i in range(n_states)]
+                                          for _ in range(cls.N_STATES)]
 
         # Create alchemical states at different parameter values.
         alchemical_states = [mmtools.alchemy.AlchemicalState.from_system(hostguest_alchemical)
-                             for _ in range(n_states)]
+                             for _ in range(cls.N_STATES)]
         for i, alchemical_state in enumerate(alchemical_states):
-            alchemical_state.set_alchemical_parameters(float(i) / (n_states - 1))
+            alchemical_state.set_alchemical_parameters(float(i) / (cls.N_STATES - 1))
 
         # Create compound states.
         hostguest_compound_states = list()
-        for i in range(n_states):
+        for i in range(cls.N_STATES):
             hostguest_compound_states.append(
                 mmtools.states.CompoundThermodynamicState(thermodynamic_state=hostguest_thermodynamic_states[i],
                                                           composable_states=[alchemical_states[i]])
@@ -159,9 +185,6 @@ class TestPhaseAnalyzer(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(cls.hostguest_test)
         n_states = len(thermodynamic_states)
 
-        # Remove one sampler state to verify distribution over states.
-        sampler_states = sampler_states[:-1]
-
         # Prepare metadata for analysis.
         reference_state = mmtools.states.ThermodynamicState(hostguest_test.system, 300*unit.kelvin)
         topography = Topography(hostguest_test.topology, ligand_atoms=range(126, 156))
@@ -176,33 +199,42 @@ class TestPhaseAnalyzer(object):
         cls.tmp_dir = tempfile.mkdtemp()
         storage_path = os.path.join(cls.tmp_dir, 'test_analyze.nc')
         move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-        cls.repex = ReplicaExchangeSampler(mcmc_moves=move, number_of_iterations=n_steps)
+        cls.sampler = cls.SAMPLER(mcmc_moves=move, number_of_iterations=n_steps)
         cls.reporter = MultiStateReporter(storage_path, checkpoint_interval=checkpoint_interval,
                                           analysis_particle_indices=analysis_atoms)
-        cls.repex.create(thermodynamic_states, sampler_states, storage=cls.reporter,
-                         unsampled_thermodynamic_states=unsampled_states, metadata=metadata)
+        cls.call_sampler_create(cls.sampler,cls.reporter, thermodynamic_states, sampler_states, unsampled_states,
+                                metadata=metadata)
         # run some iterations
+        cls.n_replicas = cls.N_SAMPLERS
         cls.n_states = n_states
         cls.n_steps = n_steps
         cls.checkpoint_interval = checkpoint_interval
         cls.analysis_atoms = analysis_atoms
-        cls.repex.run(cls.n_steps-1)  # Initial config
-        cls.repex_name = "RepexAnalyzer"
+        cls.sampler.run(cls.n_steps-1)  # Initial config
+        cls.repex_name = "RepexAnalyzer"  # kind of an unused test
+
+        # Debugging Messages to sent to Nose with --nocapture enabled
+        output_descr = "Testing Sampler: {}  -- States: {}  -- Samplers: {}".format(
+            cls.SAMPLER.__name__, cls.N_STATES, cls.N_SAMPLERS)
+        len_output = len(output_descr)
+        print("#" * len_output)
+        print(output_descr)
+        print("#" * len_output)
 
     @classmethod
     def teardown_class(cls):
         cls.reporter.close()
         shutil.rmtree(cls.tmp_dir)
 
-    def test_repex_phase_initialize(self):
-        """Test that the MultiState Phase analyzer initializes correctly"""
-        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+    def test_phase_initialize(self):
+        """Test that the Phase analyzer initializes correctly"""
+        phase = self.ANALYZER(self.reporter, name=self.repex_name)
         assert phase.reporter is self.reporter
         assert phase.name == self.repex_name
 
-    def test_repex_mixing_stats(self):
-        """Test that the MultiState Phase yields mixing stats that make sense"""
-        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+    def test_mixing_stats(self):
+        """Test that the Phase yields mixing stats that make sense"""
+        phase = self.ANALYZER(self.reporter, name=self.repex_name)
         t, mu, g = phase.generate_mixing_statistics()
         # Output is the correct number of states
         assert t.shape == (self.n_states, self.n_states)
@@ -211,7 +243,7 @@ class TestPhaseAnalyzer(object):
         # Assert all rows add to 1
         # Floating point error can lead mu[0] to be not exactly 1.0, but like 0.99999998 or something
         for row in range(self.n_states):
-            assert np.isclose(t[row, :].sum(), 1.0)
+            assert np.allclose(t[row, :].sum(), 1)
         # Assert all eigenvalues are all <= 1
         assert np.allclose(mu[0], 1)
 
@@ -220,13 +252,12 @@ class TestPhaseAnalyzer(object):
 
         We do this in one function since the test for each part would be a bunch of repeated recreation of the phase
         """
-        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name,
-                                                    unbias_restraint=False)
-        u_sampled, u_unsampled = phase.get_states_energies()
+        phase = self.ANALYZER(self.reporter, name=self.repex_name, unbias_restraint=False)
+        u_sampled, u_unsampled, neighborhood, sampled_states = phase.read_energies()
         # Test energy output matches appropriate MBAR shapes
-        assert u_sampled.shape == (self.n_states, self.n_states, self.n_steps)
-        assert u_unsampled.shape == (self.n_states, 2, self.n_steps)
-        u_n = phase.get_timeseries(u_sampled)
+        assert u_sampled.shape == (self.n_replicas, self.n_states, self.n_steps)
+        assert u_unsampled.shape == (self.n_replicas, 2, self.n_steps)
+        u_n = phase.get_timeseries(u_sampled, sampled_states)
         assert u_n.shape == (self.n_steps,)
         # This may need to be adjusted from time to time as analyze changes
         discard = 1
@@ -234,14 +265,14 @@ class TestPhaseAnalyzer(object):
         n_eq, g_t, Neff_max = pymbar.timeseries.detectEquilibration(u_n[discard:])
         u_sampled_sub = analyze.multistate.remove_unequilibrated_data(u_sampled, n_eq, -1)
         # Make sure output from subsample is what we expect
-        assert u_sampled_sub.shape == (self.n_states, self.n_states, Neff_max)
+        assert u_sampled_sub.shape == (self.n_replicas, self.n_states, Neff_max)
         # Generate MBAR from phase
         phase_mbar = phase.mbar
         # Assert mbar object is formed of nstates + unsampled states, Number of effective samples
         n_effective_samples = Neff_max - discard  # The analysis discards the minimization frame.
-        assert phase_mbar.u_kn.shape == (self.n_states + 2, n_effective_samples*self.n_states)
+        assert phase_mbar.u_kn.shape == (self.n_states + 2, n_effective_samples*self.n_replicas)
         # Check that Free energies are returned correctly
-        fe, dfe = phase.get_free_energy()
+        fe, dfe = self.help_fe_calc(phase)
         assert fe.shape == (self.n_states + 2, self.n_states + 2)
         stored_fe_dict = phase._computed_observables['free_energy']
         stored_fe, stored_dfe = stored_fe_dict['value'], stored_fe_dict['error']
@@ -260,10 +291,44 @@ class TestPhaseAnalyzer(object):
         assert new_fe_out == fe[inew, jnew]
         assert new_dfe_out == dfe[inew, jnew]
 
+    def help_fe_calc(self, phase):
+        try:
+            fe, dfe = phase.get_free_energy()
+        except ParameterError as e:
+            # Handle case where MBAR does not have a converged free energy yet by attempting to run longer
+            # Only run up until we have sampled every state, or we hit some cycle limit
+            self.reporter.open(mode='a')
+            cycle_limit = 20  # Put some upper limit of cycles
+            cycles = 0
+            cycle_steps = 20
+            throw = True
+            phase.clear()
+            while (not np.unique(self.sampler._reporter.read_replica_thermodynamic_states()).size == self.N_STATES
+                   or cycles == cycle_limit):
+                self.sampler.extend(cycle_steps)
+                try:
+                    fe, dfe = phase.get_free_energy()
+                except ParameterError:
+                    # If the max error count internally is reached, its a RuntimeError and won't be trapped
+                    # So it will be raised correctly
+                    pass
+                else:
+                    # Test is good, let it pass by returning here
+                    throw = False
+                    break
+                cycles += 1
+            self.reporter.sync()
+            self.reporter.open(mode='r')
+            if throw:
+                # If we get here, we have not validated, raise original error
+                raise e
+            self.n_steps = self.n_steps + cycles * cycle_steps
+        return fe, dfe
+
     def test_multi_phase(self):
         """Test MultiPhaseAnalysis"""
         # Create the phases
-        full_phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        full_phase = self.ANALYZER(self.reporter, name=self.repex_name)
         blank_phase = BlankPhase(self.reporter, name="blank")
         fe_phase = FreeEnergyPhase(self.reporter, name="fe")
         fes_phase = FEStandardStatePhase(self.reporter, name="fes")
@@ -293,8 +358,8 @@ class TestPhaseAnalyzer(object):
         # prep final property
         full_fes = full_phase + fes_phase
         # Compute free energy
-        free_energy_full_fe, dfree_energy_full_fe = full_fe_phase.get_free_energy()
-        full_free_energy, full_dfree_energy = full_phase.get_free_energy()
+        free_energy_full_fe, dfree_energy_full_fe = self.help_fe_calc(full_fe_phase)
+        full_free_energy, full_dfree_energy = self.help_fe_calc(full_phase)
         i, j = full_phase.reference_states
         full_free_energy, full_dfree_energy = full_free_energy[i, j], full_dfree_energy[i, j]
         # Check free energy values
@@ -312,13 +377,13 @@ class TestPhaseAnalyzer(object):
 
     def test_yank_registry(self):
         """Test that observable registry is implemented correctly for a given class"""
-        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        phase = self.ANALYZER(self.reporter, name=self.repex_name)
         observables = set(analyze.yank_registry.observables)
         assert set(phase.observables) == observables
 
     def test_cache_dependency_graph_generation(self):
         """Test that the dependency graph used to invalidate cached values is generated correctly."""
-        cache_dependency_graph = analyze.YankReplicaExchangeAnalyzer._get_cache_dependency_graph()
+        cache_dependency_graph = self.ANALYZER._get_cache_dependency_graph()
         test_cases = [
             ('mbar', {'observables'}),
             ('unbiased_decorrelated_u_kn', {'mbar'}),
@@ -331,7 +396,7 @@ class TestPhaseAnalyzer(object):
 
     def test_cached_properties_dependencies(self):
         """Test that cached properties are invalidated when their dependencies change."""
-        analyzer = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        analyzer = self.ANALYZER(self.reporter, name=self.repex_name)
 
         def check_cached_properties(is_in):
             for cached_property in cached_properties:
@@ -341,8 +406,8 @@ class TestPhaseAnalyzer(object):
             assert (analyzer._computed_observables['free_energy'] is not None) is is_in
 
         # Test-precondition: make sure the dependencies are as expected.
-        assert 'equilibration_data' in analyze.YankReplicaExchangeAnalyzer._decorrelated_state_indices_kn.dependencies
-        assert 'max_n_iterations' in analyze.YankReplicaExchangeAnalyzer._equilibration_data.dependencies
+        assert 'equilibration_data' in self.ANALYZER._decorrelated_state_indices_kn.dependencies
+        assert 'max_n_iterations' in self.ANALYZER._equilibration_data.dependencies
 
         # The cached value and its dependencies are generated lazily when calling the property.
         cached_properties = ['mbar', 'decorrelated_state_indices_kn', 'equilibration_data']
@@ -364,7 +429,7 @@ class TestPhaseAnalyzer(object):
 
     def test_max_n_iterations(self):
         """Test that max_n_iterations limits the number of iterations analyzed."""
-        analyzer = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        analyzer = self.ANALYZER(self.reporter, name=self.repex_name)
 
         # By default, all iterations are analyzed.
         all_decorrelated_iterations = analyzer._decorrelated_iterations
@@ -388,7 +453,7 @@ class TestPhaseAnalyzer(object):
     def test_unbias_restraint(self):
         """Test that restraints are unbiased correctly when unbias_restraint is True."""
         # The energies of the unbiased restraint should be identical to the biased ones.
-        analyzer = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name, unbias_restraint=False)
+        analyzer = self.ANALYZER(self.reporter, name=self.repex_name, unbias_restraint=False)
         assert np.array_equal(analyzer._unbiased_decorrelated_u_kn, analyzer._decorrelated_u_kn)
         assert np.array_equal(analyzer._unbiased_decorrelated_N_k, analyzer._decorrelated_N_k)
 
@@ -413,10 +478,10 @@ class TestPhaseAnalyzer(object):
 
     def test_extract_trajectory(self):
         """extract_trajectory handles checkpointing and skip frame correctly."""
-        trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, skip_frame=2)
+        trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, skip_frame=2)
         assert len(trajectory) == 1
         self.reporter.close()
-        full_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=True)
+        full_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=True)
         # This should work since its pure Python integer division
         # Follows the checkpoint interval logic
         # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems
@@ -424,6 +489,52 @@ class TestPhaseAnalyzer(object):
         assert len(full_trajectory) == ((self.n_steps + 1) / self.checkpoint_interval) - 1
         self.reporter.close()
         # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
-        solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
+        solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=False)
         assert len(solute_trajectory) == self.n_steps - 1
         assert solute_trajectory.n_atoms == len(self.analysis_atoms)
+
+
+class TestRepexAnalyzer(TestMultiPhaseAnalyzer):
+    """Test suite for YankPhaseAnalyzer class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 5
+    N_STATES = 5
+    SAMPLER = ReplicaExchangeSampler
+
+
+class TestMultiPhaseAnalyzerReverse(TestMultiPhaseAnalyzer):
+    """Test suite for YankPhaseAnalyzer class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 5
+    N_STATES = 3
+    SAMPLER = MultiStateSampler
+
+
+class TestSAMSAnalyzerSingle(TestMultiPhaseAnalyzer):
+    """Test suite for YankPhaseAnalyzer class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 1
+    N_STATES = 5
+    SAMPLER = SAMSSampler
+
+
+class TestSAMSAnalyzerMulti(TestSAMSAnalyzerSingle):
+    """Test suite for YankPhaseAnalyzer class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 3

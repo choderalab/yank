@@ -129,35 +129,6 @@ def test_expand_id_nodes():
 # CONVERSION UTILITIES
 # ==============================================================================
 
-def test_find_all_subclasses():
-    """Test find_all_subclasses() function."""
-    # Diamond inheritance.
-    class A:
-        pass
-
-    class B(A):
-        pass
-
-    class C(A, abc.ABC):
-        @abc.abstractmethod
-        def m(self):
-            pass
-
-    class D(B, C, abc.ABC):
-        @abc.abstractmethod
-        def m(self):
-            pass
-
-    class E(D):
-        def m(self):
-            pass
-
-    assert find_all_subclasses(B) == {B, D, E}
-    assert find_all_subclasses(B, discard_abstract=True, include_parent=False) == {E}
-    assert find_all_subclasses(A) == {A, B, D, E, C}
-    assert find_all_subclasses(A, discard_abstract=True, include_parent=False) == {B, E}
-
-
 def test_get_keyword_args():
     """Test get_keyword_args() function."""
     def f(a, b, c=True, d=3.0):

@@ -75,8 +75,8 @@ def available_restraint_classes():
         ``restraint_classes[name]`` is the class corresponding to ``name``
 
     """
-    restraint_subclasses = utils.find_all_subclasses(ReceptorLigandRestraint,
-                                                     discard_abstract=True)
+    restraint_subclasses = mmtools.utils.find_all_subclasses(ReceptorLigandRestraint,
+                                                             discard_abstract=True)
 
     # Build an index of all names, ensuring there are no name collisions.
     available_restraints = dict()
@@ -115,7 +115,7 @@ def create_restraint(restraint_type, **kwargs):
         Parameters to pass to the restraint constructor.
 
     """
-    cls = utils.find_subclass(ReceptorLigandRestraint, restraint_type)
+    cls = mmtools.utils.find_subclass(ReceptorLigandRestraint, restraint_type)
     return cls(**kwargs)
 
 
