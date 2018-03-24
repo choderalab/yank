@@ -47,6 +47,8 @@ from .utils import SimulationNaNError
 from .. import mpi
 from pymbar.utils import ParameterError
 
+from yank.fire import FIREMinimizationIntegrator
+
 logger = logging.getLogger(__name__)
 
 
@@ -624,7 +626,7 @@ class MultiStateSampler(object):
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, tolerance=1.0 * unit.kilojoules_per_mole / unit.nanometers,
-                 max_iterations=0):
+                 max_iterations=0, scheme='FIRE'):
         """Minimize all replicas.
 
         Minimized positions are stored at the end.
@@ -637,6 +639,9 @@ class MultiStateSampler(object):
         max_iterations : int, optional
             Maximum number of iterations for minimization. If 0, minimization
             continues until converged.
+        scheme : str, optional, default='L-BFGS'
+            Minimization scheme to use
+            Implemented schemes: ['L-BFGS', 'FIRE']
 
         """
         # Check that simulation has been created.
@@ -649,7 +654,7 @@ class MultiStateSampler(object):
         # The other nodes, only need the positions that they use for propagation and
         # computation of the energy matrix entries.
         minimized_positions, sampler_state_ids = mpi.distribute(self._minimize_replica, range(self.n_replicas),
-                                                                tolerance, max_iterations,
+                                                                tolerance, max_iterations, scheme,
                                                                 send_results_to=0)
 
         # Update all sampler states. For non-0 nodes, this will update only the
@@ -677,7 +682,7 @@ class MultiStateSampler(object):
         """
         # Check that simulation has been created.
         if self.n_replicas == 0:
-            raise RuntimeError('Cannot minimize replicas. The simulation must be created first.')
+            raise RuntimeError('Cannot equilibrate replicas. The simulation must be created first.')
 
         # If no MCMCMove is specified, use the ones for production.
         if mcmc_moves is None:
@@ -1218,15 +1223,31 @@ class MultiStateSampler(object):
 
         return move_statistics
 
-    def _minimize_replica(self, replica_id, tolerance, max_iterations):
-        """Minimize the specified replica."""
+    def _minimize_replica(self, replica_id, tolerance, max_iterations, scheme):
+        """Minimize the specified replica.
+
+        Parameters
+        ----------
+        scheme : str
+            Minimization scheme to use
+            Implemented schemes: ['L-BFGS', 'FIRE']
+        """
+
         # Retrieve thermodynamic and sampler states.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
         sampler_state = self._sampler_states[replica_id]
 
-        # Retrieve a context. Any Integrator works.
-        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+        # Retrieve a context. 
+        if scheme == 'L-BFGS':
+            # Any Integrator works for openmm.LocalEnergyMinimizer
+            context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+        elif scheme == 'FIRE':
+            # Use the FIRE minimizer
+            integrator = FIREMinimizationIntegrator(tolerance=tolerance)
+            context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state, integrator=integrator)
+        else:
+            raise ValueError("Unknown minimization scheme '%s'" % scheme)        
 
         # Set initial positions and box vectors.
         sampler_state.apply_to_context(context)
@@ -1236,8 +1257,14 @@ class MultiStateSampler(object):
         logger.debug('Replica {}/{}: initial energy {:8.3f}kT'.format(
             replica_id + 1, self.n_replicas, initial_energy))
 
-        # Minimize energy.
-        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+        if scheme == 'L-BFGS':
+            logger.debug('Using L-BFGS: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
+            openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+        elif scheme == 'FIRE':
+            if (max_iterations is None) or (max_iterations == 0):
+                max_iterations = 1000
+            logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
+            integrator.step(max_iterations)
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
