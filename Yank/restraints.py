@@ -1674,6 +1674,10 @@ class Boresch(ReceptorLigandRestraint):
                 if self._is_analytical_correction_robust(thermodynamic_state.kT) is True:
                     break
 
+                # Unpick atoms for another attempt
+                self._are_restrained_atoms_defined = False
+
+
         # Check if the analytical standard state correction is robust with these parameters.
         # This check is must be performed both in the case where the user has provided the
         # restrained atoms, and in the case where we exhausted the number of attempts.
