@@ -43,9 +43,18 @@ Free Energy Required Arguments:
 
 Free Energy Optional Arguments:
   --skipunbiasing               Skip the radially-symmetric restraint unbiasing. This can be an expensive step.
+                                If this flag is not specified, and no cutoff is given, a distance cutoff is
+                                automatically determined as the 99.9-percentile of the restraint distance distribution
+                                in the bound state.
   --distcutoff=DISTANCE         The restraint distance cutoff (in angstroms) to be used to unbias the restraint.
+                                When the restraint is unbiased, the analyzer discards all the samples for which the
+                                distance between the restrained atoms is above this cutoff. Effectively, this is
+                                equivalent to placing a hard wall potential at a restraint distance "distcutoff".
   --energycutoff=ENERGY         The restraint unitless potential energy cutoff (i.e. in kT) to be used to unbias the
-                                restraint.
+                                restraint. When the restraint is unbiased, the analyzer discards all the samples for
+                                which the restrain potential energy (in kT) is above this cutoff. Effectively, this is
+                                equivalent to placing a hard wall potential at a restraint distance such that the
+                                restraint potential energy is equal to "energycutoff".
 
 YANK Health Report Arguments:
   -o=REPORT, --output=REPORT    Name of the health report Jupyter notebook or static file, can use a path + name as well
