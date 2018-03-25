@@ -155,7 +155,7 @@ def get_mpicomm():
         if not os.path.exists(cuda_cache_path):
             os.makedirs(cuda_cache_path)
         os.environ['CUDA_CACHE_PATH'] = cuda_cache_path
-        print('Cray detected; node {}/{} using CUDA cache path {}'.format(mpicomm.rank+1, mpicomm.size, cuda_cache_path)
+        print('Cray detected; node {}/{} using CUDA cache path {}'.format(mpicomm.rank+1, mpicomm.size, cuda_cache_path))
 
     return mpicomm
 
