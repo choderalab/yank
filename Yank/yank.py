@@ -1404,7 +1404,9 @@ class AlchemicalPhase(object):
 
         # Use the FIRE minimizer
         integrator = FIREMinimizationIntegrator(tolerance=tolerance)
-        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state, integrator=integrator)
+
+        # Create context
+        context = thermodynamic_state.create_context(integrator)
 
         # Set initial positions and box vectors.
         sampler_state.apply_to_context(context)
@@ -1435,9 +1437,12 @@ class AlchemicalPhase(object):
         sampler_state.update_from_context(context)
 
         # Compute the final energy of the system for logging.
-        final_energy = thermodynamic_state.reduced_potential(sampler_state)
+        final_energy = thermodynamic_state.reduced_potential(context)
         logger.debug('Sampler state {}/{}: final energy {:8.3f}kT'.format(
             sampler_state_id + 1, len(sampler_states), final_energy))
+
+        # Clean up the integrator
+        del context
 
         # Return minimized positions.
         return sampler_state.positions
