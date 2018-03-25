@@ -1675,8 +1675,8 @@ class Boresch(ReceptorLigandRestraint):
                     break
 
                 # Unpick atoms for another attempt
-                self._are_restrained_atoms_defined = False
-
+                self.restrained_receptor_atoms = None
+                self.restrained_ligand_atoms = None
 
         # Check if the analytical standard state correction is robust with these parameters.
         # This check is must be performed both in the case where the user has provided the
