@@ -1242,13 +1242,14 @@ class MultiStateSampler(object):
             replica_id + 1, self.n_replicas, initial_energy))
 
         # Minimize energy.
-        if (max_iterations is None) or (max_iterations == 0):
-            fire_iterations = 1000
-        else:
-            fire_iterations = max_iterations
-        logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
         try:
-            integrator.step(max_iterations)
+            if max_iterations == 0:
+                logger.debug('Using FIRE: tolerance {} minimizing to convergence'.format(tolerance))
+                while integrator.getGlobalVariableByName('converged') < 1:
+                    integrator.step(50)
+            else:
+                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
+                integrator.step(max_iterations)
         except Exception as e:
             if str(e) == 'Particle coordinate is nan':
                 logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS after resetting positions')
@@ -1259,8 +1260,6 @@ class MultiStateSampler(object):
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
-
-        # TODO: Do we have to destroy the FIRE integrator-associated context if we aren't going to use it again?
 
         # Compute the final energy of the system for logging.
         final_energy = thermodynamic_state.reduced_potential(sampler_state)

@@ -1099,8 +1099,8 @@ class AlchemicalPhase(object):
             Minimization tolerance (units of energy/mole/length, default is
             ``1.0 * unit.kilojoules_per_mole / unit.nanometers``).
         max_iterations : int, optional
-            Maximum number of iterations for minimization. If 0, minimization
-            continues until converged.
+            Maximum number of iterations for minimization.
+            If 0, minimization continues until converged.
 
         """
         metadata = self._sampler.metadata
@@ -1415,13 +1415,14 @@ class AlchemicalPhase(object):
             sampler_state_id + 1, len(sampler_states), initial_energy))
 
         # Minimize energy.
-        if (max_iterations is None) or (max_iterations == 0):
-            fire_iterations = 1000
-        else:
-            fire_iterations = max_iterations
-        logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
         try:
-            integrator.step(max_iterations)
+            if max_iterations == 0:
+                logger.debug('Using FIRE: tolerance {} minimizing to convergence'.format(tolerance))
+                while integrator.getGlobalVariableByName('converged') < 1:
+                    integrator.step(50)
+            else:
+                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
+                integrator.step(max_iterations)
         except Exception as e:
             if str(e) == 'Particle coordinate is nan':
                 logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS after resetting positions')
@@ -1437,8 +1438,6 @@ class AlchemicalPhase(object):
         final_energy = thermodynamic_state.reduced_potential(sampler_state)
         logger.debug('Sampler state {}/{}: final energy {:8.3f}kT'.format(
             sampler_state_id + 1, len(sampler_states), final_energy))
-
-        # TODO: Do we have to destroy the FIRE integrator bound context if we aren't going to use it again?
 
         # Return minimized positions.
         return sampler_state.positions

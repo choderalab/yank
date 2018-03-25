@@ -457,7 +457,7 @@ Valid Options: [yes]/no
 .. code-block:: yaml
 
    options:
-     minimize_max_iterations: 0
+     minimize_max_iterations: 1000
 
 Set the maximum number of iterations the
 :ref:`energy minimization process <yaml_options_minimize>` attempts to converge to :ref:`given tolerance energy <yaml_options_minimize_tolerance>`. 0 steps indicate unlimited.

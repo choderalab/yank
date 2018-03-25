@@ -29,7 +29,7 @@ class FIREMinimizationIntegrator(openmm.CustomIntegrator):
     >>> system, positions = t.system, t.positions
 
     Create a FIRE integrator with default parameters and minimize for 100 steps
-    
+
     >>> integrator = FIREMinimizationIntegrator()
     >>> context = openmm.Context(system, integrator)
     >>> context.setPositions(positions)
@@ -73,7 +73,7 @@ class FIREMinimizationIntegrator(openmm.CustomIntegrator):
 
         # Use high-precision constraints
         self.setConstraintTolerance(1.0e-8)
-        
+
         self.addGlobalVariable("alpha", alpha)  # alpha
         self.addGlobalVariable("P", 0)  # P
         self.addGlobalVariable("N_neg", 0.0)
@@ -87,22 +87,24 @@ class FIREMinimizationIntegrator(openmm.CustomIntegrator):
         self.addPerDofVariable("v0", 0)
         self.addPerDofVariable("x1", 0)
         self.addGlobalVariable("E0", 0) # old energy associated with x0
-        self.addGlobalVariable("dE", 0)        
-        self.addGlobalVariable("restart", 0)        
+        self.addGlobalVariable("dE", 0)
+        self.addGlobalVariable("restart", 0)
         self.addGlobalVariable("delta_t", timestep.value_in_unit_system(unit.md_unit_system))
 
-        # Compute ndof
-        #self.addComputeGlobal('ndof', '0')
-        self.addComputeSum('ndof', '1')
+        # Assess convergence
+        # TODO: Can we more closely match the OpenMM criterion here?
+        self.beginIfBlock('converged < 1')
 
         # Compute fmag = |f|
         #self.addComputeGlobal('fmag', '0.0')
         self.addComputeSum('fmag', 'f*f')
         self.addComputeGlobal('fmag', 'sqrt(fmag)')
 
-        # Assess convergence
-        # TODO: Can we more closely match the OpenMM criterion here?
+        # Compute ndof
+        self.addComputeSum('ndof', '1')
+
         self.addComputeSum('converged', 'step(ftol - fmag/ndof)')
+        self.endBlock()
 
         # Enclose everything in a block that checks if we have already converged.
         self.beginIfBlock('converged < 1')
@@ -118,7 +120,7 @@ class FIREMinimizationIntegrator(openmm.CustomIntegrator):
         self.addComputePerDof("x1", "x")
         self.addConstrainPositions()
         self.addComputePerDof("v", "v+0.5*delta_t*f/m+(x-x1)/delta_t")
-        self.addConstrainVelocities()    
+        self.addConstrainVelocities()
 
         self.addComputeGlobal('dE', 'energy - E0')
 
@@ -130,17 +132,6 @@ class FIREMinimizationIntegrator(openmm.CustomIntegrator):
         #self.addComputeGlobal('vmag', '0.0')
         self.addComputeSum('vmag', 'v*v')
         self.addComputeGlobal('vmag', 'sqrt(vmag)')
-
-        ## Check for NaN and try to recover.
-        #self.beginIfBlock('abs(step(energy)-step(1-energy)) = 0')
-        ## Reset positions and set velocities to zero.
-        #self.addComputePerDof('x', 'x0')
-        #self.addComputePerDof('v', '0.0')
-        ## Reset P counter.
-        #self.addComputeGlobal('N_neg', '0.0')
-        ## Scale down timestep.
-        #self.addComputeGlobal('dt', 'dt*%f' % f_dec)
-        #self.endBlock()
 
         # F1: Compute P = F.v
         self.addComputeSum('P', 'f*v')
@@ -156,16 +147,15 @@ class FIREMinimizationIntegrator(openmm.CustomIntegrator):
         self.addComputeGlobal('restart', '0')
         self.endBlock()
         self.beginIfBlock('restart > 0')
-        self.addComputePerDof('v', 'v0')        
-        self.addComputePerDof('x', 'x0')        
+        self.addComputePerDof('v', 'v0')
+        self.addComputePerDof('x', 'x0')
         self.addComputeGlobal('P', '-1')
         self.endBlock()
 
-        # Make sure dt doesn't go to zero
-        # TODO: This doesn't actually help much, and may not be necessary
+        # If dt goes to zero, signal we've converged!
         dt_min = 1.0e-5 * timestep
         self.beginIfBlock('delta_t <= %f' % dt_min.value_in_unit_system(unit.md_unit_system))
-        self.addComputeGlobal('delta_t', '%f' % timestep.value_in_unit_system(unit.md_unit_system))
+        self.addComputeGlobal('converged', '1')
         self.endBlock()
 
         # F3: If P > 0 and the number of steps since P was negative > N_min,
@@ -191,4 +181,3 @@ class FIREMinimizationIntegrator(openmm.CustomIntegrator):
 
         # Close block that checks for convergence.
         self.endBlock()
-
