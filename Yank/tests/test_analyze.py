@@ -274,8 +274,8 @@ class TestMultiPhaseAnalyzer(object):
         assert fe.shape == (self.n_states + 2, self.n_states + 2)
         stored_fe_dict = phase._computed_observables['free_energy']
         stored_fe, stored_dfe = stored_fe_dict['value'], stored_fe_dict['error']
-        assert np.all(stored_fe == fe), "stored_fe = {}, fe = {}".format(stored_fe, fe)
-        assert np.all(stored_dfe == dfe), "stored_dfe = {}, dfe = {}".format(stored_dfe, dfe)
+        assert np.allclose(stored_fe, fe), "stored_fe = {}, fe = {}".format(stored_fe, fe)
+        assert np.allclose(stored_dfe, dfe), "stored_dfe = {}, dfe = {}".format(stored_dfe, dfe)
         # Test reference states and full work up creation
         iinit, jinit = phase.reference_states
         output = phase.analyze_phase()
@@ -362,7 +362,7 @@ class TestMultiPhaseAnalyzer(object):
         full_free_energy, full_dfree_energy = full_free_energy[i, j], full_dfree_energy[i, j]
         # Check free energy values
         assert free_energy_full_fe == full_free_energy + fe_phase.fev
-        assert dfree_energy_full_fe == np.sqrt(full_dfree_energy**2 + fe_phase.dfev**2)
+        assert np.allclose(dfree_energy_full_fe, np.sqrt(full_dfree_energy**2 + fe_phase.dfev**2))
         # Check by phase (should only yield 1 value, no error)
         combo_standard_state = full_fes.get_standard_state_correction()
         assert combo_standard_state == full_phase.get_standard_state_correction() + fes_phase.ssc
