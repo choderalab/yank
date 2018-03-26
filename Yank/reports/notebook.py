@@ -7,16 +7,20 @@ mainly image formatting is passed here.
 """
 
 import os
+
 import yaml
 import numpy as np
 from scipy import interpolate
 from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, NoNorm
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib import gridspec
-from simtk import unit as units
-from .. import version
-from .. import analyze
 from pymbar import MBAR
+import seaborn as sns
+from simtk import unit as units
+
+from .. import version
+from .. import analyze, utils
+
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
@@ -25,7 +29,7 @@ class HealthReportData(object):
     """
     Class which houses the data used for the notebook and the generation of all plots including formatting
     """
-    def __init__(self, store_directory):
+    def __init__(self, store_directory, **analyzer_kwargs):
         """
         Initial data read in and object assignment
 
@@ -33,7 +37,19 @@ class HealthReportData(object):
         ----------
         store_directory : string
             Location where the analysis.yaml file is and where the NetCDF files are
+        **analyzer_kwargs
+            Keyword arguments to pass to the analyzer class. Quantities can be
+            passed as strings.
         """
+        # Convert analyzer string quantities into variables.
+        for key, value in analyzer_kwargs.items():
+            try:
+                quantity = utils.quantity_from_string(value)
+            except:
+                pass
+            else:
+                analyzer_kwargs[key] = quantity
+
         # Read in data
         analysis_script_path = os.path.join(store_directory, 'analysis.yaml')
         if not os.path.isfile(analysis_script_path):
@@ -664,7 +680,8 @@ class HealthReportData(object):
                 s_reverse = states[:, -1:-kept_iterations - 1:-1]
                 for energy_sub, state_sub, storage in [
                         (u_forward, s_forward, free_energy_trace_f), (u_reverse, s_reverse, free_energy_trace_r)]:
-                    u_n = analyzer.get_effective_energy_timeseries(energies=energy_sub, states=state_sub)
+                    u_n = analyzer.get_effective_energy_timeseries(energies=energy_sub,
+                                                                   replica_state_indices=state_sub)
                     number_equilibrated, g_t, neff_max = analyze.multistate.utils.get_equilibration_data(u_n)
                     energy_sub = analyze.multistate.utils.remove_unequilibrated_data(energy_sub,
                                                                                      number_equilibrated,
@@ -707,6 +724,55 @@ class HealthReportData(object):
 
         return free_energy_trace_figure
 
+    def restraint_distributions_plot(self):
+        ENERGIES_IDX = 0
+        DISTANCES_IDX = 1
+
+        # Find the phase that defines the restraint energies and distances.
+        for phase_name in self.phase_names:
+            analyzer = self.analyzers[phase_name]
+            lambda1_data = list(analyzer._get_restraint_energies_distances_at_state(0))
+            if len(lambda1_data[ENERGIES_IDX]) != 0:
+                break
+        # Check if we have a restraint at all.
+        if len(lambda1_data[ENERGIES_IDX]) == 0:
+            print('The restraint unbiasing step was not performed for this calculation.')
+            return
+
+        # The restraint distances are not computed if there's no distance cutoff.
+        lambda0_data = list(analyzer._get_restraint_energies_distances_at_state(-1))
+        cutoffs = list(analyzer._get_restraint_cutoffs())
+        xlabels = ['Restraint energies [kT]', 'Restraint distances [Angstrom]']
+        for data in [lambda1_data, lambda0_data, cutoffs, xlabels]:
+            if len(lambda1_data[DISTANCES_IDX]) == 0:
+                del data[DISTANCES_IDX]
+            elif isinstance(data[DISTANCES_IDX], units.Quantity):
+                # Convert the distances into the units that will be printed.
+                data[DISTANCES_IDX] /= units.angstroms
+
+        # Plot the lambda=1 and lambda=0 restraints data.
+        figure, axes = plt.subplots(ncols=len(lambda1_data), figsize=(20, 10))
+        if len(lambda1_data) == 1:
+            axes = [axes]
+        for ax, lambda1, lambda0 in zip(axes, lambda1_data, lambda0_data):
+            sns.distplot(lambda1, ax=ax, kde=False, label='bound state')
+            sns.distplot(lambda0, ax=ax, kde=False, label='non-interacting state')
+
+        # Plot the cutoffs used for the restraint unbiasing.
+        for ax, cutoff in zip(axes, cutoffs):
+            limits = ax.get_ylim()
+            ax.plot([cutoff for _ in range(100)], np.linspace(limits[0], limits[1]/2, num=100))
+
+        # Labels and legend.
+        for i, (ax, xlabel) in enumerate(zip(axes, xlabels)):
+            ax.set_xlabel(xlabel)
+            if i == 0:
+                ax.set_ylabel('Number of samples')
+            elif i == 1:
+                ax.legend(loc='upper right')
+
+        return figure
+
     def report_version(self):
         current_version = version.version
         self._serialized_data['yank_version'] = current_version
@@ -720,7 +786,6 @@ class HealthReportData(object):
         true_path += ext
         with open(true_path, 'w') as f:
             f.write(yaml.dump(self._serialized_data))
-
 
     @staticmethod
     def report_version():

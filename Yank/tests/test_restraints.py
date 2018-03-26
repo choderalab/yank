@@ -384,13 +384,15 @@ def test_restraint_force_group():
         system = thermo_state.system
         for force_idx, force in enumerate(system.getForces()):
             try:
-                parameter_name = force.getGlobalParameterName(0)
+                num_parameters = force.getNumGlobalParameters()
             except AttributeError:
                 continue
-            if parameter_name == 'lambda_restraints':
-                restraint_force_idx = force_idx
-                restraint_force_group = force.getForceGroup()
-                break
+            for parameter_idx in range(num_parameters):
+                parameter_name = force.getGlobalParameterName(parameter_idx)
+                if parameter_name == 'lambda_restraints':
+                    restraint_force_idx = force_idx
+                    restraint_force_group = force.getForceGroup()
+                    break
 
         # No other force should have the same force group.
         for force_idx, force in enumerate(system.getForces()):

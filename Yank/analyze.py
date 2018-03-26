@@ -71,22 +71,41 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
         """
         Compute the standard state correction free energy associated with the Phase.
 
-        This usually is just a stored variable, but it may need other calculations.
-
         Returns
         -------
         standard_state_correction : float
             Free energy contribution from the standard_state_correction
 
         """
+        if self._computed_observables['standard_state_correction'] is not None:
+            return self._computed_observables['standard_state_correction']
+
+        # Determine if we need to recompute the standard state correction.
+        compute_ssc = self.unbias_restraint
+        try:
+            restraint_force, _, _ = self._get_radially_symmetric_restraint_data()
+        except (mmtools.forces.NoForceFoundError, TypeError):
+            compute_ssc = False
+
+        if compute_ssc:
+            thermodynamic_state = self._get_end_thermodynamic_states()[0]
+            restraint_energy_cutoff, restraint_distance_cutoff = self._get_restraint_cutoffs()
+            # TODO: Compute average box volume here to feed to max_volume?
+            ssc = restraint_force.compute_standard_state_correction(
+                thermodynamic_state, square_well=True, radius_cutoff=restraint_distance_cutoff,
+                energy_cutoff=restraint_energy_cutoff, max_volume='system')
+
+            # Update observable.
+            self._computed_observables['standard_state_correction'] = ssc
+            logger.debug('Computed a new standard state correction of {} kT'.format(ssc))
+
+        # Reads the SSC from the reporter if compute_ssc is False.
         if self._computed_observables['standard_state_correction'] is None:
             ssc = self._reporter.read_dict('metadata')['standard_state_correction']
             self._computed_observables['standard_state_correction'] = ssc
         return self._computed_observables['standard_state_correction']
 
     def analyze_phase(self, cutoff=0.05):
-        if self._mbar is None:
-            self._create_mbar_from_scratch()
         number_equilibrated, g_t, _ = self._equilibration_data
         self.show_mixing_statistics(cutoff=cutoff, number_equilibrated=number_equilibrated)
         data = {}
@@ -113,7 +132,7 @@ class YankParallelTemperingAnalyzer(multistate.ParallelTemperingAnalyzer, YankMu
 # MODULE FUNCTIONS
 # =============================================================================================
 
-def get_analyzer(file_base_path):
+def get_analyzer(file_base_path, **analyzer_kwargs):
     """
     Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
 
@@ -124,6 +143,8 @@ def get_analyzer(file_base_path):
     ----------
     file_base_path : string
         Complete path to the storage file with filename and extension.
+    **analyzer_kwargs
+        Keyword arguments to pass to the analyzer.
 
     Returns
     -------
@@ -143,13 +164,13 @@ def get_analyzer(file_base_path):
     """
     # Eventually change this to auto-detect simulation from reporter:
     if True:
-        analyzer = YankReplicaExchangeAnalyzer(reporter)
+        analyzer = YankReplicaExchangeAnalyzer(reporter, **analyzer_kwargs)
     else:
         raise RuntimeError("Cannot automatically determine analyzer for Reporter: {}".format(reporter))
     return analyzer
 
 
-def analyze_directory(source_directory):
+def analyze_directory(source_directory, **analyzer_kwargs):
     """
     Analyze contents of store files to compute free energy differences.
 
@@ -159,7 +180,9 @@ def analyze_directory(source_directory):
     Parameters
     ----------
     source_directory : string
-       The location of the simulation storage files.
+        The location of the simulation storage files.
+    **analyzer_kwargs
+        Keyword arguments to pass to the analyzer.
 
     """
     analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
@@ -173,7 +196,7 @@ def analyze_directory(source_directory):
     data = dict()
     for phase_name, sign in analysis:
         phase_path = os.path.join(source_directory, phase_name + '.nc')
-        phase = get_analyzer(phase_path)
+        phase = get_analyzer(phase_path, **analyzer_kwargs)
         data[phase_name] = phase.analyze_phase()
         kT = phase.kT
 
