@@ -122,8 +122,9 @@ class TestMultiPhaseAnalyzer(object):
     @classmethod
     def setup_class(cls):
         """Shared test cases and variables."""
-        checkpoint_interval = 2
-        n_steps = 5
+        cls.checkpoint_interval = 2
+        # Make sure we collect the same number of samples for all tests to avoid instabilities in MBAR.
+        cls.n_steps = int(np.ceil(25 / cls.N_SAMPLERS))
 
         # Test case with host guest in vacuum at 3 different positions and alchemical parameters.
         # -----------------------------------------------------------------------------------------
@@ -194,16 +195,14 @@ class TestMultiPhaseAnalyzer(object):
         cls.tmp_dir = tempfile.mkdtemp()
         storage_path = os.path.join(cls.tmp_dir, 'test_analyze.nc')
         move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-        cls.sampler = cls.SAMPLER(mcmc_moves=move, number_of_iterations=n_steps)
-        cls.reporter = MultiStateReporter(storage_path, checkpoint_interval=checkpoint_interval,
+        cls.sampler = cls.SAMPLER(mcmc_moves=move, number_of_iterations=cls.n_steps)
+        cls.reporter = MultiStateReporter(storage_path, checkpoint_interval=cls.checkpoint_interval,
                                           analysis_particle_indices=analysis_atoms)
         cls.call_sampler_create(cls.sampler,cls.reporter, thermodynamic_states, sampler_states, unsampled_states,
                                 metadata=metadata)
         # run some iterations
         cls.n_replicas = cls.N_SAMPLERS
         cls.n_states = n_states
-        cls.n_steps = n_steps
-        cls.checkpoint_interval = checkpoint_interval
         cls.analysis_atoms = analysis_atoms
         cls.sampler.run(cls.n_steps-1)  # Initial config
         cls.repex_name = "RepexAnalyzer"  # kind of an unused test
@@ -254,18 +253,23 @@ class TestMultiPhaseAnalyzer(object):
         assert u_unsampled.shape == (self.n_replicas, 2, self.n_steps)
         u_n = phase.get_effective_energy_timeseries()
         assert u_n.shape == (self.n_steps,)
+
         # This may need to be adjusted from time to time as analyze changes
         discard = 1
         # Generate mbar semi-manually, use phases's static methods
         n_eq, g_t, Neff_max = pymbar.timeseries.detectEquilibration(u_n[discard:])
         u_sampled_sub = analyze.multistate.remove_unequilibrated_data(u_sampled, n_eq, -1)
         # Make sure output from subsample is what we expect
-        assert u_sampled_sub.shape == (self.n_replicas, self.n_states, Neff_max)
+        assert u_sampled_sub.shape[:2] == (self.n_replicas, self.n_states)
+        assert abs(u_sampled_sub.shape[2] - Neff_max) < 1  # In the general case, Neff_max is a float.
+
         # Generate MBAR from phase
         phase_mbar = phase.mbar
         # Assert mbar object is formed of nstates + unsampled states, Number of effective samples
         n_effective_samples = Neff_max - discard  # The analysis discards the minimization frame.
-        assert phase_mbar.u_kn.shape == (self.n_states + 2, n_effective_samples*self.n_replicas)
+        assert phase_mbar.u_kn.shape[0] == self.n_states + 2
+        assert abs(phase_mbar.u_kn.shape[1]/self.n_replicas - n_effective_samples) < 1
+
         # Check that Free energies are returned correctly
         fe, dfe = self.help_fe_calc(phase)
         assert fe.shape == (self.n_states + 2, self.n_states + 2)
@@ -426,24 +430,42 @@ class TestMultiPhaseAnalyzer(object):
         """Test that max_n_iterations limits the number of iterations analyzed."""
         analyzer = self.ANALYZER(self.reporter, name=self.repex_name)
 
+        def get_n_analyzed_iterations():
+            """Compute the number of equilibrated + decorrelated + truncated iterations."""
+            n_iterations = (analyzer.max_n_iterations + 1 - analyzer.n_equilibration_iterations)
+            return int(round(n_iterations / analyzer.statistical_inefficiency))
+
         # By default, all iterations are analyzed.
+        n_analyzed_iterations1 = get_n_analyzed_iterations()
         all_decorrelated_iterations = analyzer._decorrelated_iterations
         all_decorrelated_u_ln = analyzer._decorrelated_u_ln
-        n_iterations_ln = analyzer.n_replicas * analyzer.n_iterations
-        assert len(all_decorrelated_iterations) == analyzer.n_iterations
-        assert all_decorrelated_u_ln.shape[1] == n_iterations_ln
+        n_iterations_ln1 = analyzer.n_replicas * n_analyzed_iterations1
+        assert len(all_decorrelated_iterations) == n_analyzed_iterations1
+        assert all_decorrelated_u_ln.shape[1] == n_iterations_ln1
 
         # Setting max_n_iterations reduces the number of iterations analyzed
-        new_max_n_iterations = analyzer.n_iterations - 1
-        analyzer.max_n_iterations = new_max_n_iterations
-        assert len(analyzer._decorrelated_iterations) == new_max_n_iterations
-        assert np.array_equal(analyzer._decorrelated_iterations, all_decorrelated_iterations[:-1])
-        assert analyzer._decorrelated_u_ln.shape[1] == analyzer.n_replicas * new_max_n_iterations
+        analyzer.max_n_iterations = analyzer.n_iterations - 1
+        n_analyzed_iterations2 = get_n_analyzed_iterations()
+        n_iterations_ln2 = analyzer.n_replicas * n_analyzed_iterations2
+        assert len(analyzer._decorrelated_iterations) == n_analyzed_iterations2
+        assert analyzer._decorrelated_u_ln.shape[1] == n_iterations_ln2
 
-        expected_iterations_ln_dropped = set(range(analyzer.n_iterations-1, n_iterations_ln, analyzer.n_iterations))
-        expected_iterations_ln_kept = sorted(set(range(n_iterations_ln)) - expected_iterations_ln_dropped)
-        expected_decorrelated_u_ln = all_decorrelated_u_ln[:, expected_iterations_ln_kept]
-        assert np.array_equal(analyzer._decorrelated_u_ln, expected_decorrelated_u_ln)
+        # Check that the energies of the iterations match.
+        def get_matched_iteration(iterations1, iterations2, n_analyzed_iterations, n_iterations_ln):
+            matched_iterations_ln = set()
+            for matched_iteration in sorted(set(iterations1) & set(iterations2)):
+                matched_iteration_idx = np.where(iterations1 == matched_iteration)[0][0]
+                matched_iterations_ln.update(
+                    set(range(matched_iteration_idx, n_iterations_ln, n_analyzed_iterations))
+                )
+            return sorted(matched_iterations_ln)
+
+        matched_iterations1 = get_matched_iteration(all_decorrelated_iterations, analyzer._decorrelated_iterations,
+                                                    n_analyzed_iterations1, n_iterations_ln1)
+        matched_iterations2 = get_matched_iteration(analyzer._decorrelated_iterations, all_decorrelated_iterations,
+                                                    n_analyzed_iterations2, n_iterations_ln2)
+        assert np.array_equal(all_decorrelated_u_ln[:, matched_iterations1],
+                              analyzer._decorrelated_u_ln[:, matched_iterations2])
 
     def test_unbias_restraint(self):
         """Test that restraints are unbiased correctly when unbias_restraint is True."""
@@ -455,10 +477,12 @@ class TestMultiPhaseAnalyzer(object):
         # Switch unbias_restraint to True. The old cached value is invalidated and
         # now u_ln and N_l have two extra states.
         analyzer.unbias_restraint = True
-        analyzer.restraint_energy_cutoff = 18.2
+        # Set a cutoff that allows us to discard some iterations.
+        restraint_data = analyzer._get_radially_symmetric_restraint_data()
+        restraint_energies, _ = analyzer._compute_restraint_energies(*restraint_data)
+        analyzer.restraint_energy_cutoff = np.mean(restraint_energies) / analyzer.kT
         assert analyzer._unbiased_decorrelated_u_ln.shape[0] == analyzer._decorrelated_u_ln.shape[0] + 2
         assert analyzer._unbiased_decorrelated_N_l.shape[0] == analyzer._decorrelated_N_l.shape[0] + 2
-        # The automatic cutoff (default value) should remove some of the iterations.
         assert analyzer._unbiased_decorrelated_u_ln.shape[1] < analyzer._decorrelated_u_ln.shape[1]
         # The energy without the restraint should always be smaller.
         assert np.all(analyzer._unbiased_decorrelated_u_ln[0] < analyzer._unbiased_decorrelated_u_ln[1])
@@ -473,8 +497,9 @@ class TestMultiPhaseAnalyzer(object):
 
     def test_extract_trajectory(self):
         """extract_trajectory handles checkpointing and skip frame correctly."""
-        trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, skip_frame=2)
-        assert len(trajectory) == 1
+        skip_frame = 2
+        trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, skip_frame=skip_frame)
+        assert len(trajectory) == int(self.n_steps / self.checkpoint_interval / skip_frame)
         self.reporter.close()
         full_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=True)
         # This should work since its pure Python integer division

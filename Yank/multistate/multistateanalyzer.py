@@ -1817,9 +1817,9 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         Returns
         -------
-        n_equilibration_iteration : int
+        n_equilibration_iterations : int
         statistical_inefficiency : float
-        n_effective_iterations : int
+        n_uncorrelated_iterations : int
         """
         u_n = self.get_effective_energy_timeseries(energies, replica_state_indices)
         # Discard equilibration samples.
