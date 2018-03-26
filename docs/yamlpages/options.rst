@@ -436,10 +436,12 @@ Valid options (0): <Integer>
 .. code-block:: yaml
 
    options:
-     minimize: yes
+     minimize: True
 
-Minimize the input configuration before starting simulation. Highly recommended if a pre-minimized structure is provided,
-or if explicit solvent generation is left to YANK.
+Minimize the input configuration before starting simulation.
+This is highly recommended if a pre-minimized structure is provided, or if explicit solvent generation is left to YANK.
+The FIRE minimizer :cite:`FIREMinimizer`, a fast minimizer that can run entirely on the GPU, is used first.
+If this fails, an L-BFGS minimizer :cite:`LBFGS` (as `implemented in OpenMM <http://docs.openmm.org/latest/userguide/application.html#energy-minimization>`_) is used.
 
 Valid Options: [yes]/no
 
@@ -455,7 +457,7 @@ Valid Options: [yes]/no
 .. code-block:: yaml
 
    options:
-     minimize_max_iterations: 0
+     minimize_max_iterations: 1000
 
 Set the maximum number of iterations the
 :ref:`energy minimization process <yaml_options_minimize>` attempts to converge to :ref:`given tolerance energy <yaml_options_minimize_tolerance>`. 0 steps indicate unlimited.

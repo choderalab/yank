@@ -47,6 +47,8 @@ from .utils import SimulationNaNError
 from .. import mpi
 from pymbar.utils import ParameterError
 
+from yank.fire import FIREMinimizationIntegrator
+
 logger = logging.getLogger(__name__)
 
 
@@ -677,7 +679,7 @@ class MultiStateSampler(object):
         """
         # Check that simulation has been created.
         if self.n_replicas == 0:
-            raise RuntimeError('Cannot minimize replicas. The simulation must be created first.')
+            raise RuntimeError('Cannot equilibrate replicas. The simulation must be created first.')
 
         # If no MCMCMove is specified, use the ones for production.
         if mcmc_moves is None:
@@ -1219,14 +1221,19 @@ class MultiStateSampler(object):
         return move_statistics
 
     def _minimize_replica(self, replica_id, tolerance, max_iterations):
-        """Minimize the specified replica."""
+        """Minimize the specified replica.
+        """
+
         # Retrieve thermodynamic and sampler states.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
         sampler_state = self._sampler_states[replica_id]
 
-        # Retrieve a context. Any Integrator works.
-        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+        # Use the FIRE minimizer
+        integrator = FIREMinimizationIntegrator(tolerance=tolerance)
+
+        # Create context
+        context = thermodynamic_state.create_context(integrator)
 
         # Set initial positions and box vectors.
         sampler_state.apply_to_context(context)
@@ -1237,15 +1244,32 @@ class MultiStateSampler(object):
             replica_id + 1, self.n_replicas, initial_energy))
 
         # Minimize energy.
-        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+        try:
+            if max_iterations == 0:
+                logger.debug('Using FIRE: tolerance {} minimizing to convergence'.format(tolerance))
+                while integrator.getGlobalVariableByName('converged') < 1:
+                    integrator.step(50)
+            else:
+                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
+                integrator.step(max_iterations)
+        except Exception as e:
+            if str(e) == 'Particle coordinate is nan':
+                logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS after resetting positions')
+                sampler_state.apply_to_context(context)
+                openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+            else:
+                raise e
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
-
+        
         # Compute the final energy of the system for logging.
         final_energy = thermodynamic_state.reduced_potential(sampler_state)
         logger.debug('Replica {}/{}: final energy {:8.3f}kT'.format(
             replica_id + 1, self.n_replicas, final_energy))
+
+        # Clean up the integrator
+        del context
 
         # Return minimized positions.
         return sampler_state.positions

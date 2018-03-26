@@ -100,7 +100,10 @@ def get_mpicomm():
     # http://docs.roguewave.com/threadspotter/2012.1/linux/manual_html/apas03.html
     variables = ['PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'OMPI_MCA_ns_nds_vpid',
                  'PMI_ID', 'SLURM_PROCID', 'LAMRANK', 'MPI_RANKID',
-                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK']
+                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK',
+                 'ALPS_APP_PE', # Cray aprun
+                ]
+
     use_mpi = False
     for var in variables:
         if var in os.environ:
@@ -144,6 +147,15 @@ def get_mpicomm():
 
     # Report initialization
     logger.debug("MPI initialized on node {}/{}".format(mpicomm.rank+1, mpicomm.size))
+
+    # Cray machines are usually old and sick; prevent them from causing trouble with CUDA caches
+    # by explicitly using different CUDA cache paths for each process
+    if 'ALPS_APP_PE' in variables:
+        cuda_cache_path = os.path.abspath(os.path.join('nvcc-cache', str(mpicomm.rank)))
+        if not os.path.exists(cuda_cache_path):
+            os.makedirs(cuda_cache_path)
+        os.environ['CUDA_CACHE_PATH'] = cuda_cache_path
+        print('Cray detected; node {}/{} using CUDA cache path {}'.format(mpicomm.rank+1, mpicomm.size, cuda_cache_path))
 
     return mpicomm
 

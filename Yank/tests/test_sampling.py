@@ -1248,7 +1248,7 @@ class TestMultiStateSampler(object):
             new_sampler_states = sampler._sampler_states
             new_diffs = [np.average(new_sampler_states[i].positions - new_sampler_states[i + 1].positions)
                          for i in range(n_replicas - 1)]
-            assert np.allclose(original_diffs, new_diffs)
+            assert np.allclose(original_diffs, new_diffs, atol=0.1)
 
             # Each replica keeps only the info for the replicas it is
             # responsible for to minimize network traffic.
@@ -1256,9 +1256,11 @@ class TestMultiStateSampler(object):
 
             # The energies have been minimized.
             sampler._compute_energies()
-            for i in node_replica_ids:
-                j = sampler._replica_thermodynamic_states[i]
-                assert sampler._energy_thermodynamic_states[i, j] < original_energies[i]
+            for replica_index in node_replica_ids:
+                state_index = sampler._replica_thermodynamic_states[replica_index]
+                old_energy = original_energies[replica_index]
+                new_energy = sampler._energy_thermodynamic_states[replica_index, state_index]
+                assert new_energy <= old_energy, "Energies did not decrease: Replica {} was originally {}, now {}".format(replica_index, old_energy, new_energy)
 
             # The storage has been updated.
             reporter.close()
