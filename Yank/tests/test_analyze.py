@@ -271,8 +271,8 @@ class TestMultiPhaseAnalyzer(object):
         assert fe.shape == (self.n_states + 2, self.n_states + 2)
         stored_fe_dict = phase._computed_observables['free_energy']
         stored_fe, stored_dfe = stored_fe_dict['value'], stored_fe_dict['error']
-        assert np.all(stored_fe == fe), '{}, {}'.format(stored_fe, fe)
-        assert np.all(stored_dfe == dfe), '{}, {}'.format(stored_dfe, dfe)
+        assert np.all(stored_fe == fe), "stored_fe = {}, fe = {}".format(stored_fe, fe)
+        assert np.all(stored_dfe == dfe), "stored_dfe = {}, dfe = {}".format(stored_dfe, dfe)
         # Test reference states and full work up creation
         iinit, jinit = phase.reference_states
         output = phase.analyze_phase()
