@@ -680,7 +680,8 @@ class HealthReportData(object):
                 s_reverse = states[:, -1:-kept_iterations - 1:-1]
                 for energy_sub, state_sub, storage in [
                         (u_forward, s_forward, free_energy_trace_f), (u_reverse, s_reverse, free_energy_trace_r)]:
-                    u_n = analyzer.get_effective_energy_timeseries(energies=energy_sub, states=state_sub)
+                    u_n = analyzer.get_effective_energy_timeseries(energies=energy_sub,
+                                                                   replica_state_indices=state_sub)
                     number_equilibrated, g_t, neff_max = analyze.multistate.utils.get_equilibration_data(u_n)
                     energy_sub = analyze.multistate.utils.remove_unequilibrated_data(energy_sub,
                                                                                      number_equilibrated,
@@ -735,7 +736,7 @@ class HealthReportData(object):
                 break
         # Check if we have a restraint at all.
         if len(lambda1_data[ENERGIES_IDX]) == 0:
-            print('The restraint unbiasing was not performed for this calculation.')
+            print('The restraint unbiasing step was not performed for this calculation.')
             return
 
         # The restraint distances are not computed if there's no distance cutoff.
@@ -750,7 +751,7 @@ class HealthReportData(object):
                 data[DISTANCES_IDX] /= units.angstroms
 
         # Plot the lambda=1 and lambda=0 restraints data.
-        figure, axes = plt.subplots(ncols=len(lambda1_data))
+        figure, axes = plt.subplots(ncols=len(lambda1_data), figsize=(20, 10))
         if len(lambda1_data) == 1:
             axes = [axes]
         for ax, lambda1, lambda0 in zip(axes, lambda1_data, lambda0_data):
@@ -763,7 +764,7 @@ class HealthReportData(object):
             ax.plot([cutoff for _ in range(100)], np.linspace(limits[0], limits[1]/2, num=100))
 
         # Labels and legend.
-        for i, (ax, xlabel) in zip(axes, xlabels):
+        for i, (ax, xlabel) in enumerate(zip(axes, xlabels)):
             ax.set_xlabel(xlabel)
             if i == 0:
                 ax.set_ylabel('Number of samples')
