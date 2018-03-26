@@ -323,7 +323,7 @@ class TestMultiPhaseAnalyzer(object):
     def test_multi_phase(self):
         """Test MultiPhaseAnalysis"""
         # Create the phases
-        full_phase = self.ANALYZER(self.reporter, name=self.repex_name)
+        full_phase = self.ANALYZER(self.reporter, name=self.repex_name, unbias_restraint=False)
         blank_phase = BlankPhase(self.reporter, name="blank")
         fe_phase = FreeEnergyPhase(self.reporter, name="fe")
         fes_phase = FEStandardStatePhase(self.reporter, name="fes")
@@ -392,7 +392,7 @@ class TestMultiPhaseAnalyzer(object):
 
     def test_cached_properties_dependencies(self):
         """Test that cached properties are invalidated when their dependencies change."""
-        analyzer = self.ANALYZER(self.reporter, name=self.repex_name)
+        analyzer = self.ANALYZER(self.reporter, name=self.repex_name, unbias_restraint=False)
 
         def check_cached_properties(is_in):
             for cached_property in cached_properties:
@@ -455,6 +455,7 @@ class TestMultiPhaseAnalyzer(object):
         # Switch unbias_restraint to True. The old cached value is invalidated and
         # now u_ln and N_l have two extra states.
         analyzer.unbias_restraint = True
+        analyzer.restraint_energy_cutoff = 18.2
         assert analyzer._unbiased_decorrelated_u_ln.shape[0] == analyzer._decorrelated_u_ln.shape[0] + 2
         assert analyzer._unbiased_decorrelated_N_l.shape[0] == analyzer._decorrelated_N_l.shape[0] + 2
         # The automatic cutoff (default value) should remove some of the iterations.

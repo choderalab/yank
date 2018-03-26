@@ -342,7 +342,16 @@ default_observables_registry.register_two_state_observable('enthalpy', error_cla
 
 
 # -----------------------------------------------------------------------------
-# Cached properties descriptor.
+# EXCEPTIONS.
+# -----------------------------------------------------------------------------
+
+class InsufficientData(Exception):
+    """Raised when the data is not sufficient perform the requested analysis."""
+    pass
+
+
+# -----------------------------------------------------------------------------
+# CACHED PROPERTIES DESCRIPTOR.
 # -----------------------------------------------------------------------------
 
 class CachedProperty(object):
@@ -1618,6 +1627,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Resolve negative indices.
         if state_idx < 0:
             state_idx = self.n_states + state_idx
+        replica_state_indices = self._reporter.read_replica_thermodynamic_states()
+
         # Gather the state restraint energies/distances.
         state_energies = [] if get_energies else None
         state_distances = [] if get_distances else None
@@ -1626,11 +1637,11 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             if state_data is None:
                 continue
             for iteration, states_data in cached_data.items():
-                # SAMS may not have the energy of all states at every iteration.
-                try:
-                    state_data.append(states_data[state_idx])
-                except KeyError:
-                    pass
+                # Find the replicas in this state.
+                replica_indices = np.where(replica_state_indices[iteration] == state_idx)[0]
+                for replica_idx in replica_indices:
+                    state_data.append(states_data[replica_idx])
+
         # Convert to the correct units.
         if state_energies is not None:
             state_energies = np.array(state_energies) * _OPENMM_ENERGY_UNIT / self.kT
@@ -1648,11 +1659,24 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Gather the bound state restraint energies/distances.
         state0_energies, state0_distances = self._get_restraint_energies_distances_at_state(
             state_idx=0, get_energies=compute_energy_cutoff, get_distances=compute_distance_cutoff)
+
         # Compute cutoff as the 99.9%-percentile of the energies/distances distributions.
-        energy_cutoff = np.percentile(state0_energies, 99.9) if compute_energy_cutoff else None
-        state0_distances /= _MDTRAJ_DISTANCE_UNIT
-        distance_cutoff = np.percentile(state0_distances, 99.9) if compute_distance_cutoff else None
-        return energy_cutoff, distance_cutoff * _MDTRAJ_DISTANCE_UNIT
+        energy_cutoff = None
+        distance_cutoff = None
+        err_msg = ('Thermodynamic state 0 has not been sampled enough to '
+                   'determine automatically the restraint {} cutoff.')
+
+        if compute_energy_cutoff:
+            if len(state0_energies) == 0:
+                raise InsufficientData(err_msg.format('energy'))
+            energy_cutoff = np.percentile(state0_energies, 99.9)
+        if compute_distance_cutoff:
+            if len(state0_distances) == 0:
+                raise InsufficientData(err_msg.format('distance'))
+            state0_distances /= _MDTRAJ_DISTANCE_UNIT
+            distance_cutoff = np.percentile(state0_distances, 99.9) * _MDTRAJ_DISTANCE_UNIT
+
+        return energy_cutoff, distance_cutoff
 
     def _get_restraint_cutoffs(self):
         """Return the restraint energies and distance cutoff to be used for unbiasing."""
