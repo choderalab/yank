@@ -139,7 +139,7 @@ def dispatch_report(args):
     file_full_path, file_extension = os.path.splitext(output)
     _, file_base_name = os.path.split(file_full_path)
     # PDF requires xelatex binary in the OS (provided by LaTeX such as TeXLive and MiKTeX)
-    static_extensions = [".pdf", ".html", 'ipynb']
+    static_extensions = [".pdf", ".html", ".ipynb"]
     try:
         import matplotlib
         import jupyter
