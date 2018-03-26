@@ -31,7 +31,7 @@ YANK analyze
 
 Usage:
   yank analyze (-s STORE | --store=STORE) [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose]
-  yank analyze report (-s STORE | --store=STORE) [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] (-o REPORT | --output=REPORT)
+  yank analyze report (-s STORE | --store=STORE) [-e | --serial] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] (-o REPORT | --output=REPORT)
   yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
@@ -62,6 +62,8 @@ YANK Health Report Arguments:
                                 static PDF or HTML file respectively
                                 PDF requires xelatex binary in OS path, often provided by LaTeX packages
                                 Static generation may be slow
+  -e, --serial                  Save data in YAML serialized output, name will be same as REPORT but with .yaml
+                                extension
 
 Extract Trajectory Required Arguments:
   --netcdf=FILEPATH             Path to the NetCDF file.
@@ -177,7 +179,7 @@ def dispatch_report(args):
 
     # If we need to pre-render the notebook, check if we have the necessary libraries.
     # PDF requires xelatex binary in the OS (provided by LaTeX such as TeXLive and MiKTeX)
-    requires_prerendering = file_extension.lower() in {'.pdf', '.html'}
+    requires_prerendering = file_extension.lower() in {'.pdf', '.html', '.ipynb'}
     try:
         import seaborn
         import matplotlib
@@ -199,6 +201,12 @@ def dispatch_report(args):
     with open(template_path, 'r') as template:
         notebook_text = re.sub('STOREDIRBLANK', store, template.read())
         notebook_text = re.sub('ANALYZERKWARGSBLANK', str(analyzer_kwargs), notebook_text)
+        if args['--serial']:
+            # Uncomment the line. Traps '#' and the rest, reports only the rest
+            notebook_text = re.sub(r"(#)(report\.dump_serial_data\('SERIALOUTPUT'\))", r'\2', notebook_text)
+            serial_base, _ = os.path.splitext(output)
+            serial_out = serial_base + '.yaml'
+            notebook_text = re.sub('SERIALOUTPUT', serial_out, notebook_text)
 
     # Determine whether to pre-render the notebook or not.
     if not requires_prerendering:
@@ -207,7 +215,7 @@ def dispatch_report(args):
             notebook.write(notebook_text)
     else:
         # Cast to static output
-        print("Rendering notebook as static file...")
+        print("Rendering notebook as a {} file...".format(file_extension))
         import nbformat
         from nbconvert.preprocessors import ExecutePreprocessor
         import nbconvert.exporters
@@ -216,7 +224,8 @@ def dispatch_report(args):
         # 't' = text based output, e.g. HTML or even raw notebook, human-readable-like
         exporters = {
             ".pdf": {'exporter': nbconvert.exporters.PDFExporter, 'write_type': 'b'},
-            ".html": {'exporter': nbconvert.exporters.HTMLExporter, 'write_type': 't'}
+            ".html": {'exporter': nbconvert.exporters.HTMLExporter, 'write_type': 't'},
+            ".ipynb": {'exporter': nbconvert.exporters.NotebookExporter, 'write_type': 't'}
         }
 
         # Load the notebook through Jupyter.
