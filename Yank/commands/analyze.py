@@ -179,10 +179,12 @@ def dispatch_report(args):
     # PDF requires xelatex binary in the OS (provided by LaTeX such as TeXLive and MiKTeX)
     requires_prerendering = file_extension.lower() in {'.pdf', '.html'}
     try:
+        import seaborn
         import matplotlib
         import jupyter
     except ImportError:
         error_msg = ("Rendering this notebook requires the following packages:\n"
+                     " - seaborn\n"
                      " - matplotlib\n"
                      " - jupyter\n"
                      "These are not required to generate the notebook however")
@@ -221,6 +223,8 @@ def dispatch_report(args):
         loaded_notebook = nbformat.read(io.StringIO(notebook_text), as_version=4)
         # Process the notebook.
         ep = ExecutePreprocessor(timeout=None)
+        # Sometimes the default startup timeout exceed the default of 60 seconds.
+        ep.startup_timeout = 180
         # Set the title name, does not appear in all exporters
         resource_data = {'metadata': {'name': 'YANK Simulation Report: {}'.format(file_base_name)}}
         print("Processing notebook now, this may take a while...")
