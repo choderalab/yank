@@ -27,7 +27,7 @@ YANK analyze
 
 Usage:
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
-  yank analyze report (-s STORE | --store=STORE) (-o REPORT | --output=REPORT)
+  yank analyze report (-s STORE | --store=STORE) (-o REPORT | --output=REPORT) [-e | --serial]
   yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
@@ -43,6 +43,8 @@ YANK Health Report Arguments:
                                 static PDF or HTML file respectively
                                 PDF requires xelatex binary in OS path, often provided by LaTeX packages
                                 Static generation may be slow
+  -e, --serial                  Save data in YAML serialized output, name will be same as REPORT but with .yaml
+                                extension
 
 Extract Trajectory Required Arguments:
   --netcdf=FILEPATH             Path to the NetCDF file.
@@ -137,7 +139,7 @@ def dispatch_report(args):
     file_full_path, file_extension = os.path.splitext(output)
     _, file_base_name = os.path.split(file_full_path)
     # PDF requires xelatex binary in the OS (provided by LaTeX such as TeXLive and MiKTeX)
-    static_extensions = [".pdf", ".html"]
+    static_extensions = [".pdf", ".html", ".ipynb"]
     try:
         import matplotlib
         import jupyter
@@ -154,9 +156,15 @@ def dispatch_report(args):
     template_path = pkg_resources.resource_filename('yank', 'reports/YANK_Health_Report_Template.ipynb')
     with open(template_path, 'r') as template:
         notebook_text = re.sub('STOREDIRBLANK', store, template.read())
+        if args['--serial']:
+            # Uncomment the line. Traps '#' and the rest, reports only the rest
+            notebook_text = re.sub(r"(#)(report\.dump_serial_data\('SERIALOUTPUT'\))", r'\2', notebook_text)
+            serial_base, _ = os.path.splitext(output)
+            serial_out = serial_base + '.yaml'
+            notebook_text = re.sub('SERIALOUTPUT', serial_out, notebook_text)
     if file_extension.lower() in static_extensions:
         # Cast to static output
-        print("Rendering notebook as static file...")
+        print("Rendering notebook as a {} file...".format(file_extension))
         import nbformat
         from nbconvert.preprocessors import ExecutePreprocessor
         import nbconvert.exporters
@@ -164,7 +172,8 @@ def dispatch_report(args):
         # 'b' = byte types output, e.g. PDF
         # 't' = text based output, e.g. HTML or even raw notebook, human-readable-like
         exporters = {".pdf": {'exporter': nbconvert.exporters.PDFExporter, 'write_type': 'b'},
-                     ".html": {'exporter': nbconvert.exporters.HTMLExporter, 'write_type': 't'}
+                     ".html": {'exporter': nbconvert.exporters.HTMLExporter, 'write_type': 't'},
+                     ".ipynb": {'exporter': nbconvert.exporters.NotebookExporter, 'write_type': 't'}
                      }
         temporary_directory = analyze.mmtools.utils.temporary_directory
         with temporary_directory() as tmp_dir_path:
