@@ -255,18 +255,17 @@ class TestMultiPhaseAnalyzer(object):
         assert u_n.shape == (self.n_steps,)
 
         # This may need to be adjusted from time to time as analyze changes
-        discard = 1
+        discard = 1  # The analysis discards the minimization frame.
         # Generate mbar semi-manually, use phases's static methods
         n_eq, g_t, Neff_max = pymbar.timeseries.detectEquilibration(u_n[discard:])
         u_sampled_sub = analyze.multistate.remove_unequilibrated_data(u_sampled, n_eq, -1)
-        # Make sure output from subsample is what we expect
-        assert u_sampled_sub.shape[:2] == (self.n_replicas, self.n_states)
-        assert abs(u_sampled_sub.shape[2] - Neff_max) < 1  # In the general case, Neff_max is a float.
+        # Make sure output from discarding iterations is what we expect.
+        assert u_sampled_sub.shape == (self.n_replicas, self.n_states, phase.n_iterations + 1 - n_eq)
 
         # Generate MBAR from phase
         phase_mbar = phase.mbar
         # Assert mbar object is formed of nstates + unsampled states, Number of effective samples
-        n_effective_samples = Neff_max - discard  # The analysis discards the minimization frame.
+        n_effective_samples = Neff_max - discard
         assert phase_mbar.u_kn.shape[0] == self.n_states + 2
         assert abs(phase_mbar.u_kn.shape[1]/self.n_replicas - n_effective_samples) < 1
 
@@ -433,25 +432,27 @@ class TestMultiPhaseAnalyzer(object):
         def get_n_analyzed_iterations():
             """Compute the number of equilibrated + decorrelated + truncated iterations."""
             n_iterations = (analyzer.max_n_iterations + 1 - analyzer.n_equilibration_iterations)
-            return int(round(n_iterations / analyzer.statistical_inefficiency))
+            return n_iterations / analyzer.statistical_inefficiency
 
         # By default, all iterations are analyzed.
         n_analyzed_iterations1 = get_n_analyzed_iterations()
         all_decorrelated_iterations = analyzer._decorrelated_iterations
         all_decorrelated_u_ln = analyzer._decorrelated_u_ln
         n_iterations_ln1 = analyzer.n_replicas * n_analyzed_iterations1
-        assert len(all_decorrelated_iterations) == n_analyzed_iterations1
-        assert all_decorrelated_u_ln.shape[1] == n_iterations_ln1
+        assert abs(len(all_decorrelated_iterations) - n_analyzed_iterations1) < 1
+        assert abs(all_decorrelated_u_ln.shape[1] - n_iterations_ln1) < self.n_replicas
 
         # Setting max_n_iterations reduces the number of iterations analyzed
         analyzer.max_n_iterations = analyzer.n_iterations - 1
         n_analyzed_iterations2 = get_n_analyzed_iterations()
         n_iterations_ln2 = analyzer.n_replicas * n_analyzed_iterations2
-        assert len(analyzer._decorrelated_iterations) == n_analyzed_iterations2
-        assert analyzer._decorrelated_u_ln.shape[1] == n_iterations_ln2
+        assert abs(len(analyzer._decorrelated_iterations) - n_analyzed_iterations2) < 1
+        assert abs(analyzer._decorrelated_u_ln.shape[1] - n_iterations_ln2) < self.n_replicas
 
         # Check that the energies of the iterations match.
-        def get_matched_iteration(iterations1, iterations2, n_analyzed_iterations, n_iterations_ln):
+        def get_matched_iteration(iterations1, iterations2):
+            n_analyzed_iterations = len(iterations1)
+            n_iterations_ln = len(iterations1) * self.n_replicas
             matched_iterations_ln = set()
             for matched_iteration in sorted(set(iterations1) & set(iterations2)):
                 matched_iteration_idx = np.where(iterations1 == matched_iteration)[0][0]
@@ -460,10 +461,8 @@ class TestMultiPhaseAnalyzer(object):
                 )
             return sorted(matched_iterations_ln)
 
-        matched_iterations1 = get_matched_iteration(all_decorrelated_iterations, analyzer._decorrelated_iterations,
-                                                    n_analyzed_iterations1, n_iterations_ln1)
-        matched_iterations2 = get_matched_iteration(analyzer._decorrelated_iterations, all_decorrelated_iterations,
-                                                    n_analyzed_iterations2, n_iterations_ln2)
+        matched_iterations1 = get_matched_iteration(all_decorrelated_iterations, analyzer._decorrelated_iterations)
+        matched_iterations2 = get_matched_iteration(analyzer._decorrelated_iterations, all_decorrelated_iterations)
         assert np.array_equal(all_decorrelated_u_ln[:, matched_iterations1],
                               analyzer._decorrelated_u_ln[:, matched_iterations2])
 
