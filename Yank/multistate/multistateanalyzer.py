@@ -1778,6 +1778,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             Difference in enthalpy from each state relative to each other state
         dDeltaH_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
             Error in the difference in enthalpy from each state relative to each other state
+
         """
         if self._computed_observables['enthalpy'] is None:
             self._compute_enthalpy_and_entropy()
@@ -1796,6 +1797,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             Difference in enthalpy from each state relative to each other state
         dDeltaH_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
             Error in the difference in enthalpy from each state relative to each other state
+
         """
         if self._computed_observables['entropy'] is None:
             self._compute_enthalpy_and_entropy()
