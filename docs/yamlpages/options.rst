@@ -220,13 +220,15 @@ Valid options (0): <Integer>
 .. code-block:: yaml
 
    options:
-     processes_per_experiment: null
+     processes_per_experiment: auto
 
 When running YANK on multiple processes with MPI, you can run several experiments in parallel by using this option to
-allocate a given number of processes to each experiment. If ``null``, the experiments are performed one after the
-other on all the available MPI processes.
+allocate a given number of processes to each experiment. This option is ignored if YANK is not run with MPI. If ``null``,
+the experiments are performed one after the other on all the available MPI processes. When ``auto`` is selected, YANK
+tries to run as many experiment as possible in parallel on independent MPI processes. Currently, only
+``processes_per_experiment = 1`` is supported for the SAMS sampler.
 
-Valid options (null): null / <Integer>
+Valid options (auto): auto / null / <Integer>
 
 
 
@@ -328,28 +330,6 @@ Pressure of the system. If set to ``null``, the simulation samples as an NVT ens
 
 Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 
-
-
-.. _yaml_options_integrator_splitting:
-
-.. rst-class:: html-toggle
-
-``integrator_splitting``
-------------------------
-.. code-block:: yaml
-
-   options:
-     integrator_splitting: V R O R V
-
-Sequence of "R", "V", "O" (and optionally "{", "}", "V0", "V1", ...) sub-steps to be executed each timestep with a space
-between each step. Tells the
-integrator how to subdivide the work of taking a full timestep, with optional HMC moves.
-For example: ``V R O R V`` is a `BAOAB Integrator <https://journals.aps.org/pre/abstract/10.1103/PhysRevE.75.056707>`_
-If you don't want a splitting integrator, specify ``null`` to get a standard Langevin integrator.
-For more details, see
-`the OpenMMTools documentation <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.integrators.LangevinIntegrator.html#openmmtools.integrators.LangevinIntegrator>`_.
-
-Valid options (V R O R V): <String of R, V, O, {, and/or }; white space " " delimiter>/``null``
 
 
 .. _yaml_options_hydrogen_mass:
@@ -456,10 +436,12 @@ Valid options (0): <Integer>
 .. code-block:: yaml
 
    options:
-     minimize: yes
+     minimize: True
 
-Minimize the input configuration before starting simulation. Highly recommended if a pre-minimized structure is provided,
-or if explicit solvent generation is left to YANK.
+Minimize the input configuration before starting simulation.
+This is highly recommended if a pre-minimized structure is provided, or if explicit solvent generation is left to YANK.
+The FIRE minimizer :cite:`FIREMinimizer`, a fast minimizer that can run entirely on the GPU, is used first.
+If this fails, an L-BFGS minimizer :cite:`LBFGS` (as `implemented in OpenMM <http://docs.openmm.org/latest/userguide/application.html#energy-minimization>`_) is used.
 
 Valid Options: [yes]/no
 
@@ -475,7 +457,7 @@ Valid Options: [yes]/no
 .. code-block:: yaml
 
    options:
-     minimize_max_iterations: 0
+     minimize_max_iterations: 1000
 
 Set the maximum number of iterations the
 :ref:`energy minimization process <yaml_options_minimize>` attempts to converge to :ref:`given tolerance energy <yaml_options_minimize_tolerance>`. 0 steps indicate unlimited.
@@ -540,26 +522,28 @@ Valid Options (1.0 * femtosecond): <Quantity Time> [1]_
 
 
 
-.. _yaml_options_number_of_iterations:
+.. _yaml_options_default_number_of_iterations:
 
 .. rst-class:: html-toggle
 
-``number_of_iterations``
-------------------------
+``default_number_of_iterations``
+--------------------------------
 .. code-block:: yaml
 
    options:
-     number_of_iterations: 1
+     default_number_of_iterations: 1
 
-Number of iterations for production simulation. Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is
-set, this option can be used to extend previous simulations past their original number of iterations.
+Default number of iterations for the :ref:`samplers that do not explicitly specify <yaml_samplers_example>`
+the option ``number_of_iterations``.
+Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is set, this option can be used to extend previous
+simulations past their original number of iterations.
 
 Specifying ``0`` will run through the setup, create all the simulation files, store all options, and minimize the
 initial configurations (if specified), but will not run any production simulations.
 
 Set this to ``.inf`` (note the prepended dot character) to run an unlimited number of iterations. The simulation will
 not stop unless some other criteria is stops it. We **strongly** recommend specifying either
-:ref:`online free energy analysis <yaml_options_online_analysis_parameters>` and/or
+:ref:`online free energy analysis <yaml_samplers_online_analysis_parameters>` and/or
 :ref:`a phase switching interval <yaml_options_switch_phase_interval>` to ensure there is at least some stop criteria,
 and all phases yield some samples.
 
@@ -602,37 +586,38 @@ Valid Options (1): <Integer> or ``.inf``
 
 
 
-.. _yaml_options_nsteps_per_iteration:
+.. _yaml_options_default_nsteps_per_iteration:
 
 .. rst-class:: html-toggle
 
-``nsteps_per_iteration``
-------------------------
+``default_nsteps_per_iteration``
+--------------------------------
 .. code-block:: yaml
 
    options:
-     nsteps_per_iteration: 500
+     default_nsteps_per_iteration: 500
 
-Number of timesteps between each iteration. We highly recommend using a number greater than 1 to improve decorrelation
-between iterations. Hamiltonian Replica Exchange swaps are attempted after each iteration.
+Number of timesteps between each iteration with the default MCMC move. We highly recommend using a number greater than 1
+to improve decorrelation between iterations. Hamiltonian Replica Exchange swaps are attempted after each iteration. This
+option is ignored if a custom MCMC move is used for the experiment.
 
 Valid Options (500): <Integer>
 
 
 
 
-.. _yaml_options_timestep:
+.. _yaml_options_default_timestep:
 
 .. rst-class:: html-toggle
 
-``timestep``
-------------
+``default_timestep``
+--------------------
 .. code-block:: yaml
 
    options:
-     timestep: 2.0 * femtosecond
+     default_timestep: 2.0 * femtosecond
 
-Timestep of Langevin Dynamics production runs.
+The timestep of the Langevin Dynamics with the default MCMC move. This option is ignored when a custom MCMC move is used.
 
 Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
 
@@ -687,49 +672,6 @@ complete trajectory.
 Valid Options: [yes]/no
 
 
-.. _yaml_options_replica_mixing_scheme:
-
-.. rst-class:: html-toggle
-
-``replica_mixing_scheme``
--------------------------
-.. code-block:: yaml
-
-   options:
-     replica_mixing_scheme: swap-all
-
-Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas.
-``swap-all`` will attempt to exchange every state with every other state. ``swap-neighbors``  will attempt only
-exchanges between adjacent states. If ``null`` is specified, no mixing is done, and effectively disables all replica
-exchange functionality.
-
-Valid Options: [swap-all]/swap-neighbors/null
-
-
-
-
-.. _yaml_options_collision_rate:
-
-.. rst-class:: html-toggle
-
-``collision_rate``
-------------------
-.. code-block:: yaml
-
-   options:
-     collision_rate: 5.0 / picosecond
-
-The collision rate used for Langevin dynamics. Default quantity of 5.0 / picosecond works well for explicit solvent.
-Implicit solvent will require a different collision rate, e.g. 91 / picosecond works well for TIP3P water.
-
-Collision rates (or friction coefficients) appear in the Langevin dynamics equation as either inverse time, or one over
-some time constant, :math:`1/\tau`.  When comparing collision rates, double check if the collision rate is in units of
-inverse time, or just time. For example: a collision rate of 5.0/ps -> :math:`\tau = 0.2 \, ps`.
-
-Valid Options (5.0 / picosecond): <Quantity Inverse Time> [1]_
-
-
-
 
 .. _yaml_options_constraint_tolerance:
 
@@ -746,23 +688,6 @@ Relative tolerance on the :ref:`constraints <yaml_options_constraints>` of the s
 
 Valid Options (1.0e-6): <Scientific Notation Float>
 
-
-
-
-.. _yaml_options_mc_displacement_sigma:
-
-.. rst-class:: html-toggle
-
-``mc_displacement_sigma``
--------------------------
-.. code-block:: yaml
-
-   options:
-     mc_displacement_sigma: 10.0 * angstroms
-
-YANK will augment Langevin dynamics with MC moves rotating and displacing the ligand. This parameter controls the size of the displacement
-
-Valid Options (10 * angstroms): <Quantity Length> [1]_
 
 |
 
@@ -859,7 +784,7 @@ Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer preferred, Float accept
 
 
 
-.. _yaml_options_alchemical_pme_treatment
+.. _yaml_options_alchemical_pme_treatment:
 
 .. rst-class:: html-toggle
 
@@ -925,81 +850,3 @@ Valid Options: [yes]/no
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
 
 |
-
-
-
-.. _yaml_options_online_analysis_parameters:
-
-Online Analysis Parameters
-==========================
-
-YANK also supports an online free energy analysis framework which allows running simulations up to some target error
-in the free energy. Note that this will pause the simulation to run this analysis. The longer the simulation gets,
-the slower this process becomes.
-
-
-.. _yaml_options_online_analysis_interval:
-
-.. rst-class:: html-toggle
-
-``online_analysis_interval``
-----------------------------
-.. code-block:: yaml
-
-   options:
-      online_analysis_interval: 100
-
-Both the toggle and iteration count between online analysis operations. Every interval, the Multistate Bennet Acceptance
-Ratio estimate for the free energy is calculated and the error is computed. Some data is preserved each iteration to
-speed up future calculations, but this operation will still slow down as more iterations are added. We recommend
-choosing an interval of *at least* 100, if not more.
-
-If set to ``null`` (default), then online analysis is not run.
-
-Valid Options (``null``): ``null`` or <Int >= 1>
-
-
-.. rst-class:: html-toggle
-
-.. _yaml_options_online_analysis_target_error:
-
-``online_analysis_target_error``
---------------------------------
-.. code-block:: yaml
-
-   options:
-      online_analysis_target_error: 1.0
-
-The target error for the online analysis measured in kT per phase. Once the free energy is at or below this value,
-the phase will be considered complete.
-This value should be a number greater than 0, even though 0 is a valid option. The error free energy estimate between states
-is never zero except in very rare cases, so your simulation may never converge if you set this to 0.
-
-If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
-
-Valid Options (0.2): <Float >= 0>
-
-
-
-.. _yaml_options_online_analysis_minimum_iterations:
-
-.. rst-class:: html-toggle
-
-``online_analysis_minimum_iterations``
---------------------------------------
-.. code-block:: yaml
-
-   options:
-      online_analysis_minimum_iterations: 50
-
-Number of iterations that are skipped at the beginning of the simulation before online analysis is attempted. This is
-a speed option since most of the initial iterations will be either equilibration or under sampled. We recommend choosing
-an initial number that is *at least* one or two :ref:`yaml_options_online_analysis_interval`'s for speed's sake.
-
-The first iteration at which online analysis is performed is not affected by this number and always tracked as the
-modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100`` and
-``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200 first, not iteration 250.
-
-If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
-
-Valid Options (50): <Int >=1>

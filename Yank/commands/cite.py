@@ -37,7 +37,7 @@ def dispatch(args):
     for citation in citations:
         print(citation)
         print("")
-    # TODO: Also print citations for repex, pymbar, and other dependencies.
+    # TODO: Also print citations for MultiState, pymbar, and other dependencies.
 
     return True
 

@@ -1,17 +1,17 @@
 #!/usr/bin/python
 
-#=============================================================================================
+# =============================================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
 Test examples.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import os
 import shutil
@@ -23,9 +23,10 @@ import openmoltools as omt
 from nose.plugins.attrib import attr
 from functools import partial
 
-#=============================================================================================
+
+# =============================================================================================
 # UNIT TESTS
-#=============================================================================================
+# =============================================================================================
 
 def remove_files(*args):
     for arg in args:
@@ -58,7 +59,7 @@ def run_example(path, example):
         # adjust yaml simulation parameters
         with open(yaml_path, 'r') as f:
             test_yaml_script = yaml.load(f)
-        test_yaml_script['options']['number_of_iterations'] = n_iterations
+        test_yaml_script['options']['default_number_of_iterations'] = n_iterations
         test_yaml_script['options']['output_dir'] = testoutput_dir
         with open(testyaml_path, 'w') as f:
             f.write(yaml.dump(test_yaml_script))
@@ -93,8 +94,11 @@ def run_example(path, example):
 
     return
 
+
 def get_immediate_subdirectories(path):
-    return [name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name)) and os.path.exists(os.path.join(path, name, 'run.sh'))]
+    return [name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name)) and
+            os.path.exists(os.path.join(path, name, 'run.sh'))]
+
 
 @attr('slow') # Skip on Travis-CI
 def notest_examples():

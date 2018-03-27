@@ -50,7 +50,8 @@ See 'yank help COMMAND' for more information on a specific command.
 # TODO: Add optional arguments that we can use to override sys.argv for testing purposes.
 def main(argv=None):
     # Parse command-line arguments.
-    # Parse the initial options, the options_first flag must be True to for <ARGS> to act as a wildcard for options (- and --) as well
+    # Parse the initial options, the options_first flag must be True to for <ARGS> to act as a wildcard for options
+    # (- and --) as well
     args = docopt(usage, version=version.version, argv=argv, options_first=True)
 
     dispatched = False  # Flag set to True if we have correctly dispatched a command.
@@ -66,7 +67,8 @@ def main(argv=None):
         # Check that command is valid:
         command = args['COMMAND']
         command_usage = getattr(commands, command).usage
-        command_args = docopt(command_usage, version=version.version, argv=argv)  # This will terminate if command is invalid
+        # This will terminate if command is invalid
+        command_args = docopt(command_usage, version=version.version, argv=argv)
         # Execute Command
         dispatched = getattr(commands, command).dispatch(command_args)
         

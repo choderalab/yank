@@ -7,13 +7,14 @@ YANK
 
 # Define global version.
 from . import version  # Needed for yank 3.X.
-__version__ = version.version
 
 # Self module imports
 from . import utils
-from . import repex
+from . import multistate
 from . import restraints
 from . import pipeline
 from . import experiment
-from . import analyze
+from . import fire
 from .yank import Topography, AlchemicalPhase
+
+__version__ = version.version

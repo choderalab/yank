@@ -6,25 +6,33 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+Development
+-----------
+- Renamed global option ``number_of_iterations`` to ``default_number_of_iterations``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_number_of_iterations>`__
+- Renamed global option ``timestep`` to ``default_timestep``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_timestep>`__
+- Renamed global option ``nsteps_per_iteration`` to ``default_nsteps_per_iteration``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_nsteps_per_iteration>`__
+- The global options ``collision_rate``, ``mc_displacement_sigma``, and ``integration_splitting`` are not supported anymore, but they can still be specified in the `mcmc_moves`` block.
+- Added support for automatic determination of ``processes_per_experiment`` (now the default). `(docs) <http://getyank.org/latest/yamlpages/options.html#processes_per_experiment>`__
+
 0.20.1 Alchemical factory options and fast computation of the energy matrix
 ---------------------------------------------------------------------------
 - Allow user to specify options for ``openmmtools.alchemy.AbsoluteAlchemicalFactory`` in the YAML file. In particular,
-  this introduces exact treatment of PME electrostatics for charged ligands. `[docs] <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`_
+  this introduces exact treatment of PME electrostatics for charged ligands. `(docs) <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`__
 - Major optimization of the computation of the energy matrix.
-- Added the option ``max_n_contexts``. `[docs] <http://getyank.org/latest/yamlpages/options.html#max_n_contexts>`_
+- Added the option ``max_n_contexts``. `(docs) <http://getyank.org/latest/yamlpages/options.html#max_n_contexts>`__
 - Bumped minimum required version of ``openmmtools`` to ``0.14.0``.
 
 0.20.0 Support for processing proteins through PDBFixer
 -------------------------------------------------------
 - Adds an optional ``pdbfixer`` directive to the ``molecules`` section of the YAML file
   through `PDBFixer <https://github.com/pandegroup/pdbfixer>`_, a simple OpenMM-based protein structure processing tool.
-- The following options are accessible through the ``pdbfixer`` directive. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#pdbfixer>`_
+- The following options are accessible through the ``pdbfixer`` directive. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#pdbfixer>`__
 
-  - ``replace_nonstandard_residues``: Replace nonstandard amino acids. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#replacing-nonstandard-residues>`_
-  - ``remove_heterogens``: Remove heterogens (such as ligands and waters). `[docs] <http://getyank.org/latest/yamlpages/molecules.html#removing-heterogens>`_
-  - ``add_missing_residues``: Add missing residues from the SEQRES block. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`_
-  - ``add_missing_atoms``: Add missing heavy atoms. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`_
-  - ``apply_mutations``: Specify protein mutations (e.g., T315I). `[docs] <http://getyank.org/latest/yamlpages/molecules.html#mutations>`_
+  - ``replace_nonstandard_residues``: Replace nonstandard amino acids. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#replacing-nonstandard-residues>`__
+  - ``remove_heterogens``: Remove heterogens (such as ligands and waters). `(docs) <http://getyank.org/latest/yamlpages/molecules.html#removing-heterogens>`__
+  - ``add_missing_residues``: Add missing residues from the SEQRES block. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`__
+  - ``add_missing_atoms``: Add missing heavy atoms. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`__
+  - ``apply_mutations``: Specify protein mutations (e.g., T315I). `(docs) <http://getyank.org/latest/yamlpages/molecules.html#mutations>`__
 
 0.19.4 Schema and Parallel Setup Fixes
 --------------------------------------

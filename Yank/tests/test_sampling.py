@@ -1,7 +1,7 @@
 #!/usr/local/bin/env python
 
 """
-Test repex.py facility.
+Test replicaexchange.py facility.
 
 TODO
 
@@ -13,34 +13,32 @@ TODO
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import os
-import sys
-import math
-import copy
-import pickle
-import inspect
 import contextlib
+import copy
+import inspect
+import math
+import os
+import pickle
+import sys
+from io import StringIO
 
-import yaml
 import numpy as np
+import openmmtools as mmtools
 import scipy.integrate
-from simtk import openmm, unit
+import yaml
 from nose.plugins.attrib import attr
 from nose.tools import assert_raises
-
-import openmmtools as mmtools
 from openmmtools import testsystems
+from simtk import openmm, unit
 
-from yank import mpi, utils, analyze
-from yank.repex import Reporter, ReplicaExchange, _DictYamlLoader
-
-if sys.version_info[0] == 2:
-    from io import BytesIO as StringIO
-else:
-    from io import StringIO
+from yank import mpi
+from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler, SAMSSampler
+from yank.multistate import ReplicaExchangeAnalyzer, SAMSAnalyzer
+from yank.multistate.multistatereporter import _DictYamlLoader
+from yank.utils import config_root_logger  # This is only function tying these test to the main YANK code
 
 # quiet down some citation spam
-ReplicaExchange._global_citation_silence = True
+MultiStateSampler._global_citation_silence = True
 
 # ==============================================================================
 # MODULE CONSTANTS
@@ -89,7 +87,7 @@ def compute_harmonic_oscillator_expectations(K, temperature):
 
     TODO
 
-    Replace this with built-in analytical expectations for new repex.testsystems classes.
+    Replace this with built-in analytical expectations
 
     """
 
@@ -136,8 +134,8 @@ def compute_harmonic_oscillator_expectations(K, temperature):
 # ==============================================================================
 
 @attr('slow')  # Skip on Travis-CI
-def test_replica_exchange(verbose=False, verbose_simulation=False):
-    """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
+def test_replica_exchange_harmonic_oscillator(verbose=False, verbose_simulation=False):
+    """Test harmonic oscillator free energies for replica-exchange."""
     # Define mass of carbon atom.
     mass = 12.0 * unit.amu
 
@@ -184,21 +182,132 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
     move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtoseconds,
                                              collision_rate=20.0/unit.picosecond,
                                              n_steps=500, reassign_velocities=True)
-    simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=200)
+    simulation = ReplicaExchangeSampler(mcmc_moves=move, number_of_iterations=200)
 
     # Define file for temporary storage.
     with mmtools.utils.temporary_directory() as tmp_dir:
         storage = os.path.join(tmp_dir, 'test_storage.nc')
-        reporter = Reporter(storage, checkpoint_interval=1)
+        reporter = MultiStateReporter(storage, checkpoint_interval=1)
         simulation.create(thermodynamic_states, sampler_states, reporter)
 
         # Run simulation we keep the debug info off during the simulation
         # to not clog the output, and reactivate it for analysis.
-        utils.config_root_logger(verbose_simulation)
+        config_root_logger(verbose_simulation)
         simulation.run()
 
         # Create Analyzer.
-        analyzer = analyze.get_analyzer(storage)
+        analyzer = ReplicaExchangeAnalyzer(reporter)
+
+        # TODO: Check if deviations exceed tolerance.
+        Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()
+        error = np.abs(Delta_f_ij - Delta_f_ij_analytical)
+        indices = np.where(dDelta_f_ij > 0.0)
+        nsigma = np.zeros([nstates,nstates], np.float32)
+        nsigma[indices] = error[indices] / dDelta_f_ij[indices]
+        MAX_SIGMA = 6.0 # maximum allowed number of standard errors
+        if np.any(nsigma > MAX_SIGMA):
+            print("Delta_f_ij")
+            print(Delta_f_ij)
+            print("Delta_f_ij_analytical")
+            print(Delta_f_ij_analytical)
+            print("error")
+            print(error)
+            print("stderr")
+            print(dDelta_f_ij)
+            print("nsigma")
+            print(nsigma)
+            raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+
+        Delta_u_ij, dDelta_u_ij = analyzer.get_enthalpy()
+        error = Delta_u_ij - Delta_u_ij_analytical
+        nsigma = np.zeros([nstates,nstates], np.float32)
+        nsigma[indices] = error[indices] / dDelta_f_ij[indices]
+        if np.any(nsigma > MAX_SIGMA):
+            print("Delta_u_ij")
+            print(Delta_u_ij)
+            print("Delta_u_ij_analytical")
+            print(Delta_u_ij_analytical)
+            print("error")
+            print(error)
+            print("nsigma")
+            print(nsigma)
+            raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+
+        # Clean up.
+        del simulation
+
+    if verbose:
+        print("PASSED.")
+
+
+# ==============================================================================
+# TEST ANALYSIS SAMS
+# ==============================================================================
+
+@attr('slow')  # Skip on Travis-CI
+def test_sams_harmonic_oscillator(verbose=False, verbose_simulation=False):
+    """Harmonic oscillator free energies for SAMS."""
+    # Define mass of carbon atom.
+    mass = 12.0 * unit.amu
+
+    sampler_states = list()
+    thermodynamic_states = list()
+    analytical_results = list()
+    f_i_analytical = list()  # Dimensionless free energies.
+    u_i_analytical = list()  # Reduced potentials.
+
+    # Define thermodynamic states.
+    Ks = [500.00, 400.0, 300.0] * unit.kilocalories_per_mole / unit.angstroms**2  # Spring constants.
+    temperatures = [300.0, 350.0, 400.0] * unit.kelvin  # Temperatures.
+    for (K, temperature) in zip(Ks, temperatures):
+        # Create harmonic oscillator system.
+        testsystem = testsystems.HarmonicOscillator(K=K, mass=mass, mm=openmm)
+
+        # Create thermodynamic state and save positions.
+        system, positions = [testsystem.system, testsystem.positions]
+        sampler_states.append(mmtools.states.SamplerState(positions))
+        thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature))
+
+        # Store analytical results.
+        results = compute_harmonic_oscillator_expectations(K, temperature)
+        analytical_results.append(results)
+        f_i_analytical.append(results['f'])
+        reduced_potential = results['potential']['mean'] / (kB * temperature)
+        u_i_analytical.append(reduced_potential)
+
+    # Compute analytical Delta_f_ij
+    nstates = len(f_i_analytical)
+    f_i_analytical = np.array(f_i_analytical)
+    u_i_analytical = np.array(u_i_analytical)
+    s_i_analytical = u_i_analytical - f_i_analytical
+    Delta_f_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    Delta_u_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    Delta_s_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    for i in range(nstates):
+        for j in range(nstates):
+            Delta_f_ij_analytical[i, j] = f_i_analytical[j] - f_i_analytical[i]
+            Delta_u_ij_analytical[i, j] = u_i_analytical[j] - u_i_analytical[i]
+            Delta_s_ij_analytical[i, j] = s_i_analytical[j] - s_i_analytical[i]
+
+    # Create and configure simulation object.
+    move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtoseconds,
+                                             collision_rate=20.0/unit.picosecond,
+                                             n_steps=500, reassign_velocities=True)
+    simulation = SAMSSampler(mcmc_moves=move, number_of_iterations=200)
+
+    # Define file for temporary storage.
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        storage = os.path.join(tmp_dir, 'test_storage.nc')
+        reporter = MultiStateReporter(storage, checkpoint_interval=1)
+        simulation.create(thermodynamic_states, sampler_states, reporter)
+
+        # Run simulation we keep the debug info off during the simulation
+        # to not clog the output, and reactivate it for analysis.
+        config_root_logger(verbose_simulation)
+        simulation.run()
+
+        # Create Analyzer.
+        analyzer = SAMSAnalyzer(reporter)
 
         # TODO: Check if deviations exceed tolerance.
         Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()
@@ -256,10 +365,10 @@ class TestReporter(object):
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file = os.path.join(tmp_dir_path, 'temp_dir/test_storage.nc')
             assert not os.path.isfile(storage_file)
-            reporter = Reporter(storage=storage_file, open_mode='w',
-                                checkpoint_interval=checkpoint_interval,
-                                checkpoint_storage=checkpoint_storage,
-                                analysis_particle_indices=analysis_particle_indices)
+            reporter = MultiStateReporter(storage=storage_file, open_mode='w',
+                                          checkpoint_interval=checkpoint_interval,
+                                          checkpoint_storage=checkpoint_storage,
+                                          analysis_particle_indices=analysis_particle_indices)
             assert reporter.storage_exists(skip_size=True)
             yield reporter
 
@@ -355,14 +464,13 @@ class TestReporter(object):
             assert thermodynamic_state_2['_Reporter__compatible_state'] == 'thermodynamic_states/3'
 
     def test_write_sampler_states(self):
-        """Check correct storage of thermodynamic states."""
+        """Check correct storage of sampler states."""
         analysis_particles = (1, 2)
         with self.temporary_reporter(analysis_particle_indices=analysis_particles, checkpoint_interval=2) as reporter:
             # Create sampler states.
             alanine_test = testsystems.AlanineDipeptideVacuum()
             positions = alanine_test.positions
-            box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
-            sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
+            sampler_states = [mmtools.states.SamplerState(positions=positions)
                               for _ in range(2)]
 
             # Check that after writing and reading, states are identical.
@@ -401,26 +509,26 @@ class TestReporter(object):
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             # Test that starting with a blank analysis cannot be overwritten
             blank_file = os.path.join(tmp_dir_path, 'temp_dir/blank_analysis.nc')
-            reporter = Reporter(storage=blank_file, open_mode='w',
-                                analysis_particle_indices=blank_analysis_particles)
+            reporter = MultiStateReporter(storage=blank_file, open_mode='w',
+                                          analysis_particle_indices=blank_analysis_particles)
             reporter.close()
             del reporter
-            new_blank_reporter = Reporter(storage=blank_file, open_mode='r',
-                                          analysis_particle_indices=set1_analysis_particles)
+            new_blank_reporter = MultiStateReporter(storage=blank_file, open_mode='r',
+                                                    analysis_particle_indices=set1_analysis_particles)
             assert new_blank_reporter.analysis_particle_indices == blank_analysis_particles
             del new_blank_reporter
             # Test that starting from an initial set of particles and passing in a blank does not overwrite
             set1_file = os.path.join(tmp_dir_path, 'temp_dir/set1_analysis.nc')
-            set1_reporter = Reporter(storage=set1_file, open_mode='w',
-                                     analysis_particle_indices=set1_analysis_particles)
+            set1_reporter = MultiStateReporter(storage=set1_file, open_mode='w',
+                                               analysis_particle_indices=set1_analysis_particles)
             set1_reporter.close()  # Don't delete, we'll need it for another test
-            new_set1_reporter = Reporter(storage=set1_file, open_mode='r',
-                                         analysis_particle_indices=blank_analysis_particles)
+            new_set1_reporter = MultiStateReporter(storage=set1_file, open_mode='r',
+                                                   analysis_particle_indices=blank_analysis_particles)
             assert new_set1_reporter.analysis_particle_indices == set1_analysis_particles
             del new_set1_reporter
             # Test that passing in a different set than the initial returns the initial set
-            new2_set1_reporter = Reporter(storage=set1_file, open_mode='r',
-                                          analysis_particle_indices=set2_analysis_particles)
+            new2_set1_reporter = MultiStateReporter(storage=set1_file, open_mode='r',
+                                                    analysis_particle_indices=set2_analysis_particles)
             assert new2_set1_reporter.analysis_particle_indices == set1_analysis_particles
 
     def test_store_replica_thermodynamic_states(self):
@@ -451,14 +559,26 @@ class TestReporter(object):
 
     def test_store_energies(self):
         """Check storage of energies."""
-        thermodynamic_states_energies = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
-        unsampled_states_energies = np.array([[1, 2], [2, 3.0], [3, 9.0]])
+        energy_thermodynamic_states = np.array(
+            [[0, 2, 3],
+             [1, 2, 0],
+             [1, 2, 3]])
+        energy_neighborhoods = np.array(
+            [[0, 1, 1],
+             [1, 1, 0],
+             [1, 1, 3]]
+        )
+        energy_unsampled_states = np.array(
+            [[1, 2],
+             [2, 3.0],
+             [3, 9.0]])
 
         with self.temporary_reporter() as reporter:
-            reporter.write_energies(thermodynamic_states_energies, unsampled_states_energies, iteration=0)
-            restored_ts, restored_us = reporter.read_energies(iteration=0)
-            assert np.all(thermodynamic_states_energies == restored_ts)
-            assert np.all(unsampled_states_energies == restored_us)
+            reporter.write_energies(energy_thermodynamic_states, energy_neighborhoods, energy_unsampled_states, iteration=0)
+            restored_energy_thermodynamic_states, restored_energy_neighborhoods, restored_energy_unsampled_states = reporter.read_energies(iteration=0)
+            assert np.all(energy_thermodynamic_states == restored_energy_thermodynamic_states)
+            assert np.all(energy_neighborhoods == restored_energy_neighborhoods)
+            assert np.all(energy_unsampled_states == restored_energy_unsampled_states)
 
     def test_ensure_dimension_exists(self):
         """Test ensuring that a dimension exists works as expected."""
@@ -544,29 +664,82 @@ class TestReporter(object):
 
 
 # ==============================================================================
-# TEST REPLICA EXCHANGE
+# TEST MULTISTATE SAMPLERS
 # ==============================================================================
 
-class TestReplicaExchange(object):
-    """Test suite for ReplicaExchange class."""
+class TestMultiStateSampler(object):
+    """Base test suite for the multi-state classes"""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 3
+    N_STATES = 5
+    SAMPLER = MultiStateSampler
+    REPORTER = MultiStateReporter
+
+    # --------------------------------------
+    # Optional helper function to overwrite.
+    # --------------------------------------
+
+    @classmethod
+    def call_sampler_create(cls, sampler, reporter,
+                            thermodynamic_states,
+                            sampler_states,
+                            unsampled_states):
+        """Helper function to call the create method for the sampler"""
+        # Allows initial thermodynamic states to be handled by the built in methods
+        sampler.create(thermodynamic_states, sampler_states, reporter, unsampled_thermodynamic_states=unsampled_states)
+
+    # --------------------------------
+    # Tests overwritten by sub-classes
+    # --------------------------------
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options."""
+        # Intermediary step to testing stored properties
+        self.actual_stored_properties_check()
+
+    @classmethod
+    def _compute_energies_independently(cls, thermodynamic_states, sampler_states, unsampled_states):
+        """
+        Helper function to compute energies by hand.
+        This is overwritten by subclasses
+        """
+        n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
+        # Compute the energies independently.
+        energy_thermodynamic_states = np.zeros((n_replicas, n_states))
+        energy_unsampled_states = np.zeros((n_replicas, len(unsampled_states)))
+        for energies, states in [(energy_thermodynamic_states, thermodynamic_states),
+                                 (energy_unsampled_states, unsampled_states)]:
+            for i, sampler_state in enumerate(sampler_states):
+                for j, state in enumerate(states):
+                    context, integrator = mmtools.cache.global_context_cache.get_context(state)
+                    sampler_state.apply_to_context(context)
+                    energies[i][j] = state.reduced_potential(context)
+        return energy_thermodynamic_states, energy_unsampled_states
+
+    # --------------------------------
+    # Common Test functions below here
+    # --------------------------------
 
     @classmethod
     def setup_class(cls):
         """Shared test cases and variables."""
-        n_states = 3
-
         # Test case with alanine in vacuum at 3 different positions and temperatures.
         # ---------------------------------------------------------------------------
         alanine_test = testsystems.AlanineDipeptideVacuum()
 
         # Translate the sampler states to be different one from each other.
-        alanine_sampler_states = [mmtools.states.SamplerState(alanine_test.positions + 10*i*unit.nanometers)
-                                  for i in range(n_states)]
+        alanine_sampler_states = [
+            mmtools.states.SamplerState(positions=alanine_test.positions + 10 * i * unit.nanometers)
+            for i in range(cls.N_SAMPLERS)]
 
         # Set increasing temperature.
-        temperatures = [(300 + 10*i) * unit.kelvin for i in range(n_states)]
+        temperatures = [(300 + 10 * i) * unit.kelvin for i in range(cls.N_STATES)]
         alanine_thermodynamic_states = [mmtools.states.ThermodynamicState(alanine_test.system, temperatures[i])
-                                        for i in range(n_states)]
+                                        for i in range(cls.N_STATES)]
 
         # No unsampled states for this test.
         cls.alanine_test = (alanine_thermodynamic_states, alanine_sampler_states, [])
@@ -579,23 +752,24 @@ class TestReplicaExchange(object):
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
 
         # Translate the sampler states to be different one from each other.
-        hostguest_sampler_states = [mmtools.states.SamplerState(hostguest_test.positions + 10*i*unit.nanometers)
-                                    for i in range(n_states)]
+        hostguest_sampler_states = [
+            mmtools.states.SamplerState(positions=hostguest_test.positions + 10 * i * unit.nanometers)
+            for i in range(cls.N_SAMPLERS)]
 
         # Create the three basic thermodynamic states.
-        temperatures = [(300 + 10*i) * unit.kelvin for i in range(n_states)]
+        temperatures = [(300 + 10 * i) * unit.kelvin for i in range(cls.N_STATES)]
         hostguest_thermodynamic_states = [mmtools.states.ThermodynamicState(hostguest_alchemical, temperatures[i])
-                                          for i in range(n_states)]
+                                          for i in range(cls.N_STATES)]
 
         # Create alchemical states at different parameter values.
         alchemical_states = [mmtools.alchemy.AlchemicalState.from_system(hostguest_alchemical)
-                             for _ in range(n_states)]
+                             for _ in range(cls.N_STATES)]
         for i, alchemical_state in enumerate(alchemical_states):
-            alchemical_state.set_alchemical_parameters(float(i) / (n_states - 1))
+            alchemical_state.set_alchemical_parameters(float(i) / (cls.N_STATES - 1))
 
         # Create compound states.
         hostguest_compound_states = list()
-        for i in range(n_states):
+        for i in range(cls.N_STATES):
             hostguest_compound_states.append(
                 mmtools.states.CompoundThermodynamicState(thermodynamic_state=hostguest_thermodynamic_states[i],
                                                           composable_states=[alchemical_states[i]])
@@ -606,6 +780,14 @@ class TestReplicaExchange(object):
         hostguest_unsampled_states = [copy.deepcopy(nonalchemical_state)]
 
         cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states, hostguest_unsampled_states)
+
+        # Debugging Messages to sent to Nose with --nocapture enabled
+        output_descr = "Testing Sampler: {}  -- States: {}  -- Samplers: {}".format(
+            cls.SAMPLER.__name__, cls.N_STATES, cls.N_SAMPLERS)
+        len_output = len(output_descr)
+        print("#" * len_output)
+        print(output_descr)
+        print("#" * len_output)
 
     @staticmethod
     @contextlib.contextmanager
@@ -631,67 +813,6 @@ class TestReplicaExchange(object):
         else:
             return set(range(mpicomm.rank, tot_n_replicas, mpicomm.size))
 
-    def test_repex_create(self):
-        """Test creation of a new ReplicaExchange simulation.
-
-        Checks that the storage file is correctly initialized with all the
-        information needed. With MPI, this checks that only node 0 has an
-        open Reporter for writing.
-
-        """
-        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
-        n_states = len(thermodynamic_states)
-
-        # Remove one sampler state to verify distribution over states.
-        sampler_states = sampler_states[:-1]
-
-        with self.temporary_storage_path() as storage_path:
-            repex = ReplicaExchange()
-
-            # Create simulation and storage file.
-            reporter = Reporter(storage_path, checkpoint_interval=1)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
-
-            # Check that reporter has reporter only if rank 0.
-            mpicomm = mpi.get_mpicomm()
-            if mpicomm is None or mpicomm.rank == 0:
-                assert repex._reporter.is_open()
-            else:
-                assert not repex._reporter.is_open()
-
-            # Open reporter to read stored data.
-            reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=1)
-
-            # The n_states-1 sampler states have been distributed to n_states replica.
-            restored_sampler_states = reporter.read_sampler_states(iteration=0)
-            assert len(repex._sampler_states) == n_states
-            assert len(restored_sampler_states) == n_states
-            assert np.allclose(restored_sampler_states[0].positions, repex._sampler_states[0].positions)
-
-            # MCMCMove was stored correctly.
-            restored_mcmc_moves = reporter.read_mcmc_moves()
-            assert len(repex._mcmc_moves) == n_states
-            assert len(restored_mcmc_moves) == n_states
-            for repex_move, restored_move in zip(repex._mcmc_moves, restored_mcmc_moves):
-                assert isinstance(repex_move, mmtools.mcmc.LangevinDynamicsMove)
-                assert isinstance(restored_move, mmtools.mcmc.LangevinDynamicsMove)
-
-            # Options have been stored.
-            option_names, _, _, defaults = inspect.getargspec(repex.__init__)
-            option_names = option_names[2:]  # Discard 'self' and 'mcmc_moves' arguments.
-            defaults = defaults[1:]  # Discard 'mcmc_moves' default.
-            options = reporter.read_dict('options')
-            assert len(options) == len(defaults)
-            for key, value in zip(option_names, defaults):
-                assert options[key] == value
-                assert getattr(repex, '_' + key) == value
-
-            # A default title has been added to the stored metadata.
-            metadata = reporter.read_dict('metadata')
-            assert len(metadata) == 1
-            assert repex.metadata['title'] == metadata['title']
-
     @staticmethod
     @contextlib.contextmanager
     def captured_output():
@@ -703,80 +824,176 @@ class TestReplicaExchange(object):
         finally:
             sys.stdout, sys.stderr = old_out, old_err
 
-    def test_citations(self):
-        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+    @staticmethod
+    def property_creator(name, on_disk_name, value, on_disk_value):
+        """
+        Helper to create additional properties to create for checking
 
-        # Remove one sampler state to verify distribution over states.
-        sampler_states = sampler_states[:-1]
+        Makes a nested dict where the top key is the 'name', with one
+        value as a dict where the sub-dict is of the form:
+        {'value': value,
+         'on_disk_name': on_disk_name,
+         'on_disk_value': on_disk_value
+        }
+        """
+        return {name: {
+
+            'value': value,
+            'on_disk_value': on_disk_value,
+            'on_disk_name': on_disk_name
+        }}
+
+    def test_create(self):
+        """Test creation of a new MultiState simulation.
+
+        Checks that the storage file is correctly initialized with all the
+        information needed. With MPI, this checks that only node 0 has an
+        open Reporter for writing.
+
+        """
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+        n_states = len(thermodynamic_states)
+        n_samplers = len(sampler_states)
 
         with self.temporary_storage_path() as storage_path:
-            repex = ReplicaExchange()
-            # Ensure global mute is on
-            repex._global_citation_silence = True
+            reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+            sampler = self.SAMPLER()
+            if hasattr(sampler, 'replica_mixing_scheme'):
+                sampler.replica_mixing_scheme = 'swap-neighbors'
+            sampler.locality = 2
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states,
+                                     sampler_states, unsampled_states)
 
-            # Create simulation and storage file.
-            reporter = Reporter(storage_path, checkpoint_interval=1)
+            # Check that reporter has reporter only if rank 0.
+            mpicomm = mpi.get_mpicomm()
+            if mpicomm is None or mpicomm.rank == 0:
+                assert sampler._reporter.is_open()
+            else:
+                assert not sampler._reporter.is_open()
+
+            # Open reporter to read stored data.
+            reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=1)
+
+            # The n_states sampler states have been distributed
+            restored_sampler_states = reporter.read_sampler_states(iteration=0)
+            restored_thermo_states, _ = reporter.read_thermodynamic_states()
+            assert sampler.n_states == n_states, ("Mismatch: sampler.n_states = {} "
+                                                  "but n_states = {}".format(sampler.n_states, n_states))
+            assert sampler.n_replicas == n_samplers, ("Mismatch: sampler.n_replicas = {} "
+                                                      "but n_samplers = {}".format(sampler.n_replicas, n_samplers))
+            assert len(restored_sampler_states) == n_samplers
+            assert len(restored_thermo_states) == n_states
+            assert np.allclose(restored_sampler_states[0].positions, sampler._sampler_states[0].positions)
+
+            # MCMCMove was stored correctly.
+            restored_mcmc_moves = reporter.read_mcmc_moves()
+            assert len(sampler._mcmc_moves) == n_states
+            assert len(restored_mcmc_moves) == n_states
+            for sampler_move, restored_move in zip(sampler._mcmc_moves, restored_mcmc_moves):
+                assert isinstance(sampler_move, mmtools.mcmc.LangevinDynamicsMove)
+                assert isinstance(restored_move, mmtools.mcmc.LangevinDynamicsMove)
+
+            # Options have been stored.
+            stored_options = reporter.read_dict('options')
+            options_to_store = dict()
+            for cls in inspect.getmro(type(sampler)):
+                parameter_names, _, _, defaults, _, _, _ = inspect.getfullargspec(cls.__init__)
+                if defaults:
+                    for parameter_name in parameter_names[-len(defaults):]:
+                        options_to_store[parameter_name] = getattr(sampler, '_' + parameter_name)
+            options_to_store.pop('mcmc_moves')  # mcmc_moves are stored separately
+            for key, value in options_to_store.items():
+                if np.isscalar(value):
+                    assert stored_options[key] == value, "stored_options['%s'] = %s, but value = %s" % (key, stored_options[key], value)
+                    assert getattr(sampler, '_' + key) == value, "getattr(sampler, '%s') = %s, but value = %s" % ('_' + key, getattr(sampler, '_' + key), value)
+                else:
+                    assert np.all(stored_options[key] == value), "stored_options['%s'] = %s, but value = %s" % (key, stored_options[key], value)
+                    assert np.all(getattr(sampler, '_' + key) == value), "getattr(sampler, '%s') = %s, but value = %s" % ('_' + key, getattr(sampler, '_' + key), value)
+
+            # A default title has been added to the stored metadata.
+            metadata = reporter.read_dict('metadata')
+            assert len(metadata) == 1
+            assert sampler.metadata['title'] == metadata['title']
+
+    def test_citations(self):
+        """Test that citations are displayed and suppressed as needed."""
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+
+        with self.temporary_storage_path() as storage_path:
+            sampler = self.SAMPLER()
+            reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+
+            # Ensure global mute is on
+            sampler._global_citation_silence = True
+
             # Trap expected output
             with self.captured_output() as (out, _):
-                repex._display_citations(overwrite_global=True)
+                sampler._display_citations(overwrite_global=True)
                 cite_string = out.getvalue().strip()
-                repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                             unsampled_thermodynamic_states=unsampled_states)
+                self.call_sampler_create(sampler, reporter,
+                                         thermodynamic_states, sampler_states,
+                                         unsampled_states)
                 # Reset internal flag
-                repex._have_displayed_citations_before = False
+                sampler._have_displayed_citations_before = False
                 # Test that the overwrite flag worked
                 assert cite_string != ''
             # Test that the output is not generate when the global is set
             with self.captured_output() as (out, _):
-                repex._global_citation_silence = True
-                repex._display_citations()
+                sampler._global_citation_silence = True
+                sampler._display_citations()
                 output = out.getvalue().strip()
                 assert cite_string not in output
             # Test that the output is generated with the global is not set and previously un shown
             with self.captured_output() as (out, _):
-                repex._global_citation_silence = False
-                repex._have_displayed_citations_before = False
-                repex._display_citations()
+                sampler._global_citation_silence = False
+                sampler._have_displayed_citations_before = False
+                sampler._display_citations()
                 output = out.getvalue().strip()
                 assert cite_string in output
             # Repeat to ensure the citations are not generated a second time
             with self.captured_output() as (out, _):
-                repex._global_citation_silence = False
-                repex._display_citations()
+                sampler._global_citation_silence = False
+                sampler._display_citations()
                 output = out.getvalue().strip()
                 assert cite_string not in output
 
     def test_from_storage(self):
-        """Test that from_storage completely restore ReplicaExchange.
+        """Test that from_storage completely restore the sampler.
 
-        Checks that the static constructor ReplicaExchange.from_storage()
+        Checks that the static constructor MultiStateSampler.from_storage()
         restores the simulation object in the exact same state as the last
         iteration.
 
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.hostguest_test)
-        n_replicas = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
 
         with self.temporary_storage_path() as storage_path:
             number_of_iterations = 3
             move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=number_of_iterations)
-            reporter = Reporter(storage_path, checkpoint_interval=1)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=number_of_iterations)
+            if hasattr(sampler, 'replica_mixing_scheme'):
+                # TODO: Test both 'swap-all' with locality=None and 'swap-neighbors' with locality=1
+                sampler.replica_mixing_scheme = 'swap-neighbors' # required for non-global locality
+            sampler.locality = 1
+            reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
 
             # Test at the beginning and after few iterations.
             for iteration in range(2):
                 # Store the state of the initial repex object (its __dict__). We leave the
                 # reporter out because when the NetCDF file is copied, it runs into issues.
-                original_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
+                original_dict = copy.deepcopy({k: v for k, v in sampler.__dict__.items() if not k == '_reporter'})
 
                 # Delete repex to close reporter before creating a new one
                 # to avoid weird issues with multiple NetCDF files open.
-                del repex
+                del sampler
                 reporter.close()
-                repex = ReplicaExchange.from_storage(reporter)
-                restored_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
+                sampler = self.SAMPLER.from_storage(reporter)
+                restored_dict = copy.deepcopy({k: v for k, v in sampler.__dict__.items() if not k == '_reporter'})
 
                 # Check thermodynamic states.
                 original_ts = original_dict.pop('_thermodynamic_states')
@@ -791,9 +1008,9 @@ class TestReplicaExchange(object):
                 # The reporter of the restored simulation must be open only in node 0.
                 mpicomm = mpi.get_mpicomm()
                 if mpicomm is None or mpicomm.rank == 0:
-                    assert repex._reporter.is_open()
+                    assert sampler._reporter.is_open()
                 else:
-                    assert not repex._reporter.is_open()
+                    assert not sampler._reporter.is_open()
 
                 # Each replica keeps only the info for the replicas it is
                 # responsible for to minimize network traffic.
@@ -808,12 +1025,15 @@ class TestReplicaExchange(object):
                         assert np.all(original.box_vectors == restored.box_vectors)
 
                 # Check energies. Non 0 nodes only hold their energies.
+                original_neighborhoods = original_dict.pop('_neighborhoods')
+                restored_neighborhoods = restored_dict.pop('_neighborhoods')
                 original_ets = original_dict.pop('_energy_thermodynamic_states')
                 restored_ets = restored_dict.pop('_energy_thermodynamic_states')
                 original_eus = original_dict.pop('_energy_unsampled_states')
                 restored_eus = restored_dict.pop('_energy_unsampled_states')
                 for replica_id in range(n_replicas):
                     if replica_id in node_replica_ids:
+                        assert np.allclose(original_neighborhoods[replica_id], restored_neighborhoods[replica_id])
                         assert np.allclose(original_ets[replica_id], restored_ets[replica_id])
                         assert np.allclose(original_eus[replica_id], restored_eus[replica_id])
 
@@ -849,43 +1069,57 @@ class TestReplicaExchange(object):
 
                 # Run few iterations to see that we restore also after a while.
                 if iteration == 0:
-                    repex.run(number_of_iterations)
+                    sampler.run(number_of_iterations)
 
-    def test_stored_properties(self):
-        """Test that storage is kept in sync with options."""
+    def actual_stored_properties_check(self, additional_properties=None):
+        """Stored properties check which expects a keyword"""
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
         with self.temporary_storage_path() as storage_path:
-            repex = ReplicaExchange(number_of_iterations=5)
-            reporter = Reporter(storage_path, checkpoint_interval=1)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER(number_of_iterations=5)
+            reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
 
             # Update options and check the storage is synchronized.
-            repex.number_of_iterations = float('inf')
-            repex.replica_mixing_scheme = None
+            sampler.number_of_iterations = float('inf')
+            # Process Additional properties
+            if additional_properties is not None:
+                for add_property, property_data in additional_properties.items():
+                    setattr(sampler, add_property, property_data['value'])
 
             # Displace positions of the first sampler state.
-            sampler_states = repex.sampler_states
+            sampler_states = sampler.sampler_states
             original_positions = copy.deepcopy(sampler_states[0].positions)
             displacement_vector = np.ones(3) * unit.angstroms
             sampler_states[0].positions += displacement_vector
-            repex.sampler_states = sampler_states
+            sampler.sampler_states = sampler_states
 
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
                 reporter.close()
-                reporter = Reporter(storage_path, open_mode='r')
+                reporter = self.REPORTER(storage_path, open_mode='r')
                 restored_options = reporter.read_dict('options')
                 assert restored_options['number_of_iterations'] == float('inf')
-                assert restored_options['replica_mixing_scheme'] is None
+                if additional_properties is not None:
+                    for _, property_data in additional_properties.items():
+                        on_disk_name = property_data['on_disk_name']
+                        on_disk_value = property_data['on_disk_value']
+                        restored_value = restored_options[on_disk_name]
+                        if on_disk_value is None:
+                            assert restored_value is on_disk_value, "Restored {} is not {}".format(restored_value,
+                                                                                                   on_disk_value)
+                        else:
+                            assert restored_value == on_disk_value, "Restored {} != {}".format(restored_value,
+                                                                                               on_disk_value)
 
                 restored_sampler_states = reporter.read_sampler_states(iteration=0)
                 assert np.allclose(restored_sampler_states[0].positions,
                                    original_positions + displacement_vector)
 
     def test_propagate_replicas(self):
-        """Test method _propagate_replicas from ReplicaExchange.
+        """Test method _propagate_replicas from MultiStateSampler.
 
         The purpose of this test is mainly to make sure that MPI doesn't mix
         the information of the propagated StateSamplers when it communicates
@@ -893,37 +1127,41 @@ class TestReplicaExchange(object):
 
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
-        n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
+        if n_replicas == 1:
+            # This test is intended for use with more than one replica
+            return
 
         with self.temporary_storage_path() as storage_path:
             # For this test to work, positions should be the same but
             # translated, so that minimized positions should satisfy
             # the same condition.
             original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
-                              for i in range(n_states - 1)]
-            assert not np.allclose(original_diffs, [0 for _ in range(n_states - 1)])
+                              for i in range(n_replicas - 1)]
+            assert not np.allclose(original_diffs, [0 for _ in range(n_replicas - 1)]), "sampler %s failed" % self.SAMPLER
 
             # Create a replica exchange that propagates only 1 femtosecond
             # per iteration so that positions won't change much.
             move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
-            repex = ReplicaExchange(mcmc_moves=move)
-            reporter = Reporter(storage_path)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER(mcmc_moves=move)
+            reporter = self.REPORTER(storage_path)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
 
             # Propagate.
-            repex._propagate_replicas()
+            sampler._propagate_replicas()
 
             # The relative positions between the new sampler states should
             # be still translated the same way (i.e. we are not assigning
             # the minimized positions to the incorrect sampler states).
-            new_sampler_states = repex._sampler_states
+            new_sampler_states = sampler._sampler_states
             new_diffs = [np.average(new_sampler_states[i].positions - new_sampler_states[i+1].positions)
-                         for i in range(n_states - 1)]
+                         for i in range(n_replicas - 1)]
             assert np.allclose(original_diffs, new_diffs)
 
     def test_compute_energies(self):
-        """Test method _compute_energies from ReplicaExchange.
+        """Test method _compute_energies from MultiStateSampler.
 
         The purpose of this test is mainly to make sure that MPI doesn't mix
         the information of the thermodynamics and unsampled ThermodynamicStates
@@ -931,19 +1169,21 @@ class TestReplicaExchange(object):
 
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.hostguest_test)
-        n_replicas = len(thermodynamic_states)
+        n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
 
         with self.temporary_storage_path() as storage_path:
-            repex = ReplicaExchange()
-            reporter = Reporter(storage_path, checkpoint_interval=1)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER()
+            reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
 
-            # Let ReplicaExchange distribute the computation of energies among nodes.
-            repex._compute_energies()
+            # Let MultiStateSampler distribute the computation of energies among nodes.
+            sampler._compute_energies()
 
-            # Compute the energies independently.
-            energy_thermodynamic_states = np.zeros((n_replicas, n_replicas))
+            # Compute energies at all states
+            energy_thermodynamic_states = np.zeros((n_replicas, n_states))
             energy_unsampled_states = np.zeros((n_replicas, len(unsampled_states)))
             for energies, states in [(energy_thermodynamic_states, thermodynamic_states),
                                      (energy_unsampled_states, unsampled_states)]:
@@ -953,14 +1193,19 @@ class TestReplicaExchange(object):
                         sampler_state.apply_to_context(context)
                         energies[i][j] = state.reduced_potential(context)
 
+            energy_thermodynamic_states, energy_unsampled_states = \
+                self._compute_energies_independently(thermodynamic_states, sampler_states, unsampled_states)
+
             # Only node 0 has all the energies.
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
-                assert np.allclose(repex._energy_thermodynamic_states, energy_thermodynamic_states)
-                assert np.allclose(repex._energy_unsampled_states, energy_unsampled_states)
+                for replica_index in range(n_replicas):
+                    neighborhood = sampler._neighborhoods[replica_index,:]
+                    assert np.allclose(sampler._energy_thermodynamic_states[replica_index,neighborhood], energy_thermodynamic_states[replica_index,neighborhood])
+                assert np.allclose(sampler._energy_unsampled_states, energy_unsampled_states)
 
     def test_minimize(self):
-        """Test ReplicaExchange minimize method.
+        """Test MultiStateSampler minimize method.
 
         The purpose of this test is mainly to make sure that MPI doesn't mix
         the information of the minimized StateSamplers when it communicates
@@ -970,54 +1215,63 @@ class TestReplicaExchange(object):
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
+        if n_replicas == 1:
+            # This test is intended for use with more than one replica
+            return
 
         with self.temporary_storage_path() as storage_path:
-            repex = ReplicaExchange()
-            reporter = Reporter(storage_path, checkpoint_interval=1)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER()
+            reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
 
             # For this test to work, positions should be the same but
             # translated, so that minimized positions should satisfy
             # the same condition.
-            original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
-                              for i in range(n_states - 1)]
-            assert not np.allclose(original_diffs, [0 for _ in range(n_states - 1)])
+            original_diffs = [np.average(sampler_states[i].positions - sampler_states[i + 1].positions)
+                              for i in range(n_replicas - 1)]
+            assert not np.allclose(original_diffs, [0 for _ in range(n_replicas - 1)])
 
             # Compute initial energies.
-            repex._compute_energies()
-            original_energies = [repex._energy_thermodynamic_states[i, i] for i in range(n_states)]
+            sampler._compute_energies()
+            state_indices = sampler._replica_thermodynamic_states
+            original_energies = [sampler._energy_thermodynamic_states[i, j] for i, j in enumerate(state_indices)]
 
             # Minimize.
-            repex.minimize()
+            sampler.minimize()
 
             # The relative positions between the new sampler states should
             # be still translated the same way (i.e. we are not assigning
             # the minimized positions to the incorrect sampler states).
-            new_sampler_states = repex._sampler_states
-            new_diffs = [np.average(new_sampler_states[i].positions - new_sampler_states[i+1].positions)
-                         for i in range(n_states - 1)]
-            assert np.allclose(original_diffs, new_diffs)
+            new_sampler_states = sampler._sampler_states
+            new_diffs = [np.average(new_sampler_states[i].positions - new_sampler_states[i + 1].positions)
+                         for i in range(n_replicas - 1)]
+            assert np.allclose(original_diffs, new_diffs, atol=0.1)
 
             # Each replica keeps only the info for the replicas it is
             # responsible for to minimize network traffic.
-            node_replica_ids = self.get_node_replica_ids(n_states)
+            node_replica_ids = self.get_node_replica_ids(n_replicas)
 
             # The energies have been minimized.
-            repex._compute_energies()
-            for i in node_replica_ids:
-                assert repex._energy_thermodynamic_states[i, i] < original_energies[i]
+            sampler._compute_energies()
+            for replica_index in node_replica_ids:
+                state_index = sampler._replica_thermodynamic_states[replica_index]
+                old_energy = original_energies[replica_index]
+                new_energy = sampler._energy_thermodynamic_states[replica_index, state_index]
+                assert new_energy <= old_energy, "Energies did not decrease: Replica {} was originally {}, now {}".format(replica_index, old_energy, new_energy)
 
             # The storage has been updated.
             reporter.close()
             if len(node_replica_ids) == n_states:
-                reporter = Reporter(storage_path, open_mode='r')
+                reporter = self.REPORTER(storage_path, open_mode='r')
                 stored_sampler_states = reporter.read_sampler_states(iteration=0)
                 for new_state, stored_state in zip(new_sampler_states, stored_sampler_states):
                     assert np.allclose(new_state.positions, stored_state.positions)
 
     def test_equilibrate(self):
-        """Test equilibration of ReplicaExchange simulation.
+        """Test equilibration of MultiStateSampler simulation.
 
         During equilibration, we set temporarily different MCMCMoves. This checks
         that they are restored correctly. It also checks that the storage has the
@@ -1025,37 +1279,38 @@ class TestReplicaExchange(object):
 
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
-        n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
 
         with self.temporary_storage_path() as storage_path:
             # We create a ReplicaExchange with a GHMC move but use Langevin for equilibration.
-            repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove())
-            reporter = Reporter(storage_path, checkpoint_interval=1)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER(mcmc_moves=mmtools.mcmc.GHMCMove())
+            reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
 
-            # Equilibrate.
+            # Equilibrate
             equilibration_move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-            repex.equilibrate(n_iterations=10, mcmc_moves=equilibration_move)
-            assert isinstance(repex._mcmc_moves[0], mmtools.mcmc.GHMCMove)
+            sampler.equilibrate(n_iterations=10, mcmc_moves=equilibration_move)
+            assert isinstance(sampler._mcmc_moves[0], mmtools.mcmc.GHMCMove)
 
             # Each replica keeps only the info for the replicas it is
             # responsible for to minimize network traffic.
-            node_replica_ids = self.get_node_replica_ids(n_states)
+            node_replica_ids = self.get_node_replica_ids(n_replicas)
 
             # The storage has been updated.
             reporter.close()
-            if len(node_replica_ids) == n_states:
-                reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=1)
+            if len(node_replica_ids) == n_replicas:
+                reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=1)
                 stored_sampler_states = reporter.read_sampler_states(iteration=0)
-                for new_state, stored_state in zip(repex._sampler_states, stored_sampler_states):
+                for new_state, stored_state in zip(sampler._sampler_states, stored_sampler_states):
                     assert np.allclose(new_state.positions, stored_state.positions)
 
             # We are still at iteration 0.
-            assert repex._iteration == 0
+            assert sampler._iteration == 0
 
     def test_run_extend(self):
-        """Test methods run and extend of ReplicaExchange."""
+        """Test methods run and extend of MultiStateSampler."""
         test_cases = [self.alanine_test, self.hostguest_test]
 
         for test_case in test_cases:
@@ -1067,37 +1322,43 @@ class TestReplicaExchange(object):
                     mmtools.mcmc.MCRotationMove(),
                     mmtools.mcmc.GHMCMove(n_steps=1)
                 ])
-                repex = ReplicaExchange(mcmc_moves=moves, number_of_iterations=2)
-                reporter = Reporter(storage_path, checkpoint_interval=1)
-                repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                             unsampled_thermodynamic_states=unsampled_states)
 
-                # ReplicaExchange.run doesn't go past number_of_iterations.
-                assert not repex.is_completed
-                repex.run(n_iterations=3)
-                assert repex.iteration == 2
-                assert repex.is_completed
+                sampler = self.SAMPLER(mcmc_moves=moves, number_of_iterations=2)
+                reporter = self.REPORTER(storage_path, checkpoint_interval=1)
+                self.call_sampler_create(sampler, reporter,
+                                         thermodynamic_states, sampler_states,
+                                         unsampled_states)
 
-                # ReplicaExchange.extend does.
-                repex.extend(n_iterations=2)
-                assert repex.iteration == 4
+                # MultiStateSampler.run doesn't go past number_of_iterations.
+                assert not sampler.is_completed
+                sampler.run(n_iterations=3)
+                assert sampler.iteration == 2
+                assert sampler.is_completed
+
+                # MultiStateSampler.extend does.
+                sampler.extend(n_iterations=2)
+                assert sampler.iteration == 4
+
+                # Extract the sampled thermodynamic states
+                # Only use propagated states since the last iteration is not subject to MCMC moves
+                sampled_states = list(reporter.read_replica_thermodynamic_states()[1:].flat)
 
                 # All replicas must have moves with updated statistics.
-                for sequence_move in repex._mcmc_moves:
-                    # LangevinDynamicsMove doesn't have statistics.
-                    for move_id in range(1, 2):
-                        assert sequence_move.move_list[move_id].n_proposed == 4
+                for state_index, sequence_move in enumerate(sampler._mcmc_moves):
+                    # LangevinDynamicsMove (index 0) doesn't have statistics.
+                    for move_id in [1, 2]:
+                        assert sequence_move.move_list[move_id].n_proposed == sampled_states.count(state_index)
 
                 # The MCMCMoves statistics in the storage are updated.
                 mpicomm = mpi.get_mpicomm()
                 if mpicomm is None or mpicomm.rank == 0:
                     reporter.close()
-                    reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=1)
+                    reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=1)
                     restored_mcmc_moves = reporter.read_mcmc_moves()
-                    for sequence_move in restored_mcmc_moves:
-                        # LangevinDynamicsMove doesn't have statistics.
-                        for move_id in range(1, 2):
-                            assert sequence_move.move_list[move_id].n_proposed == 4
+                    for state_index, sequence_move in enumerate(restored_mcmc_moves):
+                        # LangevinDynamicsMove (index 0) doesn't have statistic
+                        for move_id in [1, 2]:
+                            assert sequence_move.move_list[move_id].n_proposed == sampled_states.count(state_index)
 
     def test_checkpointing(self):
         """Test that checkpointing writes infrequently"""
@@ -1107,17 +1368,19 @@ class TestReplicaExchange(object):
             # For this test, we simply check that the checkpointing writes on the interval
             # We don't care about the numbers, per se, but we do care about when things are written
             n_iterations = 3
-            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
-            reporter = Reporter(storage_path, checkpoint_interval=2)
-            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond),
+                                               n_steps=1)
+            reporter = self.REPORTER(storage_path, checkpoint_interval=2)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
             # Propagate.
-            repex.run()
+            sampler.run()
             reporter.close()
-            reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=2)
+            reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=2)
             for i in range(n_iterations):
-                energies, _ = reporter.read_energies(i)
+                energies, _, _ = reporter.read_energies(i)
                 states = reporter.read_sampler_states(i)
                 assert type(energies) is np.ndarray
                 if reporter._calculate_checkpoint_iteration(i) is not None:
@@ -1127,39 +1390,40 @@ class TestReplicaExchange(object):
 
     def test_last_iteration_functions(self):
         """Test that the last_iteration functions work right"""
-        """Test that checkpointing writes infrequently"""
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         with self.temporary_storage_path() as storage_path:
             # For this test, we simply check that the checkpointing writes on the interval
             # We don't care about the numbers, per se, but we do care about when things are written
             n_iterations = 10
-            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
-            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations)
-            reporter = Reporter(storage_path, checkpoint_interval=2)
-            repex.create(thermodynamic_states, sampler_states, storage=reporter,
-                         unsampled_thermodynamic_states=unsampled_states)
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations)
+            reporter = self.REPORTER(storage_path, checkpoint_interval=2)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
             # Propagate.
-            repex.run()
+            sampler.run()
             reporter.close()
-            reporter = Reporter(storage_path, open_mode='a', checkpoint_interval=2)
-            all_energies, _ = reporter.read_energies()
+            reporter = self.REPORTER(storage_path, open_mode='a', checkpoint_interval=2)
+            all_energies, _, _ = reporter.read_energies()
             # Break the checkpoint
             last_index = 4
             reporter.write_last_iteration(last_index)  # 5th iteration
             reporter.close()
             del reporter
-            reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=2)
+            reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=2)
             # Check single positive index within range
-            energies , _= reporter.read_energies(1)
+            energies, _, _ = reporter.read_energies(1)
             assert np.all(energies == all_energies[1])
             # Check negative index was moved
-            energies, _ = reporter.read_energies(-1)
+            energies, _, _ = reporter.read_energies(-1)
             assert np.all(energies == all_energies[last_index])
             # Check slice
-            energies, _ = reporter.read_energies()
-            assert np.all(energies == all_energies[:last_index+1])  # +1 to make sure we get the last index
+            energies, _, _ = reporter.read_energies()
+            assert np.all(
+                energies == all_energies[:last_index + 1])  # +1 to make sure we get the last index
             # Check negative slicing
-            energies, _ = reporter.read_energies(slice(-1, None, -1))
+            energies, _, _ = reporter.read_energies(slice(-1, None, -1))
             assert np.all(energies == all_energies[last_index::-1])
             # Errors
             with assert_raises(IndexError):
@@ -1171,7 +1435,7 @@ class TestReplicaExchange(object):
             cp_file = 'checkpoint_file.nc'
             base, head = os.path.split(storage_path)
             cp_path = os.path.join(base, cp_file)
-            reporter = Reporter(storage_path, checkpoint_storage=cp_file, open_mode='w')
+            reporter = self.REPORTER(storage_path, checkpoint_storage=cp_file, open_mode='w')
             reporter.close()
             assert os.path.isfile(storage_path)
             assert os.path.isfile(cp_path)
@@ -1180,7 +1444,7 @@ class TestReplicaExchange(object):
         """Test that checkpoint and storage files have the same UUID"""
         with self.temporary_storage_path() as storage_path:
             cp_file = 'checkpoint_file.nc'
-            reporter = Reporter(storage_path, checkpoint_storage=cp_file, open_mode='w')
+            reporter = self.REPORTER(storage_path, checkpoint_storage=cp_file, open_mode='w')
             assert reporter._storage_checkpoint.UUID == reporter._storage_analysis.UUID
 
     def test_uuid_mismatch_errors(self):
@@ -1190,40 +1454,41 @@ class TestReplicaExchange(object):
             storage_mod = file_base + '_mod' + ext
             cp_file_main = 'checkpoint_file.nc'
             cp_file_mod = 'checkpoint_mod.nc'
-            reporter_main = Reporter(storage_path, checkpoint_storage=cp_file_main, open_mode='w')
+            reporter_main = self.REPORTER(storage_path, checkpoint_storage=cp_file_main, open_mode='w')
             reporter_main.close()
-            reporter_mod = Reporter(storage_mod, checkpoint_storage=cp_file_mod, open_mode='w')
+            reporter_mod = self.REPORTER(storage_mod, checkpoint_storage=cp_file_mod, open_mode='w')
             reporter_mod.close()
             del reporter_main, reporter_mod
             with assert_raises(IOError):
-                Reporter(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
+                self.REPORTER(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
 
     def test_analysis_opens_without_checkpoint(self):
         """Test that the analysis file can open without the checkpoint file"""
         with self.temporary_storage_path() as storage_path:
             cp_file = 'checkpoint_file.nc'
             cp_file_mod = 'checkpoint_mod.nc'
-            reporter = Reporter(storage_path, checkpoint_storage=cp_file, open_mode='w')
+            reporter = self.REPORTER(storage_path, checkpoint_storage=cp_file, open_mode='w')
             reporter.close()
             del reporter
-            Reporter(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
+            self.REPORTER(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
 
     def test_storage_reporter_and_string(self):
-        """Test that creating a repex by storage string and reporter is the same"""
+        """Test that creating a MultiState by storage string and reporter is the same"""
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         with self.temporary_storage_path() as storage_path:
             n_iterations = 5
-            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
-            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations)
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
-                         unsampled_thermodynamic_states=unsampled_states)
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations)
+            self.call_sampler_create(sampler, storage_path,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
             # Propagate.
-            repex.run()
-            energies_str, _ = repex._reporter.read_energies()
-            reporter = Reporter(storage_path)
-            del repex
-            repex = ReplicaExchange.from_storage(reporter)
-            energies_rep, _ = repex._reporter.read_energies()
+            sampler.run()
+            energies_str, _, _ = sampler._reporter.read_energies()
+            reporter = self.REPORTER(storage_path)
+            del sampler
+            sampler = self.SAMPLER.from_storage(reporter)
+            energies_rep, _, _ = sampler._reporter.read_energies()
             assert np.all(energies_str == energies_rep)
 
     def test_online_analysis_works(self):
@@ -1231,29 +1496,58 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         with self.temporary_storage_path() as storage_path:
             n_iterations = 5
-            online_interval = 2
+            online_interval = 1
             move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
-            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations,
-                                    online_analysis_interval=online_interval,
-                                    online_analysis_minimum_iterations=0)
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations,
+                                   online_analysis_interval=online_interval,
+                                   online_analysis_minimum_iterations=3)
+            self.call_sampler_create(sampler, storage_path,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
             # Run
-            repex.run()
+            sampler.run()
 
-            # The stored values of online analysis should be up to date.
-            last_written_free_energy = ReplicaExchange._read_last_free_energy(repex._reporter, repex.iteration)
-            last_mbar_f_k, (last_free_energy, last_err_free_energy) = last_written_free_energy
+            def validate_this_test():
+                # The stored values of online analysis should be up to date.
+                last_written_free_energy = self.SAMPLER._read_last_free_energy(sampler._reporter, sampler.iteration)
+                last_mbar_f_k, (last_free_energy, last_err_free_energy) = last_written_free_energy
 
-            assert len(repex._last_mbar_f_k) == len(thermodynamic_states)
-            assert not np.all(repex._last_mbar_f_k == 0)
-            assert np.all(repex._last_mbar_f_k == last_mbar_f_k)
+                assert len(sampler._last_mbar_f_k) == len(thermodynamic_states)
+                assert not np.all(sampler._last_mbar_f_k == 0)
+                assert np.all(sampler._last_mbar_f_k == last_mbar_f_k)
 
-            assert last_free_energy is not None
+                assert last_free_energy is not None
 
-            # Error should not be 0 yet
-            assert repex._last_err_free_energy != 0
-            assert repex._last_err_free_energy == last_err_free_energy
+                # Error should not be 0 yet
+                assert sampler._last_err_free_energy != 0
+
+                assert sampler._last_err_free_energy == last_err_free_energy, \
+                    ("SAMPLER %s : sampler._last_err_free_energy = %s, "
+                     "last_err_free_energy = %s" % (self.SAMPLER.__name__,
+                                                    sampler._last_err_free_energy,
+                                                    last_err_free_energy)
+                     )
+            try:
+                validate_this_test()
+            except AssertionError as e:
+                # Handle case where MBAR does not have a converged free energy yet by attempting to run longer
+                # Only run up until we have sampled every state, or we hit some cycle limit
+                cycle_limit = 20  # Put some upper limit of cycles
+                cycles = 0
+                while (not np.unique(sampler._reporter.read_replica_thermodynamic_states()).size == self.N_STATES
+                       or cycles == cycle_limit):
+                    sampler.extend(20)
+                    try:
+                        validate_this_test()
+                    except AssertionError:
+                        # If the max error count internally is reached, its a RuntimeError and won't be trapped
+                        # So it will be raised correctly
+                        pass
+                    else:
+                        # Test is good, let it pass by returning here
+                        return
+                # If we get here, we have not validated, raise original error
+                raise e
 
     def test_online_analysis_stops(self):
         """Test online analysis will stop the simulation"""
@@ -1262,16 +1556,208 @@ class TestReplicaExchange(object):
             n_iterations = 5
             online_interval = 1
             move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
-            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations,
-                                    online_analysis_interval=online_interval,
-                                    online_analysis_minimum_iterations=0,
-                                    online_analysis_target_error=np.inf)  # use infinite error to stop right away
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
-                         unsampled_thermodynamic_states=unsampled_states)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations,
+                                   online_analysis_interval=online_interval,
+                                   online_analysis_minimum_iterations=0,
+                                   online_analysis_target_error=np.inf)  # use infinite error to stop right away
+            self.call_sampler_create(sampler, storage_path,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
             # Run
-            repex.run()
-            assert repex._iteration < n_iterations
-            assert repex.is_completed
+            sampler.run()
+            assert sampler._iteration < n_iterations
+            assert sampler.is_completed
+
+
+#############
+
+class TestExtraSamplersMultiStateSampler(TestMultiStateSampler):
+    """Test MultiStateSampler with more samplers than states"""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 8
+    N_STATES = 5
+    SAMPLER = MultiStateSampler
+    REPORTER = MultiStateReporter
+
+
+class TestReplicaExchange(TestMultiStateSampler):
+    """Test suite for ReplicaExchange class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 3
+    N_STATES = 3
+    SAMPLER = ReplicaExchangeSampler
+    REPORTER = MultiStateReporter
+
+    # --------------------------------------
+    # Tests overwritten from base test suite
+    # --------------------------------------
+
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options. Unique to ReplicaExchange"""
+        additional_values = {}
+        additional_values.update(self.property_creator('replica_mixing_scheme', 'replica_mixing_scheme', None, None))
+        self.actual_stored_properties_check(additional_properties=additional_values)
+
+
+class TestSingleReplicaSAMS(TestMultiStateSampler):
+    """Test suite for SAMSSampler class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 1
+    N_STATES = 5
+    SAMPLER = SAMSSampler
+    REPORTER = MultiStateReporter
+
+    # --------------------------------------
+    # Tests overwritten from base test suite
+    # --------------------------------------
+
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options. Unique to SAMSSampler"""
+        additional_values = {}
+        options = {
+            'state_update_scheme': 'global-jump',
+            'locality': None,
+            'update_stages': 'one-stage',
+            'weight_update_method': 'optimal',
+            'adapt_target_probabilities': False,
+            }
+        for (name, value) in options.items():
+            additional_values.update(self.property_creator(name, name, value, value))
+        self.actual_stored_properties_check(additional_properties=additional_values)
+
+    def test_state_histogram(self):
+        """Ensure SAMS on-the-fly state histograms match actually visited states"""
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+        with self.temporary_storage_path() as storage_path:
+            # For this test, we simply check that the checkpointing writes on the interval
+            # We don't care about the numbers, per se, but we do care about when things are written
+            n_iterations = 10
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations)
+            reporter = self.REPORTER(storage_path, checkpoint_interval=2)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
+            # Propagate.
+            sampler.run()
+            reporter.close()
+            reporter = self.REPORTER(storage_path, open_mode='a', checkpoint_interval=2)
+            replica_thermodynamic_states = reporter.read_replica_thermodynamic_states()
+            N_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, sampler.n_states + 0.5))
+            assert np.all(sampler._state_histogram == N_k)
+
+    # TODO: Test all update methods
+
+
+class TestMultipleReplicaSAMS(TestSingleReplicaSAMS):
+    """Test suite for SAMSSampler class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 2
+
+    # --------------------------------------
+    # Tests overwritten from base test suite
+    # --------------------------------------
+
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options. Unique to SAMSSampler"""
+        additional_values = {}
+        options = {
+            'state_update_scheme': 'global-jump',
+            'locality': None,
+            'update_stages': 'two-stage',
+            'weight_update_method' : 'rao-blackwellized',
+            'adapt_target_probabilities': False,
+            }
+        for (name, value) in options.items():
+            additional_values.update(self.property_creator(name, name, value, value))
+        self.actual_stored_properties_check(additional_properties=additional_values)
+
+    # TODO: Test all update methods
+
+
+class TestParallelTempering(TestMultiStateSampler):
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 3
+    N_STATES = 3
+    SAMPLER = ParallelTemperingSampler
+    REPORTER = MultiStateReporter
+    MIN_TEMP = 300*unit.kelvin
+    MAX_TEMP = 350*unit.kelvin
+
+    # --------------------------------------
+    # Optional helper function to overwrite.
+    # --------------------------------------
+
+    @classmethod
+    def call_sampler_create(cls, sampler, reporter,
+                            thermodynamic_states,
+                            sampler_states,
+                            unsampled_states):
+        """
+        Helper function to call the create method for the sampler
+        ParallelTempering has a unique call
+        """
+        single_state = thermodynamic_states[0]
+        # Allows initial thermodynamic states to be handled by the built in methods
+        sampler.create(single_state, sampler_states, reporter,
+                       min_temperature=cls.MIN_TEMP, max_temperature=cls.MAX_TEMP, n_temperatures=cls.N_STATES,
+                       unsampled_thermodynamic_states=unsampled_states)
+
+    # ----------------------------------
+    # Methods overwritten from the Super
+    # ----------------------------------
+
+    @classmethod
+    def _compute_energies_independently(cls, thermodynamic_states, sampler_states, unsampled_states):
+        """
+        Helper function to compute energies by hand.
+        This is overwritten from Super.
+
+        There is faster way to compute sampled states with ParallelTempering that is O(N) as is done in production,
+        but the O(N^2) way should get it right as well and serves as a decent check
+        """
+        n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
+        reference_thermodynamic_state = thermodynamic_states[0]
+        temperatures = [cls.MIN_TEMP + (cls.MAX_TEMP - cls.MIN_TEMP) *
+                        (math.exp(i / n_states-1) - 1.0) / (math.e - 1.0)
+                        for i in range(n_states)]
+
+        thermodynamic_states = [copy.deepcopy(reference_thermodynamic_state) for _ in range(n_states)]
+        for temp, state in zip(temperatures, thermodynamic_states):
+            state.temperature = temp
+        # Compute the energies independently.
+        energy_thermodynamic_states = np.zeros((n_replicas, n_states))
+        energy_unsampled_states = np.zeros((n_replicas, len(unsampled_states)))
+        for energies, states in [(energy_thermodynamic_states, thermodynamic_states),
+                                 (energy_unsampled_states, unsampled_states)]:
+            for i, sampler_state in enumerate(sampler_states):
+                for j, state in enumerate(states):
+                    context, integrator = mmtools.cache.global_context_cache.get_context(state)
+                    sampler_state.apply_to_context(context)
+                    energies[i][j] = state.reduced_potential(context)
+        return energy_thermodynamic_states, energy_unsampled_states
+
 
 # ==============================================================================
 # MAIN AND TESTS
@@ -1279,19 +1765,8 @@ class TestReplicaExchange(object):
 
 if __name__ == "__main__":
     # Configure logger.
-    utils.config_root_logger(False)
-
-    # Try MPI, if possible.
-    try:
-        mpicomm = utils.initialize_mpi()
-        if mpicomm.rank == 0:
-            print("MPI initialized successfully.")
-    except Exception as e:
-        print(e)
-        print("Could not start MPI. Using serial code instead.")
-        mpicomm = None
+    config_root_logger(False)
 
     # Test simple system of harmonic oscillators.
     # Disabled until we fix the test
-    # test_hamiltonian_exchange(mpicomm)
-    test_replica_exchange(mpicomm)
+    # test_replica_exchange()

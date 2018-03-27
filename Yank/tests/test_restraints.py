@@ -26,7 +26,8 @@ import nose
 from nose.plugins.attrib import attr
 
 import yank.restraints
-from yank import experiment, analyze, Topography
+from yank import experiment, Topography
+import yank.multistate as multistate
 
 
 # =============================================================================================
@@ -91,7 +92,7 @@ options:
   minimize: no
   verbose: yes
   output_dir: %(output_directory)s
-  number_of_iterations: %(number_of_iter)s
+  default_number_of_iterations: %(number_of_iter)s
   nsteps_per_iteration: 100
   temperature: 300*kelvin
   pressure: null
@@ -144,8 +145,10 @@ def general_restraint_run(options):
         yaml_builder.run_experiments()
         # Estimate Free Energies
         ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
+        reporter = multistate.MultiStateReporter(ncfile_path, open_mode='r')
         ncfile = netcdf.Dataset(ncfile_path, 'r')
-        Deltaf_ij, dDeltaf_ij = analyze.estimate_free_energies(ncfile)
+        analyzer = multistate.ReplicaExchangeAnalyzer(ncfile)
+        Deltaf_ij, dDeltaf_ij = analyzer.get_free_energy()
         # Correct the sign for the fact that we are adding vs removing the restraints
         DeltaF_simulated = Deltaf_ij[-1, 0]
         dDeltaF_simulated = dDeltaf_ij[-1, 0]
@@ -381,13 +384,15 @@ def test_restraint_force_group():
         system = thermo_state.system
         for force_idx, force in enumerate(system.getForces()):
             try:
-                parameter_name = force.getGlobalParameterName(0)
+                num_parameters = force.getNumGlobalParameters()
             except AttributeError:
                 continue
-            if parameter_name == 'lambda_restraints':
-                restraint_force_idx = force_idx
-                restraint_force_group = force.getForceGroup()
-                break
+            for parameter_idx in range(num_parameters):
+                parameter_name = force.getGlobalParameterName(parameter_idx)
+                if parameter_name == 'lambda_restraints':
+                    restraint_force_idx = force_idx
+                    restraint_force_group = force.getForceGroup()
+                    break
 
         # No other force should have the same force group.
         for force_idx, force in enumerate(system.getForces()):

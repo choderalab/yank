@@ -50,16 +50,12 @@ options:
   minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers    # Set minimization tolerance.
   number_of_equilibration_iterations: 1                         # Number of equilibration iterations.
   equilibration_timestep: 1.0 * femtosecond                     # Timestep for use in equilibration.
-  number_of_iterations: 1                                       # Number of replica-exchange iterations to simulate.
-  nsteps_per_iteration: 500                                     # Number of timesteps per iteration.
-  timestep: 2.0 * femtosecond                                   # Timestep for Langevin dyanmics.
+  default_number_of_iterations: 1                               # The default number of iterations to simulate.
+  default_nsteps_per_iteration: 500                             # Number of timesteps per iteration.
+  default_timestep: 2.0 * femtosecond                           # Timestep for Langevin dyanmics.
   replica_mixing_scheme: swap-all                               # Specify how to mix replicas. Possible values are
                                                                 # swap-neighbors and swap-all.
-  collision_rate: 5.0 / picosecond                              # The collision rate used for Langevin dynamics.
   constraint_tolerance: 1.0e-6                                  # Relative constraint tolerance.
-  mc_displacement_sigma: 10.0 * angstroms                       # Yank will augument Langevin dynamics with MC moves
-                                                                # rotating and displacing the ligand. This control the
-                                                                # size of the displacement.
 
   # ALCHEMY PARAMETERS
   # ------------------

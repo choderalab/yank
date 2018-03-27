@@ -17,23 +17,23 @@ Interface for automated free energy calculations.
 # ==============================================================================
 
 import abc
+import collections
 import copy
-import time
-import logging
 import functools
 import importlib
-import collections
+import logging
+import time
+from typing import Union, Tuple, List, Set
 
 import mdtraj
-import pandas
 import numpy as np
 import openmmtools as mmtools
+import pandas
 from simtk import unit, openmm
 
-from . import utils, pipeline, repex, mpi
+from . import pipeline, mpi, multistate
 from .restraints import RestraintState, RestraintParameterError, V0
-
-from typing import Union, Tuple, List, Set
+from .fire import FIREMinimizationIntegrator
 
 logger = logging.getLogger(__name__)
 
@@ -605,7 +605,6 @@ class Topography(object):
         parsed_output = mmtools.utils.math_eval(region_set_string, variables=variables)
         return parsed_output
 
-
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation
 # ==============================================================================
@@ -672,7 +671,9 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
 
     @abc.abstractmethod
     def create(self, thermodynamic_state, sampler_states, storage,
-               unsampled_thermodynamic_states, metadata):
+               unsampled_thermodynamic_states=None,
+               initial_thermodynamic_states=None,
+               metadata=None):
         """Create new simulation and initialize the storage.
 
         Parameters
@@ -686,10 +687,13 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
             The path to the storage file or a Reporter object to forward
             to the sampler. In the future, this will be able to take a
             Storage class as well.
-        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
+        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, Optional, Default: None
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
             These energy can be used as data for reweighting schemes.
+        initial_thermodynamic_states : None or list or array-like of int of length len(sampler_states), optional,
+            default: None.
+            Initial thermodynamic_state index for each sampler_state.
         metadata : dict
            Simulation metadata to be stored in the file.
 
@@ -901,7 +905,7 @@ class AlchemicalPhase(object):
 
             If `None`, the correction won't be applied (units of length, default
             is None).
-        alchemical_regions : openmmtools.alchemy.AlchemicalRegion, optional
+        alchemical_regions : openmmtools.alchemy.AlchemicalRegion or None, optional, default: None
             If specified, this is the ``AlchemicalRegion`` that will be passed
             to the ``AbsoluteAlchemicalFactory``, otherwise the ligand will be
             alchemically modified according to the given protocol.
@@ -926,7 +930,9 @@ class AlchemicalPhase(object):
         is_complex = len(topography.receptor_atoms) > 0
 
         # We currently don't support reaction field.
-        nonbonded_method = mmtools.forces.find_nonbonded_force(reference_system).getNonbondedMethod()
+        _, nonbonded_force = mmtools.forces.find_forces(reference_system, openmm.NonbondedForce,
+                                                        only_one=True)
+        nonbonded_method = nonbonded_force.getNonbondedMethod()
         if nonbonded_method == openmm.NonbondedForce.CutoffPeriodic:
             raise RuntimeError('CutoffPeriodic is not supported yet. Use PME for explicit solvent.')
 
@@ -1094,8 +1100,8 @@ class AlchemicalPhase(object):
             Minimization tolerance (units of energy/mole/length, default is
             ``1.0 * unit.kilojoules_per_mole / unit.nanometers``).
         max_iterations : int, optional
-            Maximum number of iterations for minimization. If 0, minimization
-            continues until converged.
+            Maximum number of iterations for minimization.
+            If 0, minimization continues until converged.
 
         """
         metadata = self._sampler.metadata
@@ -1219,7 +1225,7 @@ class AlchemicalPhase(object):
         """Retrieve the MultiStateSampler class used from the storage."""
         # Handle str and Reporter argument value.
         if isinstance(storage, str):
-            reporter = repex.Reporter(storage)
+            reporter = multistate.MultiStateReporter(storage)
         else:
             reporter = storage
 
@@ -1393,11 +1399,15 @@ class AlchemicalPhase(object):
     @staticmethod
     def _minimize_sampler_state(sampler_state_id, sampler_states, thermodynamic_state,
                                 tolerance, max_iterations):
-        """Minimize the specified sampler state at the given thermodynamic state."""
+        """Minimize the specified sampler state at the given thermodynamic state.
+        """
         sampler_state = sampler_states[sampler_state_id]
 
-        # Retrieve a context. Any Integrator works.
-        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+        # Use the FIRE minimizer
+        integrator = FIREMinimizationIntegrator(tolerance=tolerance)
+
+        # Create context
+        context = thermodynamic_state.create_context(integrator)
 
         # Set initial positions and box vectors.
         sampler_state.apply_to_context(context)
@@ -1408,15 +1418,32 @@ class AlchemicalPhase(object):
             sampler_state_id + 1, len(sampler_states), initial_energy))
 
         # Minimize energy.
-        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+        try:
+            if max_iterations == 0:
+                logger.debug('Using FIRE: tolerance {} minimizing to convergence'.format(tolerance))
+                while integrator.getGlobalVariableByName('converged') < 1:
+                    integrator.step(50)
+            else:
+                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
+                integrator.step(max_iterations)
+        except Exception as e:
+            if str(e) == 'Particle coordinate is nan':
+                logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS after resetting positions')
+                sampler_state.apply_to_context(context)
+                openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+            else:
+                raise e
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
 
         # Compute the final energy of the system for logging.
-        final_energy = thermodynamic_state.reduced_potential(sampler_state)
+        final_energy = thermodynamic_state.reduced_potential(context)
         logger.debug('Sampler state {}/{}: final energy {:8.3f}kT'.format(
             sampler_state_id + 1, len(sampler_states), final_energy))
+
+        # Clean up the integrator
+        del context
 
         # Return minimized positions.
         return sampler_state.positions

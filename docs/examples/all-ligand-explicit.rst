@@ -15,7 +15,7 @@ for learning how to set up basic YANK simulations):
    * Please see our :ref:`OpenEye Install Instructions <optional_tools>` for installing these tools
    * Alternately see `OpenEye's Instructions <http://docs.eyesopen.com/toolkits/python/quickstart-python/install.html>`_ for additional help
 
-2. YANK's ability to run :ref:`multiple ligands <yaml_molecules_specifiy_names>` through the same commands
+2. YANK's ability to run :ref:`multiple ligands <yaml_molecules_specify_names>` through the same commands
 3. YANK's ability to run :ref:`Combinatorial <yaml_combinatorial_head>` options
 
    * See :ref:`the section below <yank_example_combo>` or the :ref:`full documentation page <yaml_combinatorial_head>` for more information on ``!Combinatorial``

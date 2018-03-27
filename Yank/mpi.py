@@ -57,8 +57,11 @@ logger = logging.getLogger(__name__)
 # GLOBAL VARIABLES
 # ==============================================================================
 
+# Force serial execution even in MPI environment.
 disable_mpi = False
 
+# A dummy MPI communicator used to simulate an MPI environment in tests.
+_simulated_mpicomm = None
 
 
 # ==============================================================================
@@ -85,6 +88,10 @@ def get_mpicomm():
     if disable_mpi:
         return None
 
+    # If MPI is simulated, return the Dummy implementation.
+    if _simulated_mpicomm is not None:
+        return _simulated_mpicomm
+
     # If we have already initialized MPI, return the cached MPI communicator.
     if get_mpicomm._is_initialized:
         return get_mpicomm._mpicomm
@@ -93,7 +100,10 @@ def get_mpicomm():
     # http://docs.roguewave.com/threadspotter/2012.1/linux/manual_html/apas03.html
     variables = ['PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'OMPI_MCA_ns_nds_vpid',
                  'PMI_ID', 'SLURM_PROCID', 'LAMRANK', 'MPI_RANKID',
-                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK']
+                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK',
+                 'ALPS_APP_PE', # Cray aprun
+                ]
+
     use_mpi = False
     for var in variables:
         if var in os.environ:
@@ -137,6 +147,15 @@ def get_mpicomm():
 
     # Report initialization
     logger.debug("MPI initialized on node {}/{}".format(mpicomm.rank+1, mpicomm.size))
+
+    # Cray machines are usually old and sick; prevent them from causing trouble with CUDA caches
+    # by explicitly using different CUDA cache paths for each process
+    if 'ALPS_APP_PE' in variables:
+        cuda_cache_path = os.path.abspath(os.path.join('nvcc-cache', str(mpicomm.rank)))
+        if not os.path.exists(cuda_cache_path):
+            os.makedirs(cuda_cache_path)
+        os.environ['CUDA_CACHE_PATH'] = cuda_cache_path
+        print('Cray detected; node {}/{} using CUDA cache path {}'.format(mpicomm.rank+1, mpicomm.size, cuda_cache_path))
 
     return mpicomm
 
@@ -423,8 +442,11 @@ def distribute(task, distributed_args, *other_args, send_results_to='all',
         If not None, the ``distributed_args`` are distributed among groups of
         nodes that are isolated from each other. This is particularly useful
         if ``task`` also calls :func:`distribute`, since normally that would result
-        in unexpected behavior. If an integer, the nodes are split into equal
-        groups of ``group_size`` nodes. If a list of integers, the nodes are
+        in unexpected behavior.
+
+        If an integer, the nodes are split into equal groups of ``group_size``
+        nodes. If ``n_nodes % group_size != 0``, the first jobs are allocated
+        more nodes than the latest. If a list of integers, the nodes are
         split in possibly unequal groups (see example below).
 
     Other Parameters
@@ -587,6 +609,37 @@ def delayed_termination(func):
         with delay_termination():
             return func(*args, **kwargs)
     return _delayed_termination
+
+
+# ==============================================================================
+# MPI TEST CLASSES
+# ==============================================================================
+
+class _DummyMPIComm():
+    """A Dummy MPI Communicator."""
+
+    def __init__(self, rank=0, size=4):
+        self.rank = rank
+        self.size = size
+
+
+@contextmanager
+def _simulated_mpi_environment(**kwargs):
+    """Context manager to temporarily set a simulated MPI environment.
+
+    Parameters
+    ----------
+    **kwargs : dict
+        The parameters to pass to _DummyMPIComm constructor.
+
+    """
+    global _simulated_mpicomm
+    old_simulated_mpicomm = _simulated_mpicomm
+    _simulated_mpicomm = _DummyMPIComm(**kwargs)
+    try:
+        yield
+    finally:
+        _simulated_mpicomm = old_simulated_mpicomm
 
 
 # ==============================================================================
