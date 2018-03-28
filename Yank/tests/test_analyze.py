@@ -478,8 +478,8 @@ class TestMultiPhaseAnalyzer(object):
         analyzer.unbias_restraint = True
         # Set a cutoff that allows us to discard some iterations.
         restraint_data = analyzer._get_radially_symmetric_restraint_data()
-        restraint_energies, _ = analyzer._compute_restraint_energies(*restraint_data)
-        analyzer.restraint_energy_cutoff = np.mean(restraint_energies) / analyzer.kT
+        restraint_energies, restraint_distances = analyzer._compute_restraint_energies(*restraint_data)
+        analyzer.restraint_distance_cutoff = np.mean(restraint_distances)
         assert analyzer._unbiased_decorrelated_u_ln.shape[0] == analyzer._decorrelated_u_ln.shape[0] + 2
         assert analyzer._unbiased_decorrelated_N_l.shape[0] == analyzer._decorrelated_N_l.shape[0] + 2
         assert analyzer._unbiased_decorrelated_u_ln.shape[1] < analyzer._decorrelated_u_ln.shape[1]
@@ -490,6 +490,7 @@ class TestMultiPhaseAnalyzer(object):
         assert analyzer._unbiased_decorrelated_N_l[-1] == 0
 
         # With a very big energy cutoff, all the energies besides the extra two states should be identical.
+        analyzer.restraint_distance_cutoff = None
         analyzer.restraint_energy_cutoff = 100.0  # kT
         assert np.array_equal(analyzer._unbiased_decorrelated_u_ln[1:-1], analyzer._decorrelated_u_ln)
         assert np.array_equal(analyzer._unbiased_decorrelated_N_l[1:-1], analyzer._decorrelated_N_l)

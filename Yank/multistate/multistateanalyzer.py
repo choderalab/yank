@@ -1533,6 +1533,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Don't modify the original restraint force.
         restraint_force = copy.deepcopy(restraint_force)
+        is_periodic = restraint_force.usesPeriodicBoundaryConditions()
 
         # Store the original indices of the restrained atoms.
         original_restrained_atom_indices1 = restraint_force.restrained_atom_indices1
@@ -1551,11 +1552,16 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         restraint_force.restrained_atom_indices2 = list(range(n_atoms1, n_atoms))
         reduced_system.addForce(restraint_force)
 
-        if compute_distances:
+        # If we need to image the molecule, we need an MDTraj trajectory.
+        if compute_distances and is_periodic:
             # Create topology with only the restrained atoms.
             serialized_topography = self._reporter.read_dict('metadata/topography')
-            topology = mmtools.utils.deserialize(serialized_topography).topology
+            topography = mmtools.utils.deserialize(serialized_topography)
+            topology = topography.topology
             topology = topology.subset(self._reporter.analysis_particle_indices)
+            # Use the receptor as an anchor molecule and image the ligand.
+            anchor_molecules = [{a for a in topology.atoms if a.index in set(topography.receptor_atoms)}]
+            imaged_molecules = [{a for a in topology.atoms if a.index in set(topography.ligand_atoms)}]
             # Initialize trajectory object needed for imaging molecules.
             trajectory = mdtraj.Trajectory(xyz=np.zeros((topology.n_atoms, 3)), topology=topology)
 
@@ -1595,13 +1601,20 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                     try:
                         distance = restraint_force.distance_at_energy(potential_energy) / _MDTRAJ_DISTANCE_UNIT
                     except (NotImplementedError, ValueError):
-                        # Update trajectory positions/box vectors.
-                        trajectory.xyz = (sampler_state.positions / _MDTRAJ_DISTANCE_UNIT).astype(np.float32)
-                        trajectory.unitcell_vectors = np.array([sampler_state.box_vectors / _MDTRAJ_DISTANCE_UNIT],
-                                                               dtype=np.float32)
-                        trajectory.image_molecules(inplace=True)
-                        positions_group1 = trajectory.xyz[0][original_restrained_atom_indices1]
-                        positions_group2 = trajectory.xyz[0][original_restrained_atom_indices2]
+                        if is_periodic:
+                            # Update trajectory positions/box vectors.
+                            trajectory.xyz = (sampler_state.positions / _MDTRAJ_DISTANCE_UNIT).astype(np.float32)
+                            trajectory.unitcell_vectors = np.array([sampler_state.box_vectors / _MDTRAJ_DISTANCE_UNIT],
+                                                                   dtype=np.float32)
+                            trajectory.image_molecules(inplace=True, anchor_molecules=anchor_molecules,
+                                                       other_molecules=imaged_molecules)
+                            positions_group1 = trajectory.xyz[0][original_restrained_atom_indices1]
+                            positions_group2 = trajectory.xyz[0][original_restrained_atom_indices2]
+                        else:
+                            positions_group1 = sampler_state.positions[original_restrained_atom_indices1]
+                            positions_group2 = sampler_state.positions[original_restrained_atom_indices2]
+                            positions_group1 /= _MDTRAJ_DISTANCE_UNIT
+                            positions_group2 /= _MDTRAJ_DISTANCE_UNIT
 
                         # Set output arrays.
                         distance = compute_centroid_distance(positions_group1, positions_group2,
