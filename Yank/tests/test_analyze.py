@@ -124,7 +124,7 @@ class TestMultiPhaseAnalyzer(object):
         """Shared test cases and variables."""
         cls.checkpoint_interval = 2
         # Make sure we collect the same number of samples for all tests to avoid instabilities in MBAR.
-        cls.n_steps = int(np.ceil(25 / cls.N_SAMPLERS))
+        cls.n_steps = int(np.ceil(100 / cls.N_SAMPLERS))
 
         # Test case with host guest in vacuum at 3 different positions and alchemical parameters.
         # -----------------------------------------------------------------------------------------
