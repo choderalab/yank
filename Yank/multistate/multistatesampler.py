@@ -1250,7 +1250,7 @@ class MultiStateSampler(object):
                 while integrator.getGlobalVariableByName('converged') < 1:
                     integrator.step(50)
             else:
-                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
+                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
                 integrator.step(max_iterations)
         except Exception as e:
             if str(e) == 'Particle coordinate is nan':
@@ -1262,7 +1262,7 @@ class MultiStateSampler(object):
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
-        
+
         # Compute the final energy of the system for logging.
         final_energy = thermodynamic_state.reduced_potential(sampler_state)
         logger.debug('Replica {}/{}: final energy {:8.3f}kT'.format(

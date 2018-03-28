@@ -1424,7 +1424,7 @@ class AlchemicalPhase(object):
                 while integrator.getGlobalVariableByName('converged') < 1:
                     integrator.step(50)
             else:
-                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, fire_iterations))
+                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
                 integrator.step(max_iterations)
         except Exception as e:
             if str(e) == 'Particle coordinate is nan':
