@@ -353,7 +353,8 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
         reporter = multistate.MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
         metadata = reporter.read_dict('metadata')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
-        topology = mmtools.utils.deserialize(metadata['topography']).topology
+        topography = mmtools.utils.deserialize(metadata['topography'])
+        topology = topography.topology
 
         # Determine if system is periodic
         is_periodic = reference_system.usesPeriodicBoundaryConditions()
@@ -443,8 +444,15 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
         trajectory.unitcell_vectors = box_vectors
 
     # Force periodic boundary conditions to molecules positions
-    if image_molecules:
+    if image_molecules and is_periodic:
         logger.info('Applying periodic boundary conditions to molecules positions...')
-        trajectory.image_molecules(inplace=True)
+        # Use the receptor as an anchor molecule.
+        anchor_atom_indices = set(topography.receptor_atoms)
+        if len(anchor_atom_indices) == 0:  # Hydration free energy.
+            anchor_atom_indices = set(topography.solute_atoms)
+        anchor_molecules = [{a for a in topology.atoms if a.index in anchor_atom_indices}]
+        trajectory.image_molecules(inplace=True, anchor_molecules=anchor_molecules)
+    elif image_molecules:
+        logger.warning('The molecules will not be imaged because the system is non-periodic.')
 
     return trajectory
