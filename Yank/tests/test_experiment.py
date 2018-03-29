@@ -1837,7 +1837,9 @@ def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""
     imatinib_path = examples_paths()['imatinib']
     with mmtools.utils.temporary_directory() as tmp_dir:
-        receptors = {'Asp': -1, 'Abl': -8}  # receptor name -> net charge
+        # receptors = {'Asp': -1, 'Abl': -8}  # receptor name -> net charge
+        # Only run `Asp` on CI as Abl can be very slow
+        receptors = {'Asp': -1}  # receptor name -> net charge
         solvent_names = ['PME', 'PMEionic']
         updates = yank_load("""
         molecules:
