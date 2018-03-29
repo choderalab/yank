@@ -266,7 +266,8 @@ class TestMultiPhaseAnalyzer(object):
         # Generate MBAR from phase
         phase_mbar = phase.mbar
         # Assert mbar object is formed of nstates + unsampled states, Number of effective samples
-        n_effective_samples = Neff_max - discard
+        # Round up to nearest int to handle floating point issues in single replica tests
+        n_effective_samples = np.ceil(Neff_max - discard)
         assert phase_mbar.u_kn.shape[0] == self.n_states + 2
         assert abs(phase_mbar.u_kn.shape[1]/self.n_replicas - n_effective_samples) <= 1
 
