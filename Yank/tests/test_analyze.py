@@ -124,7 +124,8 @@ class TestMultiPhaseAnalyzer(object):
         """Shared test cases and variables."""
         cls.checkpoint_interval = 2
         # Make sure we collect the same number of samples for all tests to avoid instabilities in MBAR.
-        cls.n_steps = int(np.ceil(25 / cls.N_SAMPLERS))
+        base_steps = 50
+        cls.n_steps = int(np.ceil(base_steps / cls.N_SAMPLERS))
 
         # Test case with host guest in vacuum at 3 different positions and alchemical parameters.
         # -----------------------------------------------------------------------------------------
@@ -208,7 +209,7 @@ class TestMultiPhaseAnalyzer(object):
         cls.repex_name = "RepexAnalyzer"  # kind of an unused test
 
         # Debugging Messages to sent to Nose with --nocapture enabled
-        output_descr = "Testing Sampler: {}  -- States: {}  -- Samplers: {}".format(
+        output_descr = "Testing Analyzer: {}  -- States: {}  -- Samplers: {}".format(
             cls.SAMPLER.__name__, cls.N_STATES, cls.N_SAMPLERS)
         len_output = len(output_descr)
         print("#" * len_output)
@@ -265,9 +266,10 @@ class TestMultiPhaseAnalyzer(object):
         # Generate MBAR from phase
         phase_mbar = phase.mbar
         # Assert mbar object is formed of nstates + unsampled states, Number of effective samples
-        n_effective_samples = Neff_max - discard
+        # Round up to nearest int to handle floating point issues in single replica tests
+        n_effective_samples = np.ceil(Neff_max - discard)
         assert phase_mbar.u_kn.shape[0] == self.n_states + 2
-        assert abs(phase_mbar.u_kn.shape[1]/self.n_replicas - n_effective_samples) < 1
+        assert abs(phase_mbar.u_kn.shape[1]/self.n_replicas - n_effective_samples) <= 1
 
         # Check that Free energies are returned correctly
         fe, dfe = self.help_fe_calc(phase)
@@ -289,10 +291,18 @@ class TestMultiPhaseAnalyzer(object):
         assert new_fe_out == fe[inew, jnew]
         assert new_dfe_out == dfe[inew, jnew]
 
+    @staticmethod
+    def invoke_free_energy(phase):
+        """Secondary helper function to try and solve for free energy"""
+        fe, dfe = phase.get_free_energy()
+        if np.any(np.isnan(dfe)) or np.any(np.isnan(fe)):
+            raise RuntimeError("Free energy or its error is NaN, likely due to insufficient run time!")
+        return fe, dfe
+
     def help_fe_calc(self, phase):
         try:
-            fe, dfe = phase.get_free_energy()
-        except ParameterError as e:
+            fe, dfe = self.invoke_free_energy(phase)
+        except (ParameterError, RuntimeError) as e:
             # Handle case where MBAR does not have a converged free energy yet by attempting to run longer
             # Only run up until we have sampled every state, or we hit some cycle limit
             self.reporter.open(mode='a')
@@ -302,11 +312,11 @@ class TestMultiPhaseAnalyzer(object):
             throw = True
             phase.clear()
             while (not np.unique(self.sampler._reporter.read_replica_thermodynamic_states()).size == self.N_STATES
-                   or cycles == cycle_limit):
+                   and cycles < cycle_limit):
                 self.sampler.extend(cycle_steps)
                 try:
-                    fe, dfe = phase.get_free_energy()
-                except ParameterError:
+                    fe, dfe = self.invoke_free_energy(phase)
+                except (ParameterError, RuntimeError):
                     # If the max error count internally is reached, its a RuntimeError and won't be trapped
                     # So it will be raised correctly
                     pass
@@ -315,6 +325,7 @@ class TestMultiPhaseAnalyzer(object):
                     throw = False
                     break
                 cycles += 1
+                phase.clear()
             self.reporter.sync()
             self.reporter.open(mode='r')
             if throw:
@@ -506,7 +517,8 @@ class TestMultiPhaseAnalyzer(object):
         # Follows the checkpoint interval logic
         # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems
         # Should this change in analyze, then this logic will need to be changed as well
-        assert len(full_trajectory) == ((self.n_steps + 1) / self.checkpoint_interval) - 1
+        # The int() rounds down from sampling to a state in between the interval
+        assert len(full_trajectory) == int((self.n_steps + 1) / self.checkpoint_interval) - 1
         self.reporter.close()
         # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
         solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=False)

@@ -150,7 +150,7 @@ def get_mpicomm():
 
     # Cray machines are usually old and sick; prevent them from causing trouble with CUDA caches
     # by explicitly using different CUDA cache paths for each process
-    if 'ALPS_APP_PE' in variables:
+    if 'ALPS_APP_PE' in os.environ:
         cuda_cache_path = os.path.abspath(os.path.join('nvcc-cache', str(mpicomm.rank)))
         if not os.path.exists(cuda_cache_path):
             os.makedirs(cuda_cache_path)

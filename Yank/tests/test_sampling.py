@@ -1158,7 +1158,7 @@ class TestMultiStateSampler(object):
             new_sampler_states = sampler._sampler_states
             new_diffs = [np.average(new_sampler_states[i].positions - new_sampler_states[i+1].positions)
                          for i in range(n_replicas - 1)]
-            assert np.allclose(original_diffs, new_diffs)
+            assert np.allclose(original_diffs, new_diffs, rtol=1e-4)
 
     def test_compute_energies(self):
         """Test method _compute_energies from MultiStateSampler.
