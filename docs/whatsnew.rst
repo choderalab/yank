@@ -6,6 +6,13 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.21.1 Post-SAMS Bugfixes
+-------------------------
+- Fix bug in FIRE minimizer logging
+- Fix Cray environment variables
+- Make tests more robust to undersampled analysis results
+- Fix molecule imaging incorrectly in trajectory extraction
+
 0.21.0 SAMS and General Multistate Samplers
 -------------------------------------------
 
