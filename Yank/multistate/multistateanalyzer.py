@@ -1567,7 +1567,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Create context used to compute the energies.
         integrator = openmm.VerletIntegrator(1.0*units.femtosecond)
-        context = openmm.Context(reduced_system, integrator)
+        platform = openmm.Platform.getPlatformByName('CPU')
+        context = openmm.Context(reduced_system, integrator, platform)
 
         # TODO: we need to provide a reporter generator to iterate over single
         # TODO:     iterations but reading automatically one chunksize at a time.
