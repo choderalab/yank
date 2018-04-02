@@ -422,7 +422,7 @@ class TestMultiPhaseAnalyzer(object):
         cached_properties = ['mbar', 'decorrelated_state_indices_ln', 'equilibration_data']
         yield check_cached_properties, False
         analyzer._decorrelated_state_indices_ln
-        analyzer.get_free_energy()
+        self.help_fe_calc(analyzer)
         yield check_cached_properties, True
 
         # If we invalidate one of the dependencies, the values that depend on it are invalidated too.
