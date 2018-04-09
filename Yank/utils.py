@@ -1222,11 +1222,11 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     Parameters
     ----------
     oetools : str or iterable of strings, Optional, Default: ('oechem', 'oequacpac', 'oeiupac', 'oeomega')
-        Set of tools to check by their string name. Defaults to the complete set that YANK *could* use, depending on
-        feature requested.
+        Set of tools to check by their string name. Defaults to the
+        complete set that YANK *could* use, depending on feature requested.
 
-        Only checks the subset of tools if passed. Also accepts a single tool to check as a string instead of an
-        iterable of length 1.
+        Only checks the subset of tools if passed. Also accepts a single
+        tool to check as a string instead of an iterable of length 1.
 
     Returns
     -------
@@ -1243,21 +1243,17 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     if type(oetools) is str:
         oetools = (oetools,)
     # Check if the input oetools are known.
-    if len(set(oetools) & set(tools_license)) == 0:
-        raise ValueError("Expected OpenEye tools to have at least of the following {}, "
-                         "but instead got {}".format(tuple(tools_license), oetools))
+    if set(oetools).issubset(set(tools_license)):
+        raise ValueError("Expected an OpenEye tools subset of {}, but instead "
+                         "got {}".format(tuple(tools_license), oetools))
 
-    # Discard OpenEye tools whose license we don't check
-    # TODO: should we just raise an error here?
-    oetools = (tool_name for tool_name in oetools if tool_name in tools_license)
-
-    # Try loading the module
+    # Try loading the module.
     for tool in oetools:
         try:
             module = importlib.import_module('openeye.' + tool)
         except ImportError:
             return False
-        # Check that we have the license
+        # Check that we have the license.
         if not getattr(module, tools_license[tool])():
             return False
     return True
