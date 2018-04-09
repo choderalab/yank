@@ -1215,9 +1215,9 @@ class Mol2File(object):
 
 def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     """
-    Check if a given OpenEye tool is installed and Licensed
+    Check if a given OpenEye tool is installed and Licensed.
 
-    If the OpenEye toolkit is not installed, returns False
+    If the OpenEye toolkit is not installed, returns False.
 
     Parameters
     ----------
@@ -1231,36 +1231,31 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     Returns
     -------
     all_installed : bool
-        True if all tools in ``oetools`` are installed and licensed, False otherwise
+        True if all tools in ``oetools`` are installed and licensed, False otherwise.
     """
-    # Complete list of module: License check
+    # Complete list of module: License function name.
     tools_license = {'oechem': 'OEChemIsLicensed',
                      'oequacpac': 'OEQuacPacIsLicensed',
                      'oeiupac': 'OEIUPACIsLicensed',
                      'oeomega': 'OEOmegaIsLicensed'}
-    tool_keys = tools_license.keys()
-    # Cast oetools to tuple if its a single string
+
+    # Cast oetools to tuple if its a single string.
     if type(oetools) is str:
         oetools = (oetools,)
-    tool_set = set(oetools)
-    valid_tool_set = set(tool_keys)
-    if tool_set & valid_tool_set == set():
-        # Check for empty set intersection
+    # Check if the input oetools are known.
+    if len(set(oetools) & set(tools_license)) == 0:
         raise ValueError("Expected OpenEye tools to have at least of the following {}, "
-                         "but instead got {}".format(tool_keys, oetools))
-    try:
-        for tool in oetools:
-            if tool in tool_keys:
-                # Try loading the module
-                try:
-                    module = importlib.import_module('openeye', tool)
-                except SystemError: # Python 3.4 relative import fix
-                    module = importlib.import_module('openeye.' + tool)
-                # Check that we have the license
-                if not getattr(module, tools_license[tool])():
-                    raise ImportError
-    except ImportError:
-        return False
+                         "but instead got {}".format(tuple(tools_license), oetools))
+
+    for tool in oetools:
+        # Try loading the module
+        try:
+            module = importlib.import_module('openeye.' + tool)
+        except ImportError:
+            return False
+        # Check that we have the license
+        if not getattr(module, tools_license[tool])():
+            return False
     return True
 
 
