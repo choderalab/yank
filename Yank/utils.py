@@ -1247,8 +1247,12 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
         raise ValueError("Expected OpenEye tools to have at least of the following {}, "
                          "but instead got {}".format(tuple(tools_license), oetools))
 
+    # Discard OpenEye tools whose license we don't check
+    # TODO: should we just raise an error here?
+    oetools = (tool_name for tool_name in oetools if tool_name in tools_license)
+
+    # Try loading the module
     for tool in oetools:
-        # Try loading the module
         try:
             module = importlib.import_module('openeye.' + tool)
         except ImportError:
