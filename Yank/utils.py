@@ -1243,7 +1243,7 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     if type(oetools) is str:
         oetools = (oetools,)
     # Check if the input oetools are known.
-    if set(oetools).issubset(set(tools_license)):
+    if not set(oetools).issubset(set(tools_license)):
         raise ValueError("Expected an OpenEye tools subset of {}, but instead "
                          "got {}".format(tuple(tools_license), oetools))
 
