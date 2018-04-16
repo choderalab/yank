@@ -773,72 +773,6 @@ def update_nested_dict(original, updated):
 # Conversion utilities
 # ==============================================================================
 
-def find_all_subclasses(parent_cls, discard_abstract=False, include_parent=True):
-    """Return a set of all the classes inheriting from ``parent_cls``.
-
-    The functions handle multiple inheritance and discard the same classes.
-
-    Parameters
-    ----------
-    parent_cls : type
-        The parent class.
-    discard_abstract : bool, optional
-        If True, abstract classes are not returned (default is False).
-    include_parent : bool, optional
-        If True, the parent class will be included, unless it is abstract
-        and ``discard_abstract`` is ``True``.
-
-    Returns
-    -------
-    subclasses : set of type
-        The set of all the classes inheriting from ``parent_cls``.
-
-    """
-    subclasses = set()
-    for subcls in parent_cls.__subclasses__():
-        if not (discard_abstract and inspect.isabstract(subcls)):
-            subclasses.add(subcls)
-        subclasses.update(find_all_subclasses(subcls, discard_abstract))
-
-    if include_parent and not inspect.isabstract(parent_cls):
-        subclasses.add(parent_cls)
-    return subclasses
-
-
-def find_subclass(parent_cls, subcls_name):
-    """Return the class called ``subcls_name`` inheriting from ``parent_cls``.
-
-    Parameters
-    ----------
-    parent_cls : type
-        The parent class.
-    subcls_name : str
-        The name of the class inheriting from ``parent_cls``.
-
-    Returns
-    -------
-    subcls : type
-        The class inheriting from ``parent_cls`` called ``subcls_name``.
-
-    Raises
-    ------
-    ValueError
-        If there is no class or there are multiple classes called ``subcls_name``
-        that inherit from ``parent_cls``.
-    """
-    subclasses = []
-    for subcls in find_all_subclasses(parent_cls):
-        if subcls.__name__ == subcls_name:
-            subclasses.append(subcls)
-    if len(subclasses) == 0:
-        raise ValueError('Could not found class {} inheriting from {}'
-                         ''.format(subcls_name, parent_cls))
-    if len(subclasses) > 1:
-        raise ValueError('Found multiple classes inheriting from {}: {}'
-                         ''.format(parent_cls, subclasses))
-    return subclasses[0]
-
-
 def underscore_to_camelcase(underscore_str):
     """Convert the given string from ``underscore_case`` to ``camelCase``.
 
@@ -949,7 +883,11 @@ def quantity_from_string(expression, compatible_units=None):
         quantity_from_string._units = dict(units_tuples)
 
     # Eliminate nested quotes and excess whitespace
-    expression = expression.strip('\'" ')
+    try:
+        expression = expression.strip('\'" ')
+    except AttributeError:
+        raise TypeError('The expression {} must be a string defining units, '
+                        'not a {} instance'.format(expression, type(expression)))
 
     # Handle a special case of the unit when it is just "inverse unit",
     # e.g. Hz == /second
@@ -983,7 +921,7 @@ def get_keyword_args(function, try_mro_from_class=None):
         Try and trace the method resolution order (MRO) of the ``function_to_inspect`` by inferring a method stack from
         the supplied class.
         The signature of the function is checked in every MRO up the stack so long as there exists as
-        **kwargs in the method call. This is setting will yield expected results in every case, for instance, if
+        ``**kwargs`` in the method call. This is setting will yield expected results in every case, for instance, if
         the method does not call `super()`, or the Super class has a different function name.
         In the case of conflicting keywords, the lower MRO function is preferred.
 

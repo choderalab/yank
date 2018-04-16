@@ -47,6 +47,8 @@ from .utils import SimulationNaNError
 from .. import mpi
 from pymbar.utils import ParameterError
 
+from yank.fire import FIREMinimizationIntegrator
+
 logger = logging.getLogger(__name__)
 
 
@@ -205,64 +207,14 @@ class MultiStateSampler(object):
             last stored iteration.
 
         """
-        # Handle case in which storage is a string.
-        reporter = cls._reporter_from_storage(storage, check_exist=True)
-
-        # Open a reporter to read the data.
-        reporter.open(mode='r')
-
-        # Retrieve options and create new simulation.
-        options = reporter.read_dict('options')
-        options['mcmc_moves'] = reporter.read_mcmc_moves()
-        sampler = cls(**options)
-
-        # Display papers to be cited.
-        sampler._display_citations()
-
-        # Read the last iteration reported to ensure we don't include junk
-        # data written just before a crash.
-        iteration = reporter.read_last_iteration()
-
-        # Retrieve other attributes.
-        logger.debug("Reading storage file {}...".format(reporter.filepath))
-        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
-        sampler_states = reporter.read_sampler_states(iteration=iteration)
-        state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
-        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
-        metadata = reporter.read_dict('metadata')
-
-        # Search for last cached free energies only if online analysis is activated.
-        if sampler.online_analysis_interval is not None:
-            online_analysis_info = sampler._read_last_free_energy(reporter, iteration)
-            last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
-        else:
-            last_mbar_f_k, last_err_free_energy = None, None
-
+        sampler, reporter = cls._instantiate_sampler_from_storage(storage)
+        sampler._restore_sampler_from_reporter(reporter)
         # Close reading reporter.
         reporter.close()
-
-        # Assign attributes.
-        sampler._iteration = iteration
-        sampler._thermodynamic_states = thermodynamic_states
-        sampler._unsampled_states = unsampled_states
-        sampler._sampler_states = sampler_states
-        sampler._replica_thermodynamic_states = state_indices
-        sampler._energy_thermodynamic_states = energy_thermodynamic_states
-        sampler._neighborhoods = neighborhoods
-        sampler._energy_unsampled_states = energy_unsampled_states
-        sampler._n_accepted_matrix = n_accepted_matrix
-        sampler._n_proposed_matrix = n_proposed_matrix
-        sampler._metadata = metadata
-
-        sampler._last_mbar_f_k = last_mbar_f_k
-        sampler._last_err_free_energy = last_err_free_energy
-
-        # We open the reporter only in node 0.
+        # We open the reporter only in node 0 in append mode ready for use
         sampler._reporter = reporter
         mpi.run_single_node(0, sampler._reporter.open, mode='a',
                             broadcast_result=False, sync_nodes=False)
-
         # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
         return sampler
 
@@ -727,7 +679,7 @@ class MultiStateSampler(object):
         """
         # Check that simulation has been created.
         if self.n_replicas == 0:
-            raise RuntimeError('Cannot minimize replicas. The simulation must be created first.')
+            raise RuntimeError('Cannot equilibrate replicas. The simulation must be created first.')
 
         # If no MCMCMove is specified, use the ones for production.
         if mcmc_moves is None:
@@ -867,6 +819,106 @@ class MultiStateSampler(object):
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
+
+    @classmethod
+    def _instantiate_sampler_from_storage(cls, storage):
+        """
+        Creates a new instance of the reporter on disk and sampler which can then be manipulated.
+        Does not set any variables, use :func:`_restore_sampler_from_reporter` after calling this to set them.
+        Helper function to break up the :func:`from_storage` method in a way that subclasses can specialize
+
+        Parameters
+        ----------
+        storage : str or Reporter
+            If str: The path to the storage file.
+            If :class:`Reporter`: uses the :class:`Reporter` options
+            In the future this will be able to take a Storage class as well.
+
+        Returns
+        -------
+        sampler :  MultiStateSampler
+            A new instance of MultiStateSampler (or subclass) with options restored from disk
+        reporter : MultiStateReporter
+            Loaded instance of the reporter from disk.
+            In case ``storage`` was a reporter  returns the input reporter.
+            Reporter will be closed when returned.
+        """
+
+        # Handle case in which storage is a string.
+        reporter = cls._reporter_from_storage(storage, check_exist=True)
+
+        # Open a reporter to read the data.
+        reporter.open(mode='r')
+
+        # Retrieve options and create new simulation.
+        options = reporter.read_dict('options')
+        options['mcmc_moves'] = reporter.read_mcmc_moves()
+        sampler = cls(**options)
+
+        # Display papers to be cited.
+        sampler._display_citations()
+        reporter.close()
+        return sampler, reporter
+
+    def _restore_sampler_from_reporter(self, reporter):
+        """
+        (Re-)initialize the instanced sampler from the reporter. Intended to be called as the second half of a
+        :func:`from_storage` method after the :class:`MultiStateSampler` has been instanced from disk.
+
+        The ``self.reporter`` instance of this sampler will be in an open state for append mode after this has been set,
+        and the ``reporter`` used as argument will be closed. In the event they are the same, reporter will be
+        returned as open in append mode.
+
+        Note: Needs an already initialized reporter to work correctly.
+        Warning: can overwrite the current state of this :class:`MultiStateSampler` instance.
+
+        Helper function to break up the from_storage method in a way that subclasses can specialize
+
+        Parameters
+        ----------
+        reporter : MultiStateReporter
+            Reporter instance to read options from
+
+        """
+        # Ensure reporter is closed for safe keeping first
+        reporter.close()
+        # Reopen in read mode
+        reporter.open(mode='r')
+        # Read the last iteration reported to ensure we don't include junk
+        # data written just before a crash.
+        iteration = reporter.read_last_iteration()
+
+        # Retrieve other attributes.
+        logger.debug("Reading storage file {}...".format(reporter.filepath))
+        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
+        sampler_states = reporter.read_sampler_states(iteration=iteration)
+        state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
+        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
+        metadata = reporter.read_dict('metadata')
+
+        # Search for last cached free energies only if online analysis is activated.
+        if self.online_analysis_interval is not None:
+            online_analysis_info = self._read_last_free_energy(reporter, iteration)
+            last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
+        else:
+            last_mbar_f_k, last_err_free_energy = None, None
+
+        # Assign attributes.
+        self._iteration = iteration
+        self._thermodynamic_states = thermodynamic_states
+        self._unsampled_states = unsampled_states
+        self._sampler_states = sampler_states
+        self._replica_thermodynamic_states = state_indices
+        self._energy_thermodynamic_states = energy_thermodynamic_states
+        self._neighborhoods = neighborhoods
+        self._energy_unsampled_states = energy_unsampled_states
+        self._n_accepted_matrix = n_accepted_matrix
+        self._n_proposed_matrix = n_proposed_matrix
+        self._metadata = metadata
+
+        self._last_mbar_f_k = last_mbar_f_k
+        self._last_err_free_energy = last_err_free_energy
 
     def _check_nan_energy(self):
         """Checks that energies are finite and abort otherwise.
@@ -1016,6 +1068,22 @@ class MultiStateSampler(object):
         termination is delayed so that the file is not written only with
         partial data if the program gets interrupted.
 
+        Subclasses should not attempt to modify this function as it can
+        force either duplicated or missed ``sync()`` calls
+        """
+        # Call report_iteration_items for a subclass-friendly function
+        self._report_iteration_items()
+        self._reporter.write_timestamp(self._iteration)
+        self._reporter.write_last_iteration(self._iteration)
+        self._reporter.sync()
+
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
+    def _report_iteration_items(self):
+        """
+        Sub-function of :func:`_report_iteration` which handles all the actual individual item reporting in a
+        sub-class friendly way. The final actions of writing timestamp, last-good-iteration, and syncing
+        should be left to the :func:`_report_iteration` and subclasses should extend this function instead
         """
         self._reporter.write_sampler_states(self._sampler_states, self._iteration)
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
@@ -1023,9 +1091,6 @@ class MultiStateSampler(object):
         self._reporter.write_energies(self._energy_thermodynamic_states, self._neighborhoods, self._energy_unsampled_states,
                                       self._iteration)
         self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
-        self._reporter.write_timestamp(self._iteration)
-        self._reporter.write_last_iteration(self._iteration)
-        self._reporter.sync()
 
     @classmethod
     def default_options(cls):
@@ -1071,15 +1136,15 @@ class MultiStateSampler(object):
 
         Parameters
         ----------
-        current_state_index : int
-            The currrent state
+        state_index : int
+            The current state
 
         Returns
         -------
         neighborhood : list of int
             The states in the local neighborhood
         """
-        if self.locality == None:
+        if self.locality is None:
             # Global neighborhood
             return list(range(0, self.n_states))
         else:
@@ -1156,14 +1221,19 @@ class MultiStateSampler(object):
         return move_statistics
 
     def _minimize_replica(self, replica_id, tolerance, max_iterations):
-        """Minimize the specified replica."""
+        """Minimize the specified replica.
+        """
+
         # Retrieve thermodynamic and sampler states.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
         sampler_state = self._sampler_states[replica_id]
 
-        # Retrieve a context. Any Integrator works.
-        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+        # Use the FIRE minimizer
+        integrator = FIREMinimizationIntegrator(tolerance=tolerance)
+
+        # Create context
+        context = thermodynamic_state.create_context(integrator)
 
         # Set initial positions and box vectors.
         sampler_state.apply_to_context(context)
@@ -1174,7 +1244,21 @@ class MultiStateSampler(object):
             replica_id + 1, self.n_replicas, initial_energy))
 
         # Minimize energy.
-        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+        try:
+            if max_iterations == 0:
+                logger.debug('Using FIRE: tolerance {} minimizing to convergence'.format(tolerance))
+                while integrator.getGlobalVariableByName('converged') < 1:
+                    integrator.step(50)
+            else:
+                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
+                integrator.step(max_iterations)
+        except Exception as e:
+            if str(e) == 'Particle coordinate is nan':
+                logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS after resetting positions')
+                sampler_state.apply_to_context(context)
+                openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+            else:
+                raise e
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
@@ -1183,6 +1267,9 @@ class MultiStateSampler(object):
         final_energy = thermodynamic_state.reduced_potential(sampler_state)
         logger.debug('Replica {}/{}: final energy {:8.3f}kT'.format(
             replica_id + 1, self.n_replicas, final_energy))
+
+        # Clean up the integrator
+        del context
 
         # Return minimized positions.
         return sampler_state.positions
@@ -1337,9 +1424,6 @@ class MultiStateSampler(object):
             return
 
         # Write out the numbers
-        #TODO: Remove call if tests pass -LNN
-        # self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-        #                                         (free_energy, self._last_err_free_energy))
         self._reporter.write_online_data_dynamic_and_static(self._iteration,
                                                             f_k=self._last_mbar_f_k,
                                                             free_energy=(free_energy, self._last_err_free_energy))
@@ -1386,9 +1470,6 @@ class MultiStateSampler(object):
         self._last_err_free_energy = np.Inf
 
         # Store free energy estimate
-        # TODO: Remove this call if tests pass -LNN
-        # self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-        #                                         (free_energy, self._last_err_free_energy))
         self._reporter.write_online_data_dynamic_and_static(self._iteration,
                                                             f_k=self._last_mbar_f_k,
                                                             free_energy=(free_energy, self._last_err_free_energy))

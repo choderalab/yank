@@ -15,7 +15,6 @@ addons:
 branches:
   only:
     - master
-    - sams  # Temporary, TODO: Remove this when we're ready to merge SAMS branch
 
 install:
   - source devtools/travis-ci/install.sh

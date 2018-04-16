@@ -2,16 +2,15 @@ import os
 import shutil
 import glob
 
-from sphinx.util.compat import Directive
 from docutils import nodes
-from docutils.parsers.rst import directives
-from IPython.nbconvert import html, python
-
+from docutils.parsers.rst import directives, Directive
+from nbconvert.exporters import html, python
 from runipy.notebook_runner import NotebookRunner
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IPYTHON_NOTEBOOK_DIR = "%s/../../examples" % HERE
+
 
 class NotebookDirective(Directive):
     """Insert an evaluated notebook into a document
@@ -100,15 +99,16 @@ class NotebookDirective(Directive):
         return [nb_node]
 
 
-
 class notebook_node(nodes.raw):
     pass
+
 
 def nb_to_python(nb_path):
     """convert notebook to python script"""
     exporter = python.PythonExporter()
     output, resources = exporter.from_filename(nb_path)
     return output
+
 
 def nb_to_html(nb_path):
     """convert notebook to html"""
@@ -142,11 +142,12 @@ def nb_to_html(nb_path):
     lines.append('</div>')
     return '\n'.join(lines)
 
+
 def evaluate_notebook(nb_path, dest_path=None, skip_exceptions=False):
     # Create evaluated version and save it to the dest path.
     # Always use --pylab so figures appear inline
     # perhaps this is questionable?
-    nb_runner = NotebookRunner(nb_in=nb_path, pylab=True)
+    nb_runner = NotebookRunner(nb_path, pylab=True)
     nb_runner.run_notebook(skip_exceptions=skip_exceptions)
     if dest_path is None:
         dest_path = 'temp_evaluated.ipynb'
@@ -156,14 +157,18 @@ def evaluate_notebook(nb_path, dest_path=None, skip_exceptions=False):
         os.remove(dest_path)
     return ret
 
+
 def formatted_link(path):
     return "`%s <%s>`__" % (os.path.basename(path), path)
+
 
 def visit_notebook_node(self, node):
     self.visit_raw(node)
 
+
 def depart_notebook_node(self, node):
     self.depart_raw(node)
+
 
 def setup(app):
     setup.app = app
@@ -174,4 +179,3 @@ def setup(app):
                  html=(visit_notebook_node, depart_notebook_node))
 
     app.add_directive('notebook', NotebookDirective)
-    

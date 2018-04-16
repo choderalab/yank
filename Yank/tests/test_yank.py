@@ -530,7 +530,7 @@ class TestAlchemicalPhase(object):
             sampler_states = alchemical_phase._sampler.sampler_states
             new_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
                          for i in range(len(sampler_states) - 1)]
-            assert np.allclose(original_diffs, new_diffs)
+            assert np.allclose(original_diffs, new_diffs, rtol=0.1), "original_diffs {} are not close to new_diffs {}".format(original_diffs, new_diffs)
 
     def test_randomize_ligand(self):
         """Test method AlchemicalPhase.randomize_ligand."""

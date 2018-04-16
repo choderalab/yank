@@ -619,7 +619,8 @@ class MultiStateReporter(object):
 
             # Create variables and attach units and description.
             ncvar_states = self._storage_analysis.createVariable('states', 'i4', ('iteration', 'replica'),
-                                                                 zlib=False, chunksizes=(1, n_replicas))
+                                                                 zlib=False,
+                                                                 chunksizes=(self._checkpoint_interval, n_replicas))
             setattr(ncvar_states, 'units', 'none')
             setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
                                                 "(0..n_states-1) of replica 'replica' of iteration 'iteration'."))
@@ -725,7 +726,9 @@ class MultiStateReporter(object):
                                                                    'f8',
                                                                    ('iteration', 'replica', 'state'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_replicas, n_states))
+                                                                   chunksizes=(self._checkpoint_interval,
+                                                                               n_replicas,
+                                                                               n_states))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
@@ -737,7 +740,9 @@ class MultiStateReporter(object):
                                                                    ('iteration', 'replica', 'state'),
                                                                    zlib=False,
                                                                    fill_value=1, # old-style files will be upgraded to have all states
-                                                                   chunksizes=(1, n_replicas, n_states))
+                                                                   chunksizes=(self._checkpoint_interval,
+                                                                               n_replicas,
+                                                                               n_states))
             ncvar_neighborhoods.long_name = ("neighborhoods[iteration][replica][state] is 1 if this energy was computed "
                                              "during this iteration.")
 
@@ -754,7 +759,7 @@ class MultiStateReporter(object):
                                                                             'f8',
                                                                             ('iteration', 'replica', 'unsampled'),
                                                                             zlib=False,
-                                                                            chunksizes=(1,
+                                                                            chunksizes=(self._checkpoint_interval,
                                                                                         n_replicas,
                                                                                         n_unsampled_states)
                                                                             )
@@ -823,13 +828,17 @@ class MultiStateReporter(object):
                                                                    'i4',
                                                                    ('iteration', 'state', 'state'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_states, n_states)
+                                                                   chunksizes=(self._checkpoint_interval,
+                                                                               n_states,
+                                                                               n_states)
                                                                    )
             ncvar_proposed = self._storage_analysis.createVariable('proposed',
                                                                    'i4',
                                                                    ('iteration', 'state', 'state'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_states, n_states)
+                                                                   chunksizes=(self._checkpoint_interval,
+                                                                               n_states,
+                                                                               n_states)
                                                                    )
             setattr(ncvar_accepted, 'units', 'none')
             setattr(ncvar_proposed, 'units', 'none')
@@ -873,9 +882,11 @@ class MultiStateReporter(object):
 
         """
         # Create variable if needed.
-        for storage in self._storage:
+        for storage_key, storage in self._storage_dict.items():
             if 'timestamp' not in storage.variables:
-                storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+                storage.createVariable('timestamp', str, ('iteration',),
+                                       zlib=False,
+                                       chunksizes=(self._storage_chunks[storage_key],))
         timestamp = time.ctime()
         self._storage_analysis.variables['timestamp'][iteration] = timestamp
         checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
@@ -1044,12 +1055,8 @@ class MultiStateReporter(object):
         logZ : np.array with shape [n_states]
             Dimensionless logZ
         """
-        # TODO: Remove commented block (or whole thing) when tests pass -LNN
-        data = self.read_online_analysis_data(None, "logZ")
+        data = self.read_online_analysis_data(iteration, "logZ")
         return data['logZ']
-        # online_group = self._storage_analysis.groups['online_analysis']
-        # logZ = online_group.variables['logZ'][iteration]
-        # return logZ
 
     def write_logZ(self, iteration: int, logZ: np.ndarray):
         """
@@ -1064,17 +1071,6 @@ class MultiStateReporter(object):
             Dimensionless log Z
         """
         self.write_online_data_dynamic_and_static(iteration, logZ=logZ)
-        # TODO: Remove commended block if tests work (Could also remove function entirely)-LNN
-        # analysis_nc = self._storage_analysis
-        # if 'logZ' not in analysis_nc.dimensions:
-        #     analysis_nc.createDimension('logZ_length', len(logZ))
-        #     if 'online_analysis' not in analysis_nc.groups:
-        #         online_group = analysis_nc.createGroup('online_analysis')
-        #         # larger chunks, faster operations, small matrix anyways
-        #         online_group.createVariable('logZ', float, dimensions=('iteration', 'logZ_length'),
-        #                                     zlib=True, chunksizes=(1, len(logZ)), fill_value=MISSING_VALUE)
-        # online_group = analysis_nc.groups['online_analysis']
-        # online_group.variables['logZ'][iteration] = logZ
 
     # TODO: Remove function if tests pass -LNN
     def read_mbar_free_energies(self, iteration):
@@ -1141,9 +1137,9 @@ class MultiStateReporter(object):
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                        zlib=True, chunksizes=(1, len(f_k)))
+                                        zlib=True, chunksizes=(self._checkpoint_interval, len(f_k)))
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
-                                        zlib=True, chunksizes=(1, 2))
+                                        zlib=True, chunksizes=(self._checkpoint_interval, 2))
         online_group = analysis_nc.groups['online_analysis']
         online_group.variables['f_k'][iteration] = f_k
         online_group.variables['free_energy'][iteration, :] = free_energy
@@ -1169,12 +1165,15 @@ class MultiStateReporter(object):
 
         Raises
         ------
-        ValueError : If no requested keys were found in the storage.
+        ValueError : If no requested keys were found in the storage or if no online analysis data was written
         """
         collected_variables = {}
         collected_iteration_failure = []
         collected_not_found = []
-        storage = self._storage_analysis.groups["online_analysis"]
+        try:
+            storage = self._storage_analysis.groups["online_analysis"]
+        except KeyError:
+            raise ValueError("Online Analysis information was never written!")
         for variable in keys:
             try:
                 data = self._read_1d_online_data(iteration, variable, storage)
@@ -1285,9 +1284,9 @@ class MultiStateReporter(object):
     def _find_alternate_variable(iteration, variable, storage):
         """Helper function to figure out what went wrong when data not found"""
         iter_var = variable + "_history"
-        if iteration is None and iter_var in storage:
+        if iteration is None and iter_var in storage.variables:
             return True
-        elif iteration is not None and variable in storage:
+        elif iteration is not None and variable in storage.variables:
             return True
         return False
 
@@ -1311,7 +1310,6 @@ class MultiStateReporter(object):
         else:
             return data
 
-
     def _determine_netcdf_variable_parameters(self, iteration, data, storage):
         """
         Pre-determine the variable information needed to create the variable on the storage layer
@@ -1321,16 +1319,16 @@ class MultiStateReporter(object):
             # Scalar data
             size = 1
             try:
-                dtype = data.dtype # numpy
+                dtype = data.dtype  # numpy
             except AttributeError:
-                dtype = type(data) # python
+                dtype = type(data)  # python
         else:
             # Array data
             size = len(data)
             try:
-                dtype = data.dtype # numpy
+                dtype = data.dtype  # numpy
             except AttributeError:
-                dtype = type(data[0]) # python
+                dtype = type(data[0])  # python
 
         data_dim = "dim_size{}".format(size)
 
@@ -1338,7 +1336,7 @@ class MultiStateReporter(object):
 
         if iteration is not None:
             dims = ("iteration", data_dim)
-            chunks = (1, size)
+            chunks = (self._checkpoint_interval, size)
         else:
             dims = (data_dim,)
             chunks = (size,)
@@ -1513,7 +1511,7 @@ class MultiStateReporter(object):
         return storage.groups[group_name]
 
     @staticmethod
-    def _initialize_sampler_variables_on_file(dataset, n_atoms, n_replicas, is_periodic):
+    def _initialize_sampler_variables_on_file(dataset, n_atoms, n_replicas, is_periodic, iteration_chunk=1):
         """
         Initialize the NetCDF variables on the storage file needed to store sampler states.
         Does nothing if file already initialized
@@ -1528,6 +1526,8 @@ class MultiStateReporter(object):
             Number of Sampler states which will be written
         is_periodic : bool
             True if system is periodic; False otherwise.
+        iteration_chunk : int, Optional, Default: 1
+            What chunksize to use for the iteration dimension
         """
         if 'positions' not in dataset.variables:
 
@@ -1539,7 +1539,7 @@ class MultiStateReporter(object):
             # Define position variables
             ncvar_positions = dataset.createVariable('positions', 'f4',
                                                      ('iteration', 'replica', 'atom', 'spatial'),
-                                                     zlib=True, chunksizes=(1, n_replicas, n_atoms, 3))
+                                                     zlib=True, chunksizes=(iteration_chunk, n_replicas, n_atoms, 3))
             setattr(ncvar_positions, 'units', 'nm')
             setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
                                                    "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
@@ -1549,9 +1549,9 @@ class MultiStateReporter(object):
             if is_periodic:
                 ncvar_box_vectors = dataset.createVariable('box_vectors', 'f4',
                                                            ('iteration', 'replica', 'spatial', 'spatial'),
-                                                           zlib=False, chunksizes=(1, n_replicas, 3, 3))
+                                                           zlib=False, chunksizes=(iteration_chunk, n_replicas, 3, 3))
                 ncvar_volumes = dataset.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                       zlib=False, chunksizes=(1, n_replicas))
+                                                       zlib=False, chunksizes=(iteration_chunk, n_replicas))
 
                 setattr(ncvar_box_vectors, 'units', 'nm')
                 setattr(ncvar_volumes, 'units', 'nm**3')
@@ -1585,7 +1585,8 @@ class MultiStateReporter(object):
         # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
         is_periodic = True if (sampler_states[0].box_vectors is not None) else False
         self._initialize_sampler_variables_on_file(storage, sampler_states[0].n_particles,
-                                                   len(sampler_states), is_periodic)
+                                                   len(sampler_states), is_periodic,
+                                                   iteration_chunk=self._storage_chunks[storage_file])
         if obey_checkpoint_interval:
             write_iteration = self._calculate_checkpoint_iteration(iteration)
         else:
@@ -1734,6 +1735,11 @@ class MultiStateReporter(object):
             packed_data = np.empty(1, 'O')
             packed_data[0] = data_str
         nc_variable[:] = packed_data
+
+    @ property
+    def _storage_chunks(self):
+        """Known NetCDF storage chunk sizes"""
+        return {'checkpoint': 1, 'analysis': self._checkpoint_interval}
 
 
 # ==============================================================================

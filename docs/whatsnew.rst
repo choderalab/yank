@@ -6,12 +6,72 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.21.1 Post-SAMS Bugfixes
+-------------------------
+- Fix bug in FIRE minimizer logging
+- Fix Cray environment variables
+- Make tests more robust to undersampled analysis results
+- Fix molecule imaging incorrectly in trajectory extraction
+
+0.21.0 SAMS and General Multistate Samplers
+-------------------------------------------
+
+This release represents a major change in the YANK codebase.
+
+Summary of Release
+""""""""""""""""""
+YANK's sampling scheme now has a generalized scheme and runs on one of three primary samplers:
+
+- ``MultiStateSampler``: Fixed state sampler where no states mix
+- ``ReplicaExchange``: Dense state sampling with state swapping each iteration
+- ``ParallelTempering``: Special extension of ``ReplicaExchange`` which swaps temperatures, with more efficient energy evaluation
+- ``SAMSSampler``: Self-Adjusted Mixture Sampling :cite:`Tan2017:SAMS`, Single replica sampler which dynamically samples all thermodynamic states with long enough run time
+
+The samplers are now part of the YANK ``multistate`` module and will eventually be ported to ``OpenMMTools``. The
+YAML syntax has been extended that two new sections can be specified: :doc:`MCMC Moves <yamlpages/mcmc>`, and
+:doc:`Samplers <yamlpages/samplers>`. These are fully optional blocks which default to a specific set if not specified.
+Several old YAML options like ``number_of_iterations`` have been moved to the ``samplers`` block and replaced with
+``default_X`` where ``X`` is the old setting name.
+
+The old scheme of the single ``repex.py`` file housing all sampler and reporter information has been removed and the
+entire ``multistate`` module is designed to be extended and experimented with. Similarly, much of the old
+``analyze.py`` module has been migrated to ``multistate`` and can be extended as well.
+
+Detailed Changes
+""""""""""""""""
+
+- Generalize the Sampler framework into a new ``multistate`` module and generalized sampler class structure
+- Analysis suite now general and part of ``multistate`` with additional YANK-specific extensions in YANK's ``analyze.py`` module
+- Analysis energies have been converted from old ``u_kln`` format to ``u_kn`` formalism
+- Test suites for samplers refactored to be general and test all samplers
+- Test suites for analysis refactored to be general and test all samplers
+- Samplers now operate on concept of ``neighborhood`` to determine which thermodynamic states the energy of a sample was evaluated at
+- Cleaned up language in "replica" (sampler), "state" (thermodynamic state), and "sample" (drawn from replica)
+- Improved online analysis in samplers with general I/O functions in reporter
+- Python notebooks now can serialize their data
+- Added notebook feature to do a free energy trace trying to converge free energies by progressively truncating more data from front and back
+- Restraint factories improved and redundant code cleaned up
+- Generalized utilities for checking function calls
+- Improved storage read speads by chunking HDF5 data to use the checkpoint interval for per-iteration instead of each iteration
+- Dependencies now defined purely by Conda ``meta.yaml`` and no longer through ``setup.py``. Pip can no longer check for dependencies because of this
+- Added ability to unbias harmonic restraints during ``analysis``
+- ``mcmc`` block added to the YAML syntax
+- ``samplers`` block added to the YAML syntax
+- Improved resuming boot up times by requiring newer OpenMMTools features
+- Renamed global option ``number_of_iterations`` to ``default_number_of_iterations``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_number_of_iterations>`__
+- Renamed global option ``timestep`` to ``default_timestep``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_timestep>`__
+- Renamed global option ``nsteps_per_iteration`` to ``default_nsteps_per_iteration``. `(docs) <http://getyank.org/latest/yamlpages/options.html#default_nsteps_per_iteration>`__
+- The global options ``collision_rate``, ``mc_displacement_sigma``, and ``integration_splitting`` are not supported anymore, but they can still be specified in the `mcmc_moves`` block.
+- Added support for automatic determination of ``processes_per_experiment`` (now the default). `(docs) <http://getyank.org/latest/yamlpages/options.html#processes_per_experiment>`__
+- Simulation minimization tries FIRE Minimizer :cite:`FIREMinimizer` first before falling back to L-BFGS.
+- Fixed bug in Boresch restraints where atoms were not correctly re-randomized when initial pick is numerically unstable
+
 0.20.1 Alchemical factory options and fast computation of the energy matrix
 ---------------------------------------------------------------------------
 - Allow user to specify options for ``openmmtools.alchemy.AbsoluteAlchemicalFactory`` in the YAML file. In particular,
-  this introduces exact treatment of PME electrostatics for charged ligands. `[docs] <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`_
+  this introduces exact treatment of PME electrostatics for charged ligands. `(docs) <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`__
 - Major optimization of the computation of the energy matrix.
-- Added the option ``max_n_contexts``. `[docs] <http://getyank.org/latest/yamlpages/options.html#max_n_contexts>`_
+- Added the option ``max_n_contexts``. `(docs) <http://getyank.org/latest/yamlpages/options.html#max_n_contexts>`__
 - Bumped minimum required version of ``openmmtools`` to ``0.14.0``.
 
 0.20.0 Support for processing proteins through PDBFixer

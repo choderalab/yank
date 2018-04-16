@@ -77,8 +77,8 @@ def available_restraint_classes():
         ``restraint_classes[name]`` is the class corresponding to ``name``
 
     """
-    restraint_subclasses = utils.find_all_subclasses(ReceptorLigandRestraint,
-                                                     discard_abstract=True)
+    restraint_subclasses = mmtools.utils.find_all_subclasses(ReceptorLigandRestraint,
+                                                             discard_abstract=True)
 
     # Build an index of all names, ensuring there are no name collisions.
     available_restraints = dict()
@@ -117,7 +117,7 @@ def create_restraint(restraint_type, **kwargs):
         Parameters to pass to the restraint constructor.
 
     """
-    cls = utils.find_subclass(ReceptorLigandRestraint, restraint_type)
+    cls = mmtools.utils.find_subclass(ReceptorLigandRestraint, restraint_type)
     return cls(**kwargs)
 
 
@@ -544,7 +544,8 @@ class ReceptorLigandRestraint(ABC):
 
         # If the System is full, just separate the force from nonbonded interactions.
         if len(available_force_groups) == 0:
-            nonbonded_force = mmtools.forces.find_nonbonded_force(system)
+            _, nonbonded_force = mmtools.forces.find_forces(system, openmm.NonbondedForce,
+                                                            only_one=True)
             available_force_groups = set(range(32))
             available_force_groups.discard(nonbonded_force.getForceGroup())
 
@@ -660,13 +661,13 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     -----
     To create a subclass, follow these steps:
 
-        1. Implement the property :func:`_energy_function` with the energy function of choice.
+        1. Implement the :func:`_create_restraint_force` returning the
+        force object modeling the restraint.
 
-        2. Implement the property :func:`_bond_parameters` to return the :func:`_energy_function`
-        parameters as a dict ``{parameter_name: parameter_value}``.
+        2. Implement the property :func:`_are_restraint_parameters_defined`.
 
-        3. Optionally, you can overwrite the :func:`_determine_bond_parameters` member
-        function to automatically determine these parameters from the atoms positions.
+        3. Optionally, you can overwrite the :func:`_determine_restraint_parameters`
+        method to automatically determine these parameters from the atoms positions.
 
     """
     def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None):
@@ -734,8 +735,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                                           'atoms.'.format(self.__class__.__name__))
 
         # Create restraint force.
-        restraint_force = self._create_restraint_force(self.restrained_receptor_atoms,
-                                                       self.restrained_ligand_atoms)
+        restraint_force = self._get_restraint_force(self.restrained_receptor_atoms,
+                                                    self.restrained_ligand_atoms)
 
         # Set periodic conditions on the force if necessary.
         restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
@@ -764,78 +765,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         timer = mmtools.utils.Timer()
         timer.start(benchmark_id)
 
-        r_min = 0 * unit.nanometers
-        r_max = 100 * unit.nanometers  # TODO: Use maximum distance between atoms?
-
-        # Create a System object containing two particles connected by the reference force
-        system = openmm.System()
-        system.addParticle(1.0 * unit.amu)
-        system.addParticle(1.0 * unit.amu)
-        force = self._create_restraint_force([0], [1])
-        # Disable the PBC if on for this approximation of the analytical solution
-        force.setUsesPeriodicBoundaryConditions(False)
-        system.addForce(force)
-
-        # Create a Reference context to evaluate energies on the CPU.
-        integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
-        platform = openmm.Platform.getPlatformByName('Reference')
-        context = openmm.Context(system, integrator, platform)
-
-        # Set default positions.
-        positions = unit.Quantity(np.zeros([2,3]), unit.nanometers)
-        context.setPositions(positions)
-
-        # Create a function to compute integrand as a function of interparticle separation.
-        beta = thermodynamic_state.beta
-
-        def integrand(r):
-            """
-            Parameters
-            ----------
-            r : float
-                Inter-particle separation in nanometers
-
-            Returns
-            -------
-            dI : float
-               Contribution to integrand (in nm^2).
-
-            """
-            positions[1, 0] = r * unit.nanometers
-            context.setPositions(positions)
-            state = context.getState(getEnergy=True)
-            potential = state.getPotentialEnergy()
-            dI = 4.0 * math.pi * r**2 * math.exp(-beta * potential)
-            return dI
-
-        # Integrate shell volume.
-        shell_volume, shell_volume_error = scipy.integrate.quad(lambda r: integrand(r), r_min / unit.nanometers,
-                                                                r_max / unit.nanometers) * unit.nanometers**3
-        logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
-
-        # The restraint shell volume must be smaller than the
-        # system box volume or the restraint doesn't make sense.
-        if thermodynamic_state.is_periodic:
-            # Compute system volume in NVT/NPT ensemble.
-            system_box_volume = thermodynamic_state.volume
-            if system_box_volume is None:  # NPT ensemble
-                box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
-                system_box_volume = mmtools.states._box_vectors_volume(box_vectors)
-            logger.debug("System volume = {} nm^3".format(system_box_volume / unit.nanometers**3))
-
-            # Raise error if shell volume is too big.
-            if shell_volume > system_box_volume:
-                raise RuntimeError('The restraint does not limit the configurational '
-                                   'space within the solvation box.')
-
-        # Compute standard-state volume for a single molecule in a box of
-        # size (1 L) / (avogadros number). Should also generate constant V0.
-        liter = 1000.0 * unit.centimeters**3  # one liter
-        standard_state_volume = liter / (unit.AVOGADRO_CONSTANT_NA*unit.mole)  # standard state volume
-        logger.debug("Standard state volume = {} nm^3".format(standard_state_volume / unit.nanometers**3))
-
-        # Compute standard state correction for releasing shell restraints into standard-state box (in units of kT).
-        DeltaG = - math.log(standard_state_volume / shell_volume)
+        restraint_force = self._get_restraint_force([0], [1])
+        DeltaG = restraint_force.compute_standard_state_correction(thermodynamic_state, max_volume='system')
         logger.debug('Standard state correction: {:.3f} kT'.format(DeltaG))
 
         # Report elapsed time.
@@ -867,41 +798,47 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         self._determine_restrained_atoms(sampler_state, topography)
 
         # Determine missing parameters. This is implemented in the subclass.
-        self._determine_bond_parameters(thermodynamic_state, sampler_state, topography)
+        self._determine_restraint_parameters(thermodynamic_state, sampler_state, topography)
 
     # -------------------------------------------------------------------------
     # Internal-usage: properties and methods for subclasses.
     # -------------------------------------------------------------------------
 
     @abc.abstractproperty
-    def _energy_function(self):
-        """str: energy expression of the restraint force.
+    def _are_restraint_parameters_defined(self):
+        """bool: True if the restraint parameters are defined."""
+        pass
 
-        This must be implemented by the inheriting class.
+    @abc.abstractmethod
+    def _create_restraint_force(self, particles1, particles2):
+        """Create a new restraint force between specified atoms.
+
+        The property _are_restraint_parameters_defined is guaranteed to
+        be True when this is called.
+
+        Parameters
+        ----------
+        particles1 : list of int
+            Indices of first group of atoms to restraint.
+        particles2 : list of int
+            Indices of second group of atoms to restraint.
+
+        Returns
+        -------
+        force : simtk.openmm.Force
+           The created restraint force.
 
         """
         pass
 
-    @abc.abstractproperty
-    def _bond_parameters(self):
-        """dict: the bond parameters of the restraint force.
-
-        This is a dictionary parameter_name: parameter_value that
-        will be used to configure the `CustomBondForce` added to
-        the `System`.
-
-        If there are parameters undefined, this must be None.
-
-        """
-        pass
-
-    def _determine_bond_parameters(self, thermodynamic_state, sampler_state, topography):
+    def _determine_restraint_parameters(self, thermodynamic_state, sampler_state, topography):
         """Determine the missing bond parameters.
 
         Optionally, a subclass can implement this method to automatically
         define the bond parameters of the restraints from the information
         in the given states and topography. The default implementation just
-        raises a NotImplemented error if `_bond_parameters` are undefined.
+        raises a NotImplemented error if `_are_restraint_parameters_defined`
+        is False.
 
         Parameters
         ----------
@@ -914,7 +851,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         """
         # Raise exception only if the subclass doesn't already defines parameters.
-        if self._bond_parameters is None:
+        if not self._are_restraint_parameters_defined:
             raise NotImplementedError('Restraint {} cannot automatically determine '
                                       'bond parameters.'.format(self.__class__.__name__))
 
@@ -930,6 +867,16 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             if atoms is None or not (isinstance(atoms, list) and len(atoms) > 0):
                 return False
         return True
+
+    def _get_restraint_force(self, particles1, particles2):
+        """Check that the parameters are defined before calling the force constructor."""
+        # Check if restraint parameters have been defined.
+        if self._are_restraint_parameters_defined is None:
+            err_msg = 'Restraint {}: Undefined bond parameters.'.format(self.__class__.__name__)
+            raise RestraintParameterError(err_msg)
+
+        # Create restraint force.
+        return self._create_restraint_force(particles1, particles2)
 
     def _determine_restrained_atoms(self, sampler_state, topography):
         """Determine the atoms to restrain.
@@ -1001,51 +948,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         self.restrained_receptor_atoms = compute_atom_set(restrained_receptor_atoms,
                                                           'receptor_atoms',
                                                           self._closest_atom_to_centroid)
-
-    def _create_restraint_force(self, particles1, particles2):
-        """Create a new restraint force between specified atoms.
-
-        Parameters
-        ----------
-        particles1 : list of int
-            Indices of first group of atoms to restraint.
-        particles2 : list of int
-            Indices of second group of atoms to restraint.
-
-        Returns
-        -------
-        force : simtk.openmm.CustomBondForce
-           The created restraint force.
-
-        """
-        # Check if parameters have been defined.
-        if self._bond_parameters is None:
-            err_msg = 'Restraint {}: Undefined bond parameters.'.format(self.__class__.__name__)
-            raise RestraintParameterError(err_msg)
-
-        # Unzip bond parameters names and values from dict.
-        parameter_names, parameter_values = zip(*self._bond_parameters.items())
-
-        # Create bond force and lambda_restraints parameter to control it.
-        if len(particles1) == 1 and len(particles2) == 1:
-            # CustomCentroidBondForce works only on 64bit platforms. When the
-            # restrained groups only have 1 particle, we can use the standard
-            # CustomBondForce so that we can support 32bit platforms too.
-            energy_function = self._energy_function.replace('distance(g1,g2)', 'r')
-            force = openmm.CustomBondForce('lambda_restraints * ' + energy_function)
-            force.addBond(particles1[0], particles2[0], parameter_values)
-        else:
-            force = openmm.CustomCentroidBondForce(2, 'lambda_restraints * ' + self._energy_function)
-            force.addGroup(particles1)
-            force.addGroup(particles2)
-            force.addBond([0, 1], parameter_values)
-
-        # Add all parameters.
-        force.addGlobalParameter('lambda_restraints', 1.0)
-        for parameter in parameter_names:
-            force.addPerBondParameter(parameter)
-
-        return force
 
     @staticmethod
     def _closest_atom_to_centroid(positions, indices=None, masses=None):
@@ -1202,22 +1104,39 @@ class Harmonic(RadiallySymmetricRestraint):
         self.spring_constant = spring_constant
 
     @property
-    def _energy_function(self):
-        """str: energy expression of the restraint force."""
-        return '(K/2)*distance(g1,g2)^2'
+    def _are_restraint_parameters_defined(self):
+        """bool: True if the restraint parameters are defined."""
+        return self.spring_constant is not None
 
-    @property
-    def _bond_parameters(self):
-        """dict: the bond parameters of the restraint force.
+    def _create_restraint_force(self, particles1, particles2):
+        """Create a new restraint force between specified atoms.
 
-        If there are parameters undefined, this is None.
+        Parameters
+        ----------
+        particles1 : list of int
+            Indices of first group of atoms to restraint.
+        particles2 : list of int
+            Indices of second group of atoms to restraint.
+
+        Returns
+        -------
+        force : simtk.openmm.Force
+           The created restraint force.
 
         """
-        if self.spring_constant is None:
-            return None
-        return {'K': self.spring_constant}
+        # Create bond force and lambda_restraints parameter to control it.
+        if len(particles1) == 1 and len(particles2) == 1:
+            # CustomCentroidBondForce works only on 64bit platforms. When the
+            # restrained groups only have 1 particle, we can use the standard
+            # CustomBondForce so that we can support 32bit platforms too.
+            return mmtools.forces.HarmonicRestraintBondForce(spring_constant=self.spring_constant,
+                                                             restrained_atom_index1=particles1[0],
+                                                             restrained_atom_index2=particles2[0])
+        return mmtools.forces.HarmonicRestraintForce(spring_constant=self.spring_constant,
+                                                     restrained_atom_indices1=particles1,
+                                                     restrained_atom_indices2=particles2)
 
-    def _determine_bond_parameters(self, thermodynamic_state, sampler_state, topography):
+    def _determine_restraint_parameters(self, thermodynamic_state, sampler_state, topography):
         """Automatically choose a spring constant for the restraint force.
 
         The spring constant is selected to give 1 kT at one standard deviation
@@ -1364,17 +1283,41 @@ class FlatBottom(RadiallySymmetricRestraint):
         return 'step(distance(g1,g2)-r0) * (K/2)*(distance(g1,g2)-r0)^2'
 
     @property
-    def _bond_parameters(self):
-        """dict: the bond parameters of the restraint force.
+    def _are_restraint_parameters_defined(self):
+        """bool: True if the restraint parameters are defined."""
+        return self.spring_constant is not None and self.well_radius is not None
 
-        If there are parameters undefined, this is None.
+    def _create_restraint_force(self, particles1, particles2):
+        """Create a new restraint force between specified atoms.
+
+        Parameters
+        ----------
+        particles1 : list of int
+            Indices of first group of atoms to restraint.
+        particles2 : list of int
+            Indices of second group of atoms to restraint.
+
+        Returns
+        -------
+        force : simtk.openmm.Force
+           The created restraint force.
 
         """
-        if self.spring_constant is None or self.well_radius is None:
-            return None
-        return {'K': self.spring_constant, 'r0': self.well_radius}
+        # Create bond force and lambda_restraints parameter to control it.
+        if len(particles1) == 1 and len(particles2) == 1:
+            # CustomCentroidBondForce works only on 64bit platforms. When the
+            # restrained groups only have 1 particle, we can use the standard
+            # CustomBondForce so that we can support 32bit platforms too.
+            return mmtools.forces.FlatBottomRestraintBondForce(spring_constant=self.spring_constant,
+                                                               well_radius=self.well_radius,
+                                                               restrained_atom_index1=particles1[0],
+                                                               restrained_atom_index2=particles2[0])
+        return mmtools.forces.FlatBottomRestraintForce(spring_constant=self.spring_constant,
+                                                       well_radius=self.well_radius,
+                                                       restrained_atom_indices1=particles1,
+                                                       restrained_atom_indices2=particles2)
 
-    def _determine_bond_parameters(self, thermodynamic_state, sampler_state, topography):
+    def _determine_restraint_parameters(self, thermodynamic_state, sampler_state, topography):
         """Automatically choose a spring constant and well radius.
 
         The spring constant, is set to 5.92 kcal/mol/A**2, the well
@@ -1984,10 +1927,6 @@ class Boresch(ReceptorLigandRestraint):
         Future updates can further refine this algorithm.
 
         """
-        # No need to determine parameters if atoms have been given.
-        if self._are_restrained_atoms_defined:
-            return self.restrained_receptor_atoms + self.restrained_ligand_atoms
-
         # If receptor and ligand atoms are explicitly provided, use those.
         heavy_ligand_atoms = self.restrained_ligand_atoms
         heavy_receptor_atoms = self.restrained_receptor_atoms
