@@ -2087,18 +2087,13 @@ class RMSD(ReceptorLigandRestraint):
         The spring constant (units compatible with kilocalories_per_mole/angstrom**2).
     RMSD0 : simtk.unit.Quantity, optional, default=2.0*angstrom
         The RMSD at which the restraint becomes nonzero.
-    standard_state_correction_method : 'numeric' or 'none', optional
-        The method to use to estimate the standard state correction (default
-        is 'analytical').
 
     Attributes
     ----------
     restrained_receptor_atoms : list of int
         The indices of the restrained receptor atoms
     restrained_ligand_atoms : list of int
-        The indicies of the restrained_ligand_atoms
-    standard_state_correction : float
-        The computed standard-state correction
+        The indices of the restrained_ligand_atoms
 
     Examples
     --------
@@ -2144,6 +2139,8 @@ class RMSD(ReceptorLigandRestraint):
         Descriptor of restrained atoms.
 
         Extends `_RestrainedAtomsProperty` to handle single integers and strings.
+
+        Extension allows individual atom lists to be defined as empty through the ``allowed_empty`` boolean
         """
 
         _MUST_COMPUTE_STRING = ('You are specifying {} {} atoms, '

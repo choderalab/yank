@@ -2484,6 +2484,10 @@ class ExperimentBuilder(object):
             else:
                 state_parameters.append(('lambda_sterics', [1.0, 0.0]))
 
+            # Turn the RMSD restraints off slowly at the end
+            if isinstance(phase.restraint, restraints.RMSD):
+                state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+
             # We only need to create a single state.
             phase.protocol = {par[0]: [par[1][0]] for par in state_parameters}
 
