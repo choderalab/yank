@@ -37,6 +37,8 @@ from simtk import openmm, unit
 from . import pipeline, utils
 from .utils import methoddispatch
 
+from typing import Set, Iterable
+
 logger = logging.getLogger(__name__)
 
 
@@ -375,6 +377,81 @@ class RestraintState(object):
 
 
 # ==============================================================================
+# Atom selector tool
+# ==============================================================================
+
+class _AtomSelector(object):
+    """
+    Helper class to select atoms from semi-arbitrary selections based on a topography
+    """
+
+    def __init__(self, topography):
+        self.topography = topography
+
+    def compute_atom_intersect(self, input_atoms, topography_key: str, *additional_sets: Iterable[int]) -> Set[int]:
+
+        """
+        Compute the intersect of atoms formed from a given input, topography key to reference, and
+        any additional sets for cross reference
+
+        Parameters
+        ----------
+        input_atoms : str, iterable of int, or None
+            Atom-like selection which can accept a :func:`yank.Topography.select`, or a sequence of ints, or None
+            When given None, only the Topography key and additional sets are used
+        topography_key : str
+            Key in the :class:`yank.Topography` which is used to initially sub-select atoms
+        additional_sets : set of int or iterable of int
+            Any additional sets to cross reference
+
+        Returns
+        -------
+        atom_intersect : set
+            Set of atoms intersecting the input, the topography key, and the additional sets
+        """
+
+        topography = self.topography
+        topography_set = set(getattr(topography, topography_key))
+        # Ensure additions are sets
+        additional_sets = [set(additional_set) for additional_set in additional_sets]
+        if len(additional_sets) == 0:
+            # Case no sets were provided
+            additional_intersect = topography_set
+        else:
+            additional_intersect = set.intersection(*additional_sets)
+
+        @functools.singledispatch
+        def compute_atom_set(passed_atoms):
+            """Helper function for doing set operations on heavy ligand atoms of all other types"""
+            input_set = set(passed_atoms)
+            intersect_set = input_set & additional_intersect & topography_set
+            if intersect_set != input_set:
+                return intersect_set
+            else:
+                # This ensures if no changes are made to the set, then passed atoms are returned unmodied
+                return passed_atoms
+
+        @compute_atom_set.register(type(None))
+        def compute_atom_none(_):
+            """Helper for None type parsing"""
+            return topography_set & additional_intersect
+
+        @compute_atom_set.register(str)
+        def compute_atom_str(input_string):
+            """Helper for string parsing"""
+            output = topography.select(input_string, as_set=False)  # Preserve order
+            set_output = set(output)
+            # Ensure the selection is in the correct set
+            set_combined = set_output & topography_set & additional_intersect
+            final_output = [particle for particle in output if particle in set_combined]
+            # Force output to be a normal int, don't need to worry about floats at this point, there should not be any
+            # If they come out as np.int64's, OpenMM complains
+            return [*map(int, final_output)]
+
+        return compute_atom_set(input_atoms)
+
+
+# ==============================================================================
 # Base class for receptor-ligand restraints.
 # ==============================================================================
 
@@ -473,6 +550,29 @@ class ReceptorLigandRestraint(ABC):
 
         restraint_force.setForceGroup(min(available_force_groups))
         system.addForce(restraint_force)
+
+    @property
+    def _excluded_init_parameters(self):
+        """
+        List of excluded parameters from the :func:`__init__` call to ensure all non-atom selection
+        parameters are defined
+        """
+        return ['self', 'restrained_receptor_atoms', 'restrained_ligand_atoms']
+
+    @property
+    def _parameters(self):
+        """dict: restraint parameters in dict forms."""
+        argspec = inspect.getfullargspec(self.__init__)
+        parameter_names = argspec.args
+
+        # Exclude non-parameters arguments.
+        for exclusion in self._excluded_init_parameters:
+            parameter_names.remove(exclusion)
+
+        # Retrieve and store options.
+        parameters = {parameter_name: getattr(self, parameter_name)
+                      for parameter_name in parameter_names}
+        return parameters
 
 
 class _RestrainedAtomsProperty(object):
@@ -1688,19 +1788,10 @@ class Boresch(ReceptorLigandRestraint):
     # -------------------------------------------------------------------------
 
     @property
-    def _parameters(self):
-        """dict: restraint parameters in dict forms."""
-        parameter_names, _, _, _ = inspect.getargspec(self.__init__)
-
-        # Exclude non-parameters arguments.
-        for exclusion in ['self', 'restrained_receptor_atoms', 'restrained_ligand_atoms',
-                          'standard_state_correction_method']:
-            parameter_names.remove(exclusion)
-
-        # Retrieve and store options.
-        parameters = {parameter_name: getattr(self, parameter_name)
-                      for parameter_name in parameter_names}
-        return parameters
+    def _excluded_init_parameters(self):
+        param_list = super()._excluded_init_parameters
+        param_list.append("standard_state_correction_method")
+        return param_list
 
     def _check_parameters_defined(self):
         """Raise an exception there are still parameters undefined."""
@@ -1905,45 +1996,10 @@ class Boresch(ReceptorLigandRestraint):
         heavy_atoms = set(topography.topology.select('not element H').tolist())
         # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect).
 
-        atom_inclusion_warning = ("Some atoms specified by {0} were not actual {0} and heavy atoms! "
-                                  "Atoms not meeting these criteria will be ignored.")
+        atom_selector = _AtomSelector(topography)
 
-        @functools.singledispatch
-        def compute_atom_set(input_atoms, topography_key):
-            """Helper function for doing set operations on heavy ligand atoms of all other types"""
-            # If the length is 3, we don't want to make ANY changes, so don't modify the set
-            input_set = set(input_atoms)
-            topography_set = set(getattr(topography, topography_key))
-            intersect_set = input_set & heavy_atoms & topography_set
-            if intersect_set != input_set:
-                logger.warning(atom_inclusion_warning.format(topography_key))
-                return intersect_set
-            else:
-                # The return types are intentionally different types to handle some r3-l1 logic later
-                return input_atoms
-
-        @compute_atom_set.register(type(None))
-        def compute_atom_none(_, topography_key):
-            """Helper for None type parsing"""
-            return set(getattr(topography, topography_key)) & heavy_atoms
-
-        @compute_atom_set.register(str)
-        def compute_atom_str(input_string, topography_key):
-            """Helper for string parsing"""
-            output = topography.select(topography_key, as_set=False)  # Preserve order
-            set_output = set(output)
-            set_topography = set(getattr(topography, topography_key))
-            # Ensure the selection is in the correct set
-            set_combined = set_output & set_topography & heavy_atoms
-            final_output = [particle for particle in output if particle in set_combined]
-            if len(final_output) < len(output):
-                logger.warning(atom_inclusion_warning.format(topography_key))
-            # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
-            # If they come out as np.int64's, OpenMM complains
-            return [*map(int, final_output)]
-
-        heavy_ligand_atoms = compute_atom_set(heavy_ligand_atoms, 'ligand_atoms')
-        heavy_receptor_atoms = compute_atom_set(heavy_receptor_atoms, 'receptor_atoms')
+        heavy_ligand_atoms = atom_selector.compute_atom_intersect(heavy_ligand_atoms, 'ligand_atoms', heavy_atoms)
+        heavy_receptor_atoms = atom_selector.compute_atom_intersect(heavy_receptor_atoms, 'receptor_atoms', heavy_atoms)
 
         if len(heavy_receptor_atoms) < 3 or len(heavy_ligand_atoms) < 3:
             raise ValueError('There must be at least three heavy atoms in receptor_atoms '
@@ -2070,22 +2126,24 @@ class RMSD(ReceptorLigandRestraint):
         The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Select String <yank.Topography.select>`.
-        If this is a list of three ints, the receptor atoms will be restrained in order, r1, r2, r3. If there are more
-        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
-        be chosen at random from the selection.
+        Any number of receptor atoms can be selected.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
-        expression or Topography region is provided (default is None).
+        expression or Topography region is provided.
+        If no selection is given, all receptor atoms will be restrained.
+        If an empty list is provided, no receptor atoms will be restrained.
+        (default is None).
     restrained_ligand_atoms : iterable of int, str, or None; Optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Select String <yank.Topography.select>`.
-        If this is a list of three ints, the receptor atoms will be restrained in order, l1, l2, l3. If there are more
-        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
-        be chosen at random from the selection.
+        Any number of ligand atoms can be selected
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
-        expression or Topography region is provided (default is None).
+        expression or Topography region is provided
+        If no selection is given, all ligand atoms will be restrained.
+        If an empty list is provided, no receptor atoms will be restrained.
+        (default is None).
     K_RMSD : simtk.unit.Quantity, optional, default=0.6*kilocalories_per_mole/angstrom**2
         The spring constant (units compatible with kilocalories_per_mole/angstrom**2).
     RMSD0 : simtk.unit.Quantity, optional, default=2.0*angstrom
@@ -2097,9 +2155,9 @@ class RMSD(ReceptorLigandRestraint):
     Attributes
     ----------
     restrained_receptor_atoms : list of int
-        The indices of the 3 receptor atoms to restrain [r1, r2, r3].
+        The indices of the restrained receptor atoms
     restrained_ligand_atoms : list of int
-        The indices of the 3 ligand atoms to restrain [l1, l2, l3].
+        The indicies of the restrained_ligand_atoms
     standard_state_correction : float
         The computed standard-state correction
 
@@ -2136,6 +2194,7 @@ class RMSD(ReceptorLigandRestraint):
         self.restrained_ligand_atoms = restrained_ligand_atoms
         self.K_RMSD = K_RMSD
         self.RMSD0 = RMSD0
+        self._reference_sampler_state = None
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -2152,10 +2211,15 @@ class RMSD(ReceptorLigandRestraint):
                                 'the final atoms will be chosen at from this set but you MUST '
                                 'run "determine_missing_parameters"')
 
+        def __init__(self, atoms_type, allowed_empty=False):
+            self._allowed_empty = allowed_empty
+            super().__init__(atoms_type)
+
         @methoddispatch
         def _validate_atoms(self, restrained_atoms):
             restrained_atoms = super()._validate_atoms(restrained_atoms)
-            if len(restrained_atoms) < 3:
+            # TODO: Determine the minimum number of atoms needed for this restraint (can it be 0?)
+            if len(restrained_atoms) < 3 and not (len(restrained_atoms) == 0 and self._allowed_empty):
                 raise ValueError('At least three {} atoms are required to impose an '
                                  'RMSD restraint.'.format(self._atoms_type))
             return restrained_atoms
@@ -2165,7 +2229,7 @@ class RMSD(ReceptorLigandRestraint):
             logger.warning(self._MUST_COMPUTE_STRING.format("a string for", self._atoms_type))
             return restrained_atoms
 
-    restrained_receptor_atoms = _RMSDRestrainedAtomsProperty('receptor')
+    restrained_receptor_atoms = _RMSDRestrainedAtomsProperty('receptor', allowed_empty=True)
     restrained_ligand_atoms = _RMSDRestrainedAtomsProperty('ligand')
 
     # -------------------------------------------------------------------------
@@ -2185,9 +2249,24 @@ class RMSD(ReceptorLigandRestraint):
         # Check if all parameters are defined.
         self._check_parameters_defined()
 
-        # Raise a RestraintParameterError so we can do all our work in self.determine_missing_parameters()
-        # since we need reference coordinates anyway
-        raise RestraintParameterError
+        # Merge receptor and ligand atoms in a single array for easy manipulation.
+        restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
+
+        # Create RMSDForce CV for all restrained atoms
+        rmsd_cv = openmm.RMSDForce(self._reference_sampler_state.positions, restrained_atoms)
+
+        # Create an CustomCVForce
+        energy_expression = 'lambda_restraints * step(dRMSD) * (K_RMSD/2)*dRMSD^2; dRMSD = (RMSD-RMSD0);'
+        energy_expression += 'K_RMSD = %f;' % self.K_RMSD.value_in_unit_system(unit.md_unit_system)
+        energy_expression += 'RMSD0 = %f;' % self.RMSD0.value_in_unit_system(unit.md_unit_system)
+        restraint_force = openmm.CustomCVForce(energy_expression)
+        restraint_force.addCollectiveVariable('RMSD', rmsd_cv)
+        restraint_force.addGlobalParameter('lambda_restraints', 1.0)
+
+        # Get a copy of the system of the ThermodynamicState, modify it and set it back.
+        system = thermodynamic_state.system
+        self._add_force_in_separate_group(system, restraint_force)
+        thermodynamic_state.system = system
 
     def get_standard_state_correction(self, thermodynamic_state):
         """Return the standard state correction.
@@ -2203,10 +2282,13 @@ class RMSD(ReceptorLigandRestraint):
            Computed standard-state correction in dimensionless units (kT).
 
         """
-        if self.standard_state_correction_method == 'analytical':
-            return self._get_standard_state_correction_analytical(thermodynamic_state)
-        else:  # The property checks that the value is known in the setter.
-            return self._get_standard_state_correction_numerical(thermodynamic_state)
+        return self._get_standard_state_correction_numerical(thermodynamic_state)
+        # TODO: Is this required, or is there only one way to do it?
+        # if self.standard_state_correction_method == 'analytical' and False:
+        #     # This code should not be reachable on purpose until we figure out what the SSC is
+        #     return self._get_standard_state_correction_analytical(thermodynamic_state)
+        # else:  # The property checks that the value is known in the setter.
+        #     return self._get_standard_state_correction_numerical(thermodynamic_state)
 
     def determine_missing_parameters(self, thermodynamic_state, sampler_state, topography):
         """Set reference positions for RMSD restraint.
@@ -2219,25 +2301,33 @@ class RMSD(ReceptorLigandRestraint):
         thermodynamic_state : openmmtools.states.ThermodynamicState
             The thermodynamic state.
         sampler_state : openmmtools.states.SamplerState, optional
-            The sampler state holding the positions of all atoms.
+            The sampler state holding the positions of all atoms to be used as reference
         topography : yank.Topography, optional
             The topography with labeled receptor and ligand atoms.
 
         """
 
-        # Merge receptor and ligand atoms in a single array for easy manipulation.
-        restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
+        # Pick out the restrained atoms
+        if not self._are_restrained_atoms_defined:
+            self._pick_restrained_atoms(topography)
 
-        # Create RMSDForce CV for all restrained atoms
-        rmsd_cv = openmm.RMSDForce(sampler_state.positions, restrained_atoms)
+        # We determine automatically only the parameters that have been left undefined.
+        def _assign_if_undefined(attr_name, attr_value):
+            """Assign value to self.name only if it is None."""
+            if getattr(self, attr_name) is None:
+                setattr(self, attr_name, attr_value)
 
-        # Create an CustomCVForce
-        energy_expression = 'lambda_restraints * step(dRMSD) * (K_RMSD/2)*dRMSD^2; dRMSD = (RMSD-RMSD0);'
-        energy_expression += 'K_RMSD = %f;' % self.K_RMSD.value_in_unit_system(unit.md_unit_system)
-        energy_expression += 'RMSD0 = %f;' % self.RMSD0.value_in_unit_system(unit.md_unit_system)
-        cv_force = openmm.CustomCVForce(energy_expression)
-        cv_force.addCollectiveVariable('RMSD', rmsd_cv)
-        cv_force.addGlobalParameter('lambda_restraints', 1.0)
+        # Set spring constants uniformly, as in Ref [1] Table 1 caption.
+        _assign_if_undefined('K_RMSD', 0.6 * unit.kilocalories_per_mole / unit.angstrom**2)
+        _assign_if_undefined('RMSD0', 2.0 * unit.angstroms)
+
+        # Write restraint parameters
+        msg = 'restraint parameters:\n'
+        for parameter_name, parameter_value in self._parameters.items():
+            msg += '{0:24s} : {1}\n'.format(parameter_name, parameter_value)
+        logger.debug(msg)
+
+        self._reference_sampler_state = sampler_state
 
     # -------------------------------------------------------------------------
     # Internal-usage
@@ -2246,16 +2336,28 @@ class RMSD(ReceptorLigandRestraint):
     def _check_parameters_defined(self):
         """Raise an exception there are still parameters undefined."""
         if not self._are_restrained_atoms_defined:
-            raise RestraintParameterError('Undefined restrained atoms.')
+            raise RestraintParameterError('Undefined restrained atoms. Please run `determine_missing_parameters`')
+        if None in [self.K_RMSD, self.RMSD0]:
+            raise RestraintParameterError("Undefined RMSD parameters. Please run `determine_missing_parameters`")
+        if self._reference_sampler_state is None:
+            raise RestraintParameterError("No reference configuration as defined, "
+                                          "Please run `determine_missing_parameters`")
 
     @property
     def _are_restrained_atoms_defined(self):
         """Check if the restrained atoms are defined well enough to make a restraint"""
         for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
             # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
-            if atoms is None or not (isinstance(atoms, list) < 3):
+            if not self._are_single_atoms_defined(atoms):
                 return False
         return True
+
+    @staticmethod
+    def _are_single_atoms_defined(atom_list):
+        """Check that a set of atoms matches the specific format we expect"""
+        if isinstance(atom_list, list):
+            return True
+        return False
 
     def _get_standard_state_correction_numerical(self, thermodynamic_state):
         """Return the standard state correction using the numerical method.
@@ -2277,49 +2379,17 @@ class RMSD(ReceptorLigandRestraint):
         # TODO: Compute standard state correction
         return 0.0
 
-    def _determine_restraint_parameters(self, sampler_states, topography):
-        """Determine restraint parameters.
+    def _pick_restrained_atoms(self, topography):
+        """Select the restrained atoms to use for this system"""
+        atom_selector = _AtomSelector(topography)
+        for atom_word, top_key in zip(["restrained_ligand_atoms", "restrained_receptor_atoms"],
+                                      ["ligand_atoms",            "receptor_atoms"]):
+            atoms = getattr(self, atom_word)
+            if self._are_single_atoms_defined(atoms):
+                continue
+            defined_atoms = atom_selector.compute_atom_intersect(atoms, top_key)
+            setattr(self, atom_word, defined_atoms)
 
-        If restrained atoms are not defined, alpha carbons of the receptor (name CA)
-        and heavy atoms of the ligand will be used.
-
-        Future iterations of this feature will introduce the ability to extract
-        equilibrium parameters and spring constants from a short simulation.
-
-        References
-        ----------
-        [1] Boresch S, Tettinger F, Leitgeb M, Karplus M. J Phys Chem B. 107:9535, 2003.
-        http://dx.doi.org/10.1021/jp0217839
-
-        """
-        if not self._are_restrained_atoms_defined():
-            # Otherwise we restrain only heavy atoms.
-            heavy_atoms = set(topography.topology.select('not element H').tolist())
-            alpha_carbons = set(topography.topology.select('name CA').tolist())
-            receptor_atoms = topography['receptor']
-            ligand_atoms = topography['ligand']
-
-            self.restrained_receptor_atoms = receptor_atoms & alpha_carbons
-            self.restrained_ligand_atoms = ligand_atoms & heavy_atoms
-
-        # We determine automatically only the parameters that have been left undefined.
-        def _assign_if_undefined(attr_name, attr_value):
-            """Assign value to self.name only if it is None."""
-            if getattr(self, attr_name) is None:
-                setattr(self, attr_name, attr_value)
-
-        # Merge receptor and ligand atoms in a single array for easy manipulation.
-        restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
-
-        # Set spring constants uniformly, as in Ref [1] Table 1 caption.
-        _assign_if_undefined('K_RMSD', 0.6 * unit.kilocalories_per_mole / unit.angstrom**2)
-        _assign_if_undefined('RMSD2', 2.0 * unit.angstroms)
-
-        # Write restraint parameters
-        msg = 'restraint parameters:\n'
-        for parameter_name, parameter_value in self._parameters.items():
-            msg += '%24s : %s\n' % (parameter_name, parameter_value)
-        logger.debug(msg)
 
 if __name__ == '__main__':
     import doctest
