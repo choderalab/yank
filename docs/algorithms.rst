@@ -96,9 +96,10 @@ This integral can be re-written as sum over all other *j* particles in the syste
 
 .. math::
 
-   \Psi_i = \frac{\rho_i}{2}\sum_{j} H(U_p-\rho_i) {s}_{j}(\lambda,\eta) \Big[ & \frac{1}{L} - \frac{1}{U_p} \\
-                                                                                               & + \frac{1}{4}\left({d}_{ij}-\frac{{S}_{j}^2}{{d}_{i,j}}\right)\left(\frac{1}{U_p^2} - \frac{1}{L^2}\right) \\
-                                                                                               & + \frac{1}{2{d}_{ij}}\text{ln}\left(\frac{L}{U_p}\right) + C \Big]
+   \Psi_i = \frac{\rho_i}{2}\sum_{j} & H(U_p-\rho_i) {s}_{j}(\lambda,\eta) \times \\
+                                     & \Big[ \frac{1}{L} - \frac{1}{U_p}
+                                     & + \frac{1}{4}\left({d}_{ij}-\frac{{S}_{j}^2}{{d}_{i,j}}\right)\left(\frac{1}{U_p^2} - \frac{1}{L^2}\right) \\
+                                     & + \frac{1}{2{d}_{ij}}\text{ln}\left(\frac{L}{U_p}\right) + C \Big]
 
 with
 
@@ -367,14 +368,18 @@ RMSD restraints (``RMSD``)
 """"""""""""""""""""""""""
 
 If the RMSD restraints are used, the ligand and protein atoms are restrained via a flat-bottom harmonic restraint applied to the
-least-squares RMSD: ``lambda_restraints * step(RMSD - RMSD0) * (K_RMSD/2) * (RMSD - RMSD0)^2``
+least-squares RMSD:
+
+.. math::
+
+   U_{\text{RMSD}} = \lambda_{\text{restraints}} \cdot \text{step}(\text{RMSD} - \text{RMSD}_0) \cdot \frac{K_{\text{RMSD}}}{2} \cdot (\text{RMSD} - \text{RMSD}_0)^2
 
 Standard use of RMSD restraints to define the binding mode to evaluate is to leave these restraints on throughout the entire
 alchemical protocol.
 
 If the receptor and ligand atom sets are not defined, receptor CA atoms (``name CA`` selection for MDTraj) and ligand heavy atoms are used.
 
-.. warning:: The RMSD restraints must also be applied in the solvent phase of the calculation, but this is not implemented yet.
+.. warning:: The RMSD restraints must also be applied in the solvent phase of the calculation if they are on in the decoupled state, but this is not implemented yet.
 
 .. warning:: No standard state correction is yet computed for RMSD restraints. This will likely be applied in the solvent phase by
              releasing the ligand into a defined volume that is then corrected to the standard-state volume.

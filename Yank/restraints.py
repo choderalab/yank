@@ -2087,6 +2087,12 @@ class RMSD(ReceptorLigandRestraint):
         The spring constant (units compatible with kilocalories_per_mole/angstrom**2).
     RMSD0 : simtk.unit.Quantity, optional, default=2.0*angstrom
         The RMSD at which the restraint becomes nonzero.
+    reference_state : openmmtools.states.SamplerState or None, Optional
+        Reference sampler state with coordinates to use as the structure to align the RMSD to.
+        The sampler state must have the same number of particles as the thermodynamic state you
+        will apply this force to. This can temporarily be left undefined, but
+        ``determine_missing_parameters()`` must be called before using the Restraint object.
+
 
     Attributes
     ----------
@@ -2117,18 +2123,23 @@ class RMSD(ReceptorLigandRestraint):
     ...                  K_RMSD=1.0*unit.kilocalories_per_mole/unit.angstrom**2,
     ...                  RMSD0=1*unit.angstroms)
 
+    Find missing parameters
+
+    >>> restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+
     Get standard state correction.
 
     >>> correction = restraint.get_standard_state_correction(thermodynamic_state)
 
     """
     def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None,
-                 K_RMSD=None, RMSD0=None):
+                 K_RMSD=None, RMSD0=None,
+                 reference_state=None):
         self.restrained_receptor_atoms = restrained_receptor_atoms
         self.restrained_ligand_atoms = restrained_ligand_atoms
         self.K_RMSD = K_RMSD
         self.RMSD0 = RMSD0
-        self._reference_sampler_state = None
+        self.reference_state = reference_state
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -2189,7 +2200,7 @@ class RMSD(ReceptorLigandRestraint):
         restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
 
         # Create RMSDForce CV for all restrained atoms
-        rmsd_cv = openmm.RMSDForce(self._reference_sampler_state.positions, restrained_atoms)
+        rmsd_cv = openmm.RMSDForce(self.reference_state.positions, restrained_atoms)
 
         # Create an CustomCVForce
         energy_expression = 'lambda_restraints * step(dRMSD) * (K_RMSD/2)*dRMSD^2; dRMSD = (RMSD-RMSD0);'
@@ -2263,7 +2274,8 @@ class RMSD(ReceptorLigandRestraint):
             msg += '{0:24s} : {1}\n'.format(parameter_name, parameter_value)
         logger.debug(msg)
 
-        self._reference_sampler_state = sampler_state
+        # Assign the sampler state
+        _assign_if_undefined('reference_state', sampler_state)
 
     # -------------------------------------------------------------------------
     # Internal-usage
@@ -2275,7 +2287,7 @@ class RMSD(ReceptorLigandRestraint):
             raise RestraintParameterError('Undefined restrained atoms. Please run `determine_missing_parameters`')
         if None in [self.K_RMSD, self.RMSD0]:
             raise RestraintParameterError("Undefined RMSD parameters. Please run `determine_missing_parameters`")
-        if self._reference_sampler_state is None:
+        if self.reference_state is None:
             raise RestraintParameterError("No reference configuration as defined, "
                                           "Please run `determine_missing_parameters`")
 
