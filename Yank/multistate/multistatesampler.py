@@ -742,7 +742,7 @@ class MultiStateSampler(object):
 
         # Handle default argument and determine number of iterations to run.
         if n_iterations is None:
-            iteration_limit = self.number_of_iterations - self._iteration
+            iteration_limit = self.number_of_iterations
         else:
             iteration_limit = min(self._iteration + n_iterations, self.number_of_iterations)
 
