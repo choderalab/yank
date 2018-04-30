@@ -372,8 +372,7 @@ class MultiStateSampler(object):
                 new_value = self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
             # Update storage if we ReplicaExchange is initialized.
-            # TODO: JDC Please review this change!
-            if instance._thermodynamic_states is not None and instance._reporter is not None:
+            if instance._reporter is not None and instance._reporter.is_open():
                 mpi.run_single_node(0, instance._store_options)
 
         # ----------------------------------
