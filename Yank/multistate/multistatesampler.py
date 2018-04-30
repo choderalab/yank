@@ -577,12 +577,6 @@ class MultiStateSampler(object):
         # Deep copy sampler states.
         self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
 
-        # Make sure all sampler states have box vectors defined; add dummies if needed.
-        default_box_vectors = thermodynamic_states[0].system.getDefaultPeriodicBoxVectors()
-        for sampler_state in self._sampler_states:
-            if sampler_state.box_vectors is None:
-                sampler_state.box_vectors = default_box_vectors
-
         # Set initial thermodynamic state indices if not specified
         if initial_thermodynamic_states is None:
             initial_thermodynamic_states = self._default_initial_thermodynamic_states(thermodynamic_states,
