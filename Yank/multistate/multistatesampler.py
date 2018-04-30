@@ -507,6 +507,10 @@ class MultiStateSampler(object):
         # Make sure that only the root node has an open reporter.
         self._reporter.close()
 
+        # Make sure sampler_states is an iterable of SamplerStates.
+        if isinstance(sampler_states, mmtools.states.SamplerState):
+            sampler_states = [sampler_states]
+
         # Initialize internal attribute and dataset.
         self._pre_write_create(thermodynamic_states, sampler_states, storage,
                                initial_thermodynamic_states=initial_thermodynamic_states,
@@ -531,10 +535,6 @@ class MultiStateSampler(object):
         :func:`_report_iteration`.
         All calls to this function should be *identical* to :func:`create` itself
         """
-        # Make sure sampler_states is an iterable of SamplerStates for later.
-        if isinstance(sampler_states, mmtools.states.SamplerState):
-            sampler_states = [sampler_states]
-
         # Check all systems are either periodic or not.
         is_periodic = thermodynamic_states[0].is_periodic
         for thermodynamic_state in thermodynamic_states:
