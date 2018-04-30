@@ -305,7 +305,7 @@ class SAMSSampler(MultiStateSampler):
            Simulation metadata to be stored in the file.
         """
         # Initialize replica-exchange simulation.
-        super(SAMSSampler, self)._pre_write_create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
+        super()._pre_write_create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
 
         if self.state_update_scheme == 'global-jump':
             self.locality = None # override locality to be global
