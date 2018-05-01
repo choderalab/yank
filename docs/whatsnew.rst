@@ -6,6 +6,12 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.21.3 Post-Triage Bugfixes
+---------------------------
+- Added more robust last good iteration saving
+- Added more robust restore from checkpoint access
+- Exposed checkpoint interval iterations in ``MultiStateReporter``
+
 0.21.2 More Post-Sams Bugfixes
 ------------------------------
 - Fix analysis on 32-bit platforms OS agnostic
