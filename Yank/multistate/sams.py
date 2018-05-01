@@ -559,7 +559,7 @@ class SAMSSampler(MultiStateSampler):
             else:
                 raise ValueError("Unknown flatness_criteria %s" % flatness_criteria)
 
-            if advance:
+            if advance or ((self._t0 > 0) and (self._iteration > self._t0)):
                 # Histograms are sufficiently flat; switch to asymptotically optimal scheme
                 self._stage = 'asymptotically-optimal'
                 # TODO: On resuming, we need to recompute or restore t0, or use some other way to compute it
