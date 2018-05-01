@@ -376,12 +376,19 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
         n_atoms = trajectory_storage.variables['positions'].shape[2]
         logger.info('Number of frames: {}, atoms: {}'.format(n_frames, n_atoms))
 
-        # Determine frames to extract
+        # Determine frames to extract.
+        # TODO: Convert negative start_frame indices similarly to end_frame?
         if start_frame <= 0:
-            # Discard frame 0 with minimized energy which
-            # throws off automatic equilibration detection.
-            start_frame = 1
+            if n_iterations > 0:
+                # Discard frame 0 with minimized energy which
+                # throws off automatic equilibration detection.
+                start_frame = 1
+            else:
+                # If the simulation crashed right after minimization,
+                # we allow extracting the first (and only) frame.
+                start_frame = 0
         if end_frame < 0:
+            # Convert negative indices to last indices.
             end_frame = n_frames + end_frame + 1
         frame_indices = range(start_frame, end_frame, skip_frame)
         if len(frame_indices) == 0:
