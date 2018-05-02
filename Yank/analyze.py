@@ -412,26 +412,36 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
                 n_equil_frames = n_equil_iterations
             frame_indices = frame_indices[n_equil_frames:-1]
 
-        # Extract state positions and box vectors.
+        # Determine the number of frames that the trajectory will have.
+        if state_index is None:
+            n_trajectory_frames = len(frame_indices)
+        else:
+            # With SAMS, an iteration can have 0 or more replicas in a given state.
+            # Deconvolute state indices.
+            state_indices = [None for _ in frame_indices]
+            for i, iteration in enumerate(frame_indices):
+                replica_indices = reporter._storage_analysis.variables['states'][iteration, :]
+                state_indices[i] = np.where(replica_indices == state_index)[0]
+            n_trajectory_frames = sum(len(x) for x in state_indices)
+
+        # Initialize positions and box vectors arrays.
         # MDTraj Cython code expects float32 positions.
-        positions = np.zeros((len(frame_indices), n_atoms, 3), dtype=np.float32)
+        positions = np.zeros((n_trajectory_frames, n_atoms, 3), dtype=np.float32)
         if is_periodic:
-            box_vectors = np.zeros((len(frame_indices), 3, 3), dtype=np.float32)
+            box_vectors = np.zeros((n_trajectory_frames, 3, 3), dtype=np.float32)
+
+        # Extract state positions and box vectors.
         if state_index is not None:
             logger.info('Extracting positions of state {}...'.format(state_index))
 
-            # Deconvolute state indices
-            state_indices = np.zeros(len(frame_indices))
+            # Extract state positions and box vectors.
+            frame_idx = 0
             for i, iteration in enumerate(frame_indices):
-                replica_indices = reporter._storage_analysis.variables['states'][iteration, :]
-                state_indices[i] = np.where(replica_indices == state_index)[0][0]
-
-            # Extract state positions and box vectors
-            for i, iteration in enumerate(frame_indices):
-                replica_index = state_indices[i]
-                positions[i, :, :] = trajectory_storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
-                if is_periodic:
-                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
+                for replica_index in state_indices[i]:
+                    positions[frame_idx, :, :] = trajectory_storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
+                    if is_periodic:
+                        box_vectors[frame_idx, :, :] = trajectory_storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
+                    frame_idx += 1
 
         else:  # Extract replica positions and box vectors
             logger.info('Extracting positions of replica {}...'.format(replica_index))
