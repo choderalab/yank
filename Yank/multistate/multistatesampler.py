@@ -932,7 +932,7 @@ class MultiStateSampler(object):
         (sampler_states, state_indices, energy_thermodynamic_states, neighborhoods, energy_unsampled_states,
          n_accepted_matrix, n_proposed_matrix, last_mbar_f_k, last_err_free_energy) = output_data
         # Assign attributes.
-        self._iteration = checkpoint
+        self._iteration = int(checkpoint)  # The int() can probably be removed when pinned to NetCDF4 >=1.4.0
         self._thermodynamic_states = thermodynamic_states
         self._unsampled_states = unsampled_states
         self._sampler_states = sampler_states
