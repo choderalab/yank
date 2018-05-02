@@ -377,18 +377,10 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
         logger.info('Number of frames: {}, atoms: {}'.format(n_frames, n_atoms))
 
         # Determine frames to extract.
-        # TODO: Convert negative start_frame indices similarly to end_frame?
-        if start_frame <= 0:
-            if n_iterations > 0:
-                # Discard frame 0 with minimized energy which
-                # throws off automatic equilibration detection.
-                start_frame = 1
-            else:
-                # If the simulation crashed right after minimization,
-                # we allow extracting the first (and only) frame.
-                start_frame = 0
+        # Convert negative indices to last indices.
+        if start_frame < 0:
+            start_frame = n_frames + start_frame
         if end_frame < 0:
-            # Convert negative indices to last indices.
             end_frame = n_frames + end_frame + 1
         frame_indices = range(start_frame, end_frame, skip_frame)
         if len(frame_indices) == 0:
@@ -399,7 +391,9 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
         # Discard equilibration samples
         if discard_equilibration:
             u_n = extract_u_n(reporter._storage_analysis)
-            n_equil_iterations, g, n_eff = timeseries.detectEquilibration(u_n)
+            # Discard frame 0 with minimized energy which throws off automatic equilibration detection.
+            n_equil_iterations, g, n_eff = timeseries.detectEquilibration(u_n[1:])
+            n_equil_iterations += 1
             logger.info(("Discarding initial {} equilibration samples (leaving {} "
                          "effectively uncorrelated samples)...").format(n_equil_iterations, n_eff))
             # Find first frame post-equilibration.
