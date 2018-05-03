@@ -595,7 +595,7 @@ class PhaseAnalyzer(ABC):
         """int: The total number of iterations of the phase."""
         if self._n_iterations is None:
             # The + 1 accounts for iteration 0.
-            self._n_iterations = self._reporter.read_last_iteration(full_iteration=False)
+            self._n_iterations = self._reporter.read_last_iteration(last_checkpoint=False)
         return self._n_iterations
 
     @property

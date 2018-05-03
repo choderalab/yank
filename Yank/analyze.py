@@ -362,7 +362,7 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
 
         # Get dimensions
         # Assume full iteration until proven otherwise
-        full_iteration = True
+        last_checkpoint = True
         trajectory_storage = reporter._storage_checkpoint
         if not keep_solvent:
             # If tracked solute particles, use any last iteration, set with this logic test
@@ -371,7 +371,7 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
                 trajectory_storage = reporter._storage_analysis
                 topology = topology.subset(reporter.analysis_particle_indices)
 
-        n_iterations = reporter.read_last_iteration(full_iteration=full_iteration)
+        n_iterations = reporter.read_last_iteration(last_checkpoint=last_checkpoint)
         n_frames = trajectory_storage.variables['positions'].shape[0]
         n_atoms = trajectory_storage.variables['positions'].shape[2]
         logger.info('Number of frames: {}, atoms: {}'.format(n_frames, n_atoms))

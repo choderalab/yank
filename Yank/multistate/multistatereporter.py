@@ -594,7 +594,7 @@ class MultiStateReporter(object):
             If a slice is given, returns shape ``[len(slice), `len(sampler_states)]``
 
         """
-        iteration = self._calculate_last_iteration(iteration)
+        iteration = self._map_iteration_to_good(iteration)
         return self._storage_analysis.variables['states'][iteration].astype(np.int64)
 
     def write_replica_thermodynamic_states(self, state_indices, iteration):
@@ -681,7 +681,7 @@ class MultiStateReporter(object):
 
         """
         # Determine last consistent iteration
-        iteration = self._calculate_last_iteration(iteration)
+        iteration = self._map_iteration_to_good(iteration)
         # Retrieve energies at all thermodynamic states
         energy_thermodynamic_states = np.array(self._storage_analysis.variables['energies'][iteration, :, :], np.float64)
         # Retrieve neighborhoods, assuming global neighborhoods if reading a pre-neighborhoods file
@@ -794,7 +794,7 @@ class MultiStateReporter(object):
             from ``iteration-1`` to ``iteration`` (not cumulative).
 
         """
-        iteration = self._calculate_last_iteration(iteration)
+        iteration = self._map_iteration_to_good(iteration)
         n_accepted_matrix = self._storage_analysis.variables['accepted'][iteration, :, :].astype(np.int64)
         n_proposed_matrix = self._storage_analysis.variables['proposed'][iteration, :, :].astype(np.int64)
         return n_accepted_matrix, n_proposed_matrix
@@ -867,7 +867,7 @@ class MultiStateReporter(object):
             The timestamp at which the iteration was stored.
 
         """
-        iteration = self._calculate_last_iteration(iteration)
+        iteration = self._map_iteration_to_good(iteration)
         return self._storage_analysis.variables['timestamp'][iteration]
 
     def write_timestamp(self, iteration: int):
@@ -995,13 +995,25 @@ class MultiStateReporter(object):
         else:
             self._write_dict(path, data, storage_name=storage_name)
 
-    def read_last_iteration(self, full_iteration=True):
+    def read_checkpoint_iterations(self):
+        """
+        Utility function to provide all iterations on which a checkpoint was written
+
+        Returns
+        -------
+        checkpoints : np.ndarray of int
+            All checkpoints from initial iteration to current
+        """
+        return np.array(range(0, self.read_last_iteration(last_checkpoint=True)+1, self._checkpoint_interval),
+                        dtype=int)
+
+    def read_last_iteration(self, last_checkpoint=True):
         """
         Read the last iteration from file which was written in sequential order.
 
         Parameters
         ----------
-        full_iteration : bool, optional
+        last_checkpoint : bool, optional
             If True, returns the last checkpoint iteration (default is True).
 
         Returns
@@ -1014,14 +1026,14 @@ class MultiStateReporter(object):
         last_iteration = int(self._storage_analysis.variables['last_iteration'][0])
 
         # Get last checkpoint.
-        if full_iteration:
+        if last_checkpoint:
             # -1 for stop ensures the 0th index is searched.
             for i in range(last_iteration, -1, -1):
                 if self._calculate_checkpoint_iteration(i) is not None:
                     return i
             raise RuntimeError("Could not find a checkpoint! This should not happen "
-                               "as the 0th iteration should always be written!")
-
+                               "as the 0th iteration should always be written! "
+                               "Please open a ticket on the YANK GitHub page if you see this error message!")
         return last_iteration
 
     def write_last_iteration(self, iteration):
@@ -1032,12 +1044,16 @@ class MultiStateReporter(object):
         Call this as the last step of any ``write_iteration``-like routine to ensure
         analysis will not use junk data left over from an interrupted simulation past the last checkpoint.
 
+        The reporter is sync'ed both before and after writing the last iteration to ensure minimal data corruption
+
         Parameters
         ----------
         iteration : int
             Iteration at which the last good data point was written.
         """
+        self.sync()
         self._storage_analysis.variables['last_iteration'][0] = iteration
+        self.sync()
 
     def read_logZ(self, iteration):
         """
@@ -1071,78 +1087,6 @@ class MultiStateReporter(object):
             Dimensionless log Z
         """
         self.write_online_data_dynamic_and_static(iteration, logZ=logZ)
-
-    # TODO: Remove function if tests pass -LNN
-    def read_mbar_free_energies(self, iteration):
-        """
-        Read the MBAR dimensionless free energy at a given iteration from file.
-
-        These free energies are relative to the first state.
-        These are computed through self-consistent iterations from an initial guess.
-
-        The initial guess is often 0 for all states, so any state not written is returned as zeros for f_k, and
-        infinity for
-
-        Used primarily in online analysis, and should be used in tandem with an
-        :class:`yank.multistate.analyzers.PhaseAnalyzer`
-        object from the :mod:`yank.multistate.analyzers` module
-
-        Parameters
-        ----------
-        iteration : int
-            iteration to read the free energies from
-
-            if the iteration was not written at a the given iteration, then the free_energies are all 0
-
-        Returns
-        -------
-        f_k : 1-D ndarray of floats
-            MBAR free_energies from the iteration.
-        free_energy : tuple of two Floats
-            Free energy estimate at the iteration between the end states
-        """
-        online_group = self._storage_analysis.groups['online_analysis']
-        f_k = online_group.variables['f_k'][iteration]
-        free_energy = online_group.variables['free_energy'][iteration, :]
-        return f_k, free_energy
-
-    # TODO: Remove function if tests pass -LNN
-    def write_mbar_free_energies(self, iteration: int, f_k: np.ndarray, free_energy: tuple):
-        """
-        Write the mbar free energies at the current iteration. See :func:`read_mbar_free_energies` for more information
-        about pymbar's f_k free energies
-
-        Used primarily in online analysis, and should be used in tandem with an
-        :class:`yank.multistate.analyzers.PhaseAnalyzer`
-        object from the :mod:`yank.multistate.analyzers` module.
-
-        Parameters
-        ----------
-        iteration : int,
-            Iteration at which to save the free energy.
-            Reads the current energy up to this value and stores it in the analysis reporter
-        f_k : 1D array of floats,
-            Dimensionless free energies you wish to store. This should come from pymbar.MBAR.f_k from an initialized
-            MBAR object.
-        free_energy : tuple of two floats
-            Current estimate of the free energy difference of the phase and its error.
-            This should be of the form (free_energy, error_in_free_energy)
-            Typically output of the ``pymbar.MBAR.getFreeEnergyDifferences()[i,j]``
-
-        """
-        analysis_nc = self._storage_analysis
-        if 'f_k_length' not in analysis_nc.dimensions:
-            analysis_nc.createDimension('f_k_length', len(f_k))
-            analysis_nc.createDimension('Df', 2)
-            online_group = analysis_nc.createGroup('online_analysis')
-            # larger chunks, faster operations, small matrix anyways
-            online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                        zlib=True, chunksizes=(self._checkpoint_interval, len(f_k)))
-            online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
-                                        zlib=True, chunksizes=(self._checkpoint_interval, 2))
-        online_group = analysis_nc.groups['online_analysis']
-        online_group.variables['f_k'][iteration] = f_k
-        online_group.variables['free_energy'][iteration, :] = free_energy
 
     def read_online_analysis_data(self, iteration, *keys: str):
         """
@@ -1260,6 +1204,10 @@ class MultiStateReporter(object):
         self.write_online_analysis_data(None, **kwargs)
         self.write_online_analysis_data(iteration, **kwargs)
 
+    # -------------------------------------------------------------------------
+    # Internal-usage.
+    # -------------------------------------------------------------------------
+
     def _write_1d_online_data(self, iteration, variable, data, storage):
         """Store data on disk given pre-calculated parameters"""
         if iteration is not None:
@@ -1276,7 +1224,7 @@ class MultiStateReporter(object):
         # Only get the specific iteration if specified
 
         if iteration is not None:
-            nc_var[iteration,:] = data
+            nc_var[iteration, :] = data
         else:
             nc_var[:] = data
 
@@ -1342,10 +1290,6 @@ class MultiStateReporter(object):
             chunks = (size,)
         return {'dtype': dtype, 'dims': dims, 'chunksizes': chunks}
 
-    # -------------------------------------------------------------------------
-    # Internal-usage.
-    # -------------------------------------------------------------------------
-
     @staticmethod
     def _resolve_iteration_args(iteration_arg):
         """
@@ -1394,10 +1338,12 @@ class MultiStateReporter(object):
             return int(checkpoint_index)
         return None
 
-    def _calculate_last_iteration(self, iteration):
+    def _map_iteration_to_good(self, iteration):
         """
         Convert the iteration in 'read_X' functions which take a iteration=slice(None)
-        to avoid returning a slice of data which goes past the last_iteration
+        to avoid returning a slice of data which goes past the last_iteration.
+
+        This effectively sets the max iteration to the last_good_iteration.
 
         Parameters
         ----------
@@ -1410,51 +1356,12 @@ class MultiStateReporter(object):
             Iteration, converted as needed to only access certain ranges of data
         """
 
-        last_good = self.read_last_iteration(full_iteration=False)
-        max_iter = len(self._storage_analysis.dimensions['iteration'])
-
-        def convert_negative_iteration(input_iteration):
-            return input_iteration - (max_iter - last_good - 1)
-
-        cast_iteration = iteration
-        if last_good == max_iter - 1:
-            cast_iteration = iteration
-        else:
-            if type(iteration) is int:
-                throw = False
-                if iteration > last_good:  # check positive integer
-                    throw = True
-                elif iteration < 0:  # Operation on negative integer, recast
-                    # Convert negative integer to its mapped values
-                    cast_iteration = convert_negative_iteration(iteration)
-                    if cast_iteration < -max_iter:  # check against absolute size
-                        throw = True
-                else:
-                    cast_iteration = iteration
-                if throw:
-                    raise IndexError("Index out of range!")
-            elif type(iteration) is slice:
-                out_start = None
-                out_stop = None
-                # Condition the start, start must not exceed last good (positive) and must be greater than
-                if iteration.start is not None:
-                    if iteration.start > last_good:
-                        out_start = last_good
-                    elif iteration.start < 0:
-                        out_start = convert_negative_iteration(iteration.start)
-                # Condition end iteration
-                if iteration.stop is not None:
-                    if iteration.stop > last_good:
-                        out_stop = last_good + 1
-                    elif iteration.stop < 0:
-                        out_stop = convert_negative_iteration(iteration.stop) - 1
-                else:  # Trap special None cases for the "stop"
-                    # Trap the case of -step size, its easier to do all the conditions on which it is not that
-                    if iteration.step is None or (iteration.step is not None and iteration.step > 0):
-                        out_stop = last_good + 1
-                cast_iteration = slice(out_start, out_stop, iteration.step)
-            else:
-                raise ValueError("Iteration must be either an int or a slice!")
+        # Calculate last stored iteration
+        last_good = self.read_last_iteration(last_checkpoint=False)
+        # Create the artificial index map
+        artificial_map = np.arange(last_good + 1, dtype=int)
+        # Generate true index map from the input
+        cast_iteration = artificial_map[iteration]
         return cast_iteration
 
     def _ensure_dimension_exists(self, dim_name, dim_size, storage=None):
@@ -1637,11 +1544,9 @@ class MultiStateReporter(object):
             None is returned
         """
         storage = self._storage_dict[storage_file]
+        read_iteration = self._map_iteration_to_good(iteration)
         if obey_checkpoint_interval:
-            iteration = self._calculate_last_iteration(iteration)
             read_iteration = self._calculate_checkpoint_iteration(iteration)
-        else:
-            read_iteration = iteration
         if read_iteration is not None:
             # TODO: Restore n_replicas instead
             n_replicas = storage.dimensions['replica'].size

@@ -251,7 +251,7 @@ class MultiStateSampler(object):
         # Read iteration and online analysis info.
         reporter.open(mode='r')
         options = reporter.read_dict('options')
-        iteration = reporter.read_last_iteration(full_iteration=False)
+        iteration = reporter.read_last_iteration(last_checkpoint=False)
         # Search for last cached free energies only if online analysis is activated.
         if options['online_analysis_interval'] is not None:
             target_error = options['online_analysis_target_error']
@@ -875,26 +875,53 @@ class MultiStateSampler(object):
         reporter.open(mode='r')
         # Read the last iteration reported to ensure we don't include junk
         # data written just before a crash.
-        iteration = reporter.read_last_iteration()
-
-        # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(reporter.filepath))
-        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
-        sampler_states = reporter.read_sampler_states(iteration=iteration)
-        state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
-        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
         metadata = reporter.read_dict('metadata')
+        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
 
-        # Search for last cached free energies only if online analysis is activated.
-        if self.online_analysis_interval is not None:
-            online_analysis_info = self._read_last_free_energy(reporter, iteration)
-            last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
-        else:
-            last_mbar_f_k, last_err_free_energy = None, None
+        def _read_options(check_iteration):
+            internal_sampler_states = reporter.read_sampler_states(iteration=check_iteration)
+            internal_state_indices = reporter.read_replica_thermodynamic_states(iteration=check_iteration)
+            internal_energy_thermodynamic_states, internal_neighborhoods, internal_energy_unsampled_states = \
+                reporter.read_energies(iteration=check_iteration)
+            internal_n_accepted_matrix, internal_n_proposed_matrix = \
+                reporter.read_mixing_statistics(iteration=check_iteration)
 
+            # Search for last cached free energies only if online analysis is activated.
+            if self.online_analysis_interval is not None:
+                online_analysis_info = self._read_last_free_energy(reporter, check_iteration)
+                internal_last_mbar_f_k, (_, internal_last_err_free_energy) = online_analysis_info
+            else:
+                internal_last_mbar_f_k, internal_last_err_free_energy = None, None
+            return (internal_sampler_states, internal_state_indices, internal_energy_thermodynamic_states,
+                    internal_neighborhoods, internal_energy_unsampled_states, internal_n_accepted_matrix,
+                    internal_n_proposed_matrix, internal_last_mbar_f_k, internal_last_err_free_energy)
+
+        # Keep trying to resume further and further back from the most recent checkpoint back
+        checkpoints = reporter.read_checkpoint_iterations()
+        checkpoint_reverse_iter = iter(checkpoints[::-1])
+        while True:
+            try:
+                checkpoint = next(checkpoint_reverse_iter)
+                output_data = _read_options(checkpoint)
+                # Found data, can escape loop
+                break
+            except StopIteration:
+                raise self._throw_restoration_error("Attempting to restore from any checkpoint failed. "
+                                                    "Either your data is fully corrupted or something has gone very "
+                                                    "wrong to see this message.\n"
+                                                    "Please open an issue on the GitHub issue tracker if you see this!")
+            except:
+                # Trap all other errors caught by the load process
+                continue
+
+        if checkpoint < checkpoints[-1]:
+            logger.warning("Could not use most recent checkpoint at {}, instead pulled from {}".format(checkpoints[-1],
+                                                                                                       checkpoint))
+        (sampler_states, state_indices, energy_thermodynamic_states, neighborhoods, energy_unsampled_states,
+         n_accepted_matrix, n_proposed_matrix, last_mbar_f_k, last_err_free_energy) = output_data
         # Assign attributes.
-        self._iteration = iteration
+        self._iteration = int(checkpoint)  # The int() can probably be removed when pinned to NetCDF4 >=1.4.0
         self._thermodynamic_states = thermodynamic_states
         self._unsampled_states = unsampled_states
         self._sampler_states = sampler_states
@@ -1057,13 +1084,14 @@ class MultiStateSampler(object):
         partial data if the program gets interrupted.
 
         Subclasses should not attempt to modify this function as it can
-        force either duplicated or missed ``sync()`` calls
+        force either duplicated or missed ``sync()`` calls. In the event
+        that they MUST overwrite this function, the last call in the whole
+        stack should be :func:MultiStateReporter.write_last_iteration
         """
         # Call report_iteration_items for a subclass-friendly function
         self._report_iteration_items()
         self._reporter.write_timestamp(self._iteration)
         self._reporter.write_last_iteration(self._iteration)
-        self._reporter.sync()
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
     @mpi.delayed_termination
@@ -1537,6 +1565,17 @@ class MultiStateSampler(object):
                         last_err_free_energy is not None and last_err_free_energy <= online_analysis_target_error)):
             return True
         return False
+
+    @staticmethod
+    def _throw_restoration_error(message):
+        """Masking function to hide the RestorationError class without exposing it or making it a 'hidden' (_X) error"""
+        class RestorationError(Exception):
+            """Represent errors occurring during attempts to restore simulations."""
+            def __init__(self, error_message):
+                super().__init__(error_message)
+                # Critical messages which have halted a simulation, badly
+                logger.critical(error_message)
+        raise RestorationError(message)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Test globals
