@@ -511,7 +511,7 @@ class TestMultiPhaseAnalyzer(object):
         """extract_trajectory handles checkpointing and skip frame correctly."""
         # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
         solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=False)
-        assert len(solute_trajectory) == self.n_steps - 1
+        assert len(solute_trajectory) == self.n_steps
         assert solute_trajectory.n_atoms == len(self.analysis_atoms)
 
         # Check that only the checkpoint trajectory is returned when keep_solvent is True.
@@ -519,12 +519,12 @@ class TestMultiPhaseAnalyzer(object):
         # Should this change in analyze, then this logic will need to be changed as well.
         # The int() rounds down from sampling to a state in between the interval.
         full_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=True)
-        assert len(full_trajectory) == int((self.n_steps + 1) / self.checkpoint_interval) - 1
+        assert len(full_trajectory) == int((self.n_steps + 1) / self.checkpoint_interval)
 
         # Check that skip_frame reduces the trajectory length correctly.
         skip_frame = 2
         trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, skip_frame=skip_frame)
-        assert len(trajectory) == int(self.n_steps / self.checkpoint_interval / skip_frame)
+        assert len(trajectory) == int(self.n_steps / self.checkpoint_interval / skip_frame) + 1
 
         # Extracting the trajectory of a state does not incur into errors.
         analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
