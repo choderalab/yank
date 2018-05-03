@@ -220,66 +220,21 @@ class ReplicaExchangeSampler(MultiStateSampler):
     _TITLE_TEMPLATE = ('Replica-exchange sampler simulation created using ReplicaExchangeSampler class '
                        'of yank.multistate on {}')
 
-    def create(self, thermodynamic_states: list, sampler_states: list, storage, **kwargs):
-        """Create new multistate sampler simulation.
-
-        Parameters
-        ----------
-        thermodynamic_states : list of openmmtools.states.ThermodynamicState
-            Thermodynamic states to simulate, where one replica is allocated per state.
-            Each state must have a system with the same number of atoms.
-        sampler_states : openmmtools.states.SamplerState or list
-            One or more sets of initial sampler states. If a list of SamplerStates,
-            they will be assigned to replicas in a round-robin fashion.
-            The number of replicas is taken to be the number of sampler states provided.
-        storage : str or instanced Reporter
-            If str: the path to the storage file. Default checkpoint options from Reporter class are used
-            If Reporter: Uses the reporter options and storage path
-            In the future this will be able to take a Storage class as well.
-        initial_thermodynamic_states : None or list or array-like of int of length len(sampler_states), optional,
-            default: None.
-            Initial thermodynamic_state index for each sampler_state.
-            If no initial distribution is chosen, ``sampler_states`` are distributed between the
-            ``thermodynamic_states`` following these rules:
-
-                * If ``len(thermodynamic_states) == len(sampler_states)``: 1-to-1 distribution
-
-                * If ``len(thermodynamic_states) > len(sampler_states)``: First and last state distributed first
-                  remaining ``sampler_states`` spaced evenly by index until ``sampler_states`` are depleted.
-                  If there is only one ``sampler_state``, then the only first ``thermodynamic_state`` will be chosen
-
-                * If ``len(thermodynamic_states) < len(sampler_states)``, each ``thermodynamic_state`` receives an
-                  equal number of ``sampler_states`` until there are insufficient number of ``sampler_states`` remaining
-                  to give each ``thermodynamic_state`` an equal number. Then the rules from the previous point are
-                  followed.
-        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional, default=None
-            These are ThermodynamicStates that are not propagated, but their
-            reduced potential is computed at each iteration for each replica.
-            These energy can be used as data for reweighting schemes (default
-            is None).
-        metadata : dict, optional, default=None
-           Simulation metadata to be stored in the file.
+    def _pre_write_create(self, thermodynamic_states, sampler_states, *args, **kwargs):
+        """Overwrite parent implementation to make sure the number of
+        thermodynamic states is equal to the number of sampler states.
         """
-
-        # Get number of thermodynamic states
-        n_states = len(thermodynamic_states)
-
         # Make sure there are no more sampler states than thermodynamic states.
+        n_states = len(thermodynamic_states)
         if len(sampler_states) > n_states:
             raise ValueError('Passed {} SamplerStates but only {} ThermodynamicStates'.format(
                 len(sampler_states), n_states))
 
         # Distribute sampler states to replicas in a round-robin fashion.
-        sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)]) for i in range(n_states)]
+        # The sampler states are deep-copied inside super()._pre_write_create().
+        sampler_states = [sampler_states[i % len(sampler_states)] for i in range(n_states)]
 
-        # Initial thermodynamic states handled by the superclass and the _default_initial_thermodynamic_state method
-        super(ReplicaExchangeSampler, self).create(thermodynamic_states, sampler_states, storage, **kwargs)
-
-    def _default_initial_thermodynamic_states(self, thermodynamic_states, sampler_states):
-        """Special case for the ReplicaExchange class which needs equal thermodynamic and sampler states"""
-        if len(thermodynamic_states) != len(sampler_states):
-            raise ValueError("Number of thermodynamic_states must equal number of sampler_states!")
-        return super()._default_initial_thermodynamic_states(thermodynamic_states, sampler_states)
+        super()._pre_write_create(thermodynamic_states, sampler_states, *args, **kwargs)
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):

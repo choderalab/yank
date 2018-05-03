@@ -251,7 +251,7 @@ class MultiStateSampler(object):
         # Read iteration and online analysis info.
         reporter.open(mode='r')
         options = reporter.read_dict('options')
-        iteration = reporter.read_last_iteration(full_iteration=False)
+        iteration = reporter.read_last_iteration(last_checkpoint=False)
         # Search for last cached free energies only if online analysis is activated.
         if options['online_analysis_interval'] is not None:
             target_error = options['online_analysis_target_error']
@@ -372,8 +372,7 @@ class MultiStateSampler(object):
                 new_value = self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
             # Update storage if we ReplicaExchange is initialized.
-            # TODO: JDC Please review this change!
-            if instance._thermodynamic_states is not None and instance._reporter is not None:
+            if instance._reporter is not None and instance._reporter.is_open():
                 mpi.run_single_node(0, instance._store_options)
 
         # ----------------------------------
@@ -493,21 +492,33 @@ class MultiStateSampler(object):
         metadata : dict, optional, default=None
            Simulation metadata to be stored in the file.
         """
+        # Handle case in which storage is a string and not a Reporter object.
+        self._reporter = self._reporter_from_storage(storage, check_exist=False)
 
+        # Check if netcdf files exist. This is run only on MPI node 0 and
+        # broadcasted. This is to avoid the case where the other nodes
+        # arrive to this line after node 0 has already created the storage
+        # file, causing an error.
+        if mpi.run_single_node(0, self._reporter.storage_exists, broadcast_result=True):
+            raise RuntimeError('Storage file {} already exists; cowardly '
+                               'refusing to overwrite.'.format(self._reporter.filepath))
+
+        # Make sure that only the root node has an open reporter.
+        self._reporter.close()
+
+        # Make sure sampler_states is an iterable of SamplerStates.
+        if isinstance(sampler_states, mmtools.states.SamplerState):
+            sampler_states = [sampler_states]
+
+        # Initialize internal attribute and dataset.
         self._pre_write_create(thermodynamic_states, sampler_states, storage,
                                initial_thermodynamic_states=initial_thermodynamic_states,
                                unsampled_thermodynamic_states=unsampled_thermodynamic_states,
                                metadata=metadata)
 
-        # Handle case in which storage is a string.
-        reporter = self._reporter_from_storage(storage, check_exist=False)
-
         # Display papers to be cited.
         self._display_citations()
 
-        # Close the reporter file so its ready for use
-        reporter.close()
-        self._reporter = reporter
         self._initialize_reporter()
 
     def _pre_write_create(self,
@@ -523,10 +534,6 @@ class MultiStateSampler(object):
         :func:`_report_iteration`.
         All calls to this function should be *identical* to :func:`create` itself
         """
-        # Make sure sampler_states is an iterable of SamplerStates for later.
-        if isinstance(sampler_states, mmtools.states.SamplerState):
-            sampler_states = [sampler_states]
-
         # Check all systems are either periodic or not.
         is_periodic = thermodynamic_states[0].is_periodic
         for thermodynamic_state in thermodynamic_states:
@@ -549,17 +556,6 @@ class MultiStateSampler(object):
                     raise ValueError('All ThermodynamicStates and SamplerStates must '
                                      'have the same number of particles')
 
-        # Handle case in which storage is a string.
-        reporter = self._reporter_from_storage(storage, check_exist=False)
-
-        # Check if netcdf files exist. This is run only on MPI node 0 and
-        # broadcasted. This is to avoid the case where the other nodes
-        # arrive to this line after node 0 has already created the storage
-        # file, causing an error.
-        if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
-            raise RuntimeError('Storage file {} already exists; cowardly '
-                               'refusing to overwrite.'.format(reporter.filepath))
-
         # Handle default argument for metadata and add default simulation title.
         default_title = (self._TITLE_TEMPLATE.format(time.asctime(time.localtime())))
         if metadata is None:
@@ -579,12 +575,6 @@ class MultiStateSampler(object):
 
         # Deep copy sampler states.
         self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
-
-        # Make sure all sampler states have box vectors defined; add dummies if needed.
-        default_box_vectors = thermodynamic_states[0].system.getDefaultPeriodicBoxVectors()
-        for sampler_state in self._sampler_states:
-            if sampler_state.box_vectors is None:
-                sampler_state.box_vectors = default_box_vectors
 
         # Set initial thermodynamic state indices if not specified
         if initial_thermodynamic_states is None:
@@ -622,7 +612,6 @@ class MultiStateSampler(object):
         self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
         self._neighborhoods = np.zeros([self.n_replicas, self.n_states], 'i1')
         self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
-        reporter.close()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, tolerance=1.0 * unit.kilojoules_per_mole / unit.nanometers,
@@ -886,26 +875,53 @@ class MultiStateSampler(object):
         reporter.open(mode='r')
         # Read the last iteration reported to ensure we don't include junk
         # data written just before a crash.
-        iteration = reporter.read_last_iteration()
-
-        # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(reporter.filepath))
-        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
-        sampler_states = reporter.read_sampler_states(iteration=iteration)
-        state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
-        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
         metadata = reporter.read_dict('metadata')
+        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
 
-        # Search for last cached free energies only if online analysis is activated.
-        if self.online_analysis_interval is not None:
-            online_analysis_info = self._read_last_free_energy(reporter, iteration)
-            last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
-        else:
-            last_mbar_f_k, last_err_free_energy = None, None
+        def _read_options(check_iteration):
+            internal_sampler_states = reporter.read_sampler_states(iteration=check_iteration)
+            internal_state_indices = reporter.read_replica_thermodynamic_states(iteration=check_iteration)
+            internal_energy_thermodynamic_states, internal_neighborhoods, internal_energy_unsampled_states = \
+                reporter.read_energies(iteration=check_iteration)
+            internal_n_accepted_matrix, internal_n_proposed_matrix = \
+                reporter.read_mixing_statistics(iteration=check_iteration)
 
+            # Search for last cached free energies only if online analysis is activated.
+            if self.online_analysis_interval is not None:
+                online_analysis_info = self._read_last_free_energy(reporter, check_iteration)
+                internal_last_mbar_f_k, (_, internal_last_err_free_energy) = online_analysis_info
+            else:
+                internal_last_mbar_f_k, internal_last_err_free_energy = None, None
+            return (internal_sampler_states, internal_state_indices, internal_energy_thermodynamic_states,
+                    internal_neighborhoods, internal_energy_unsampled_states, internal_n_accepted_matrix,
+                    internal_n_proposed_matrix, internal_last_mbar_f_k, internal_last_err_free_energy)
+
+        # Keep trying to resume further and further back from the most recent checkpoint back
+        checkpoints = reporter.read_checkpoint_iterations()
+        checkpoint_reverse_iter = iter(checkpoints[::-1])
+        while True:
+            try:
+                checkpoint = next(checkpoint_reverse_iter)
+                output_data = _read_options(checkpoint)
+                # Found data, can escape loop
+                break
+            except StopIteration:
+                raise self._throw_restoration_error("Attempting to restore from any checkpoint failed. "
+                                                    "Either your data is fully corrupted or something has gone very "
+                                                    "wrong to see this message.\n"
+                                                    "Please open an issue on the GitHub issue tracker if you see this!")
+            except:
+                # Trap all other errors caught by the load process
+                continue
+
+        if checkpoint < checkpoints[-1]:
+            logger.warning("Could not use most recent checkpoint at {}, instead pulled from {}".format(checkpoints[-1],
+                                                                                                       checkpoint))
+        (sampler_states, state_indices, energy_thermodynamic_states, neighborhoods, energy_unsampled_states,
+         n_accepted_matrix, n_proposed_matrix, last_mbar_f_k, last_err_free_energy) = output_data
         # Assign attributes.
-        self._iteration = iteration
+        self._iteration = int(checkpoint)  # The int() can probably be removed when pinned to NetCDF4 >=1.4.0
         self._thermodynamic_states = thermodynamic_states
         self._unsampled_states = unsampled_states
         self._sampler_states = sampler_states
@@ -984,7 +1000,8 @@ class MultiStateSampler(object):
     # Internal-usage: Initialization and storage utilities.
     # -------------------------------------------------------------------------
 
-    def _default_initial_thermodynamic_states(self, thermodynamic_states, sampler_states):
+    @classmethod
+    def _default_initial_thermodynamic_states(cls, thermodynamic_states, sampler_states):
         """
         Create the initial_thermodynamic_states obeying the following rules:
 
@@ -999,8 +1016,6 @@ class MultiStateSampler(object):
           to give each ``thermodynamic_state`` an equal number. Then the rules from the previous point are
           followed.
         """
-        # Ignore IDE's saying this may be static because subclasses implement changes and need to call super()
-        # which does not work for staticmethods
         n_thermo = len(thermodynamic_states)
         n_sampler = len(sampler_states)
         thermo_indices = np.arange(n_thermo, dtype=int)
@@ -1069,13 +1084,14 @@ class MultiStateSampler(object):
         partial data if the program gets interrupted.
 
         Subclasses should not attempt to modify this function as it can
-        force either duplicated or missed ``sync()`` calls
+        force either duplicated or missed ``sync()`` calls. In the event
+        that they MUST overwrite this function, the last call in the whole
+        stack should be :func:MultiStateReporter.write_last_iteration
         """
         # Call report_iteration_items for a subclass-friendly function
         self._report_iteration_items()
         self._reporter.write_timestamp(self._iteration)
         self._reporter.write_last_iteration(self._iteration)
-        self._reporter.sync()
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
     @mpi.delayed_termination
@@ -1549,6 +1565,17 @@ class MultiStateSampler(object):
                         last_err_free_energy is not None and last_err_free_energy <= online_analysis_target_error)):
             return True
         return False
+
+    @staticmethod
+    def _throw_restoration_error(message):
+        """Masking function to hide the RestorationError class without exposing it or making it a 'hidden' (_X) error"""
+        class RestorationError(Exception):
+            """Represent errors occurring during attempts to restore simulations."""
+            def __init__(self, error_message):
+                super().__init__(error_message)
+                # Critical messages which have halted a simulation, badly
+                logger.critical(error_message)
+        raise RestorationError(message)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Test globals
