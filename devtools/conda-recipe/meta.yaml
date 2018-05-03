@@ -36,7 +36,7 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - cerberus
+    - cerberus ==1.1.*
     - matplotlib
     - jupyter
     - pdbfixer

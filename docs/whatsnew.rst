@@ -11,6 +11,14 @@ Development
 - Fix bug #941 where unbiasing the restraint would crash the analysis if using a 32-bit OpenCL platform.
 - Fix bug #945 where relative imports of OpenEye tools would cause problems on some systems.
 
+0.21.2 More Post-Sams Bugfixes
+------------------------------
+- Fix analysis on 32-bit platforms OS agnostic
+- More robust analysis tests
+- Pin Cerberus to 1.1 as 1.2 breaks some schemas. Proper fix in a later version.
+- UML Diagrams added to docs
+- Fix API bug for resuming simulations without specifying how many iterations to run
+
 0.21.1 Post-SAMS Bugfixes
 -------------------------
 - Fix bug in FIRE minimizer logging
