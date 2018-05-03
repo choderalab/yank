@@ -21,7 +21,6 @@ standard state correction.
 # ==============================================================================
 
 import abc
-import math
 import random
 import inspect
 import logging
@@ -33,8 +32,9 @@ import scipy.integrate
 import mdtraj as md
 import openmmtools as mmtools
 from simtk import openmm, unit
+import scipy.sparse.csgraph as cs
 
-from . import pipeline, utils
+from . import pipeline
 from .utils import methoddispatch
 
 logger = logging.getLogger(__name__)
@@ -704,7 +704,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     # Internal-usage: properties and methods for subclasses.
     # -------------------------------------------------------------------------
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def _are_restraint_parameters_defined(self):
         """bool: True if the restraint parameters are defined."""
         pass
@@ -1297,13 +1298,12 @@ class Boresch(ReceptorLigandRestraint):
                     K_r/2 * [|r3 - l1| - r_aA0]^2 +
                     + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
                     + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
-                    + K_phiA/2 * [dihedral(r1,r2,r3,l1) - phi_A0]^2 +
-                    + K_phiB/2 * [dihedral(r2,r3,l1,l2) - phi_B0]^2 +
-                    + K_phiC/2 * [dihedral(r3,l1,l2,l3) - phi_C0]^2
+                    + K_phiA/2 * hav[dihedral(r1,r2,r3,l1) - phi_A0] * pi^2 +
+                    + K_phiB/2 * hav[dihedral(r2,r3,l1,l2) - phi_B0] * pi^2 +
+                    + K_phiC/2 * hav[dihedral(r3,l1,l2,l3) - phi_C0] * pi^2
                 }
 
-
-    , where the parameters are:
+    , where ``hav`` is the Haversine function ``(1-cos(x))/2`` and the parameters are:
 
         ``r1``, ``r2``, ``r3``: the coordinates of the 3 receptor atoms.
 
@@ -1330,6 +1330,25 @@ class Boresch(ReceptorLigandRestraint):
 
     The class supports automatic determination of the parameters left undefined
     in the constructor through :func:`determine_missing_parameters`.
+
+
+    This function used to be based on the Boresch orientational restraints [1] and has similar form to
+    its energy equation
+
+        .. code-block:: python
+
+            E = lambda_restraints * {
+                    K_r/2 * [|r3 - l1| - r_aA0]^2 +
+                    + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
+                    + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
+                    + K_phiA/2 * [dihedral(r1,r2,r3,l1) - phi_A0]^2 +
+                    + K_phiB/2 * [dihedral(r2,r3,l1,l2) - phi_B0]^2 +
+                    + K_phiC/2 * [dihedral(r3,l1,l2,l3) - phi_C0]^2
+                }
+
+    However, the form at the top is periodic with the dihedral angle and imposes a more steep energy penalty
+    while still maintaining the same maximum at the periodic border.
+
 
     *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
     See Ref [1] and [2] for more information on correcting for ligand symmetry.
@@ -1376,9 +1395,6 @@ class Boresch(ReceptorLigandRestraint):
     phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
         The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
         and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
-    standard_state_correction_method : 'analytical' or 'numeric', optional
-        The method to use to estimate the standard state correction (default
-        is 'analytical').
 
     Attributes
     ----------
@@ -1386,7 +1402,6 @@ class Boresch(ReceptorLigandRestraint):
         The indices of the 3 receptor atoms to restrain [r1, r2, r3].
     restrained_ligand_atoms : list of int
         The indices of the 3 ligand atoms to restrain [l1, l2, l3].
-    standard_state_correction_method
 
     References
     ----------
@@ -1440,8 +1455,7 @@ class Boresch(ReceptorLigandRestraint):
                  K_thetaB=None, theta_B0=None,
                  K_phiA=None, phi_A0=None,
                  K_phiB=None, phi_B0=None,
-                 K_phiC=None, phi_C0=None,
-                 standard_state_correction_method='analytical'):
+                 K_phiC=None, phi_C0=None):
         self.restrained_receptor_atoms = restrained_receptor_atoms
         self.restrained_ligand_atoms = restrained_ligand_atoms
         self.K_r = K_r
@@ -1450,7 +1464,6 @@ class Boresch(ReceptorLigandRestraint):
         self.theta_A0, self.theta_B0 = theta_A0, theta_B0
         self.K_phiA, self.K_phiB, self.K_phiC = K_phiA, K_phiB, K_phiC
         self.phi_A0, self.phi_B0, self.phi_C0 = phi_A0, phi_B0, phi_C0
-        self.standard_state_correction_method = standard_state_correction_method
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -1485,22 +1498,6 @@ class Boresch(ReceptorLigandRestraint):
     restrained_receptor_atoms = _BoreschRestrainedAtomsProperty('receptor')
     restrained_ligand_atoms = _BoreschRestrainedAtomsProperty('ligand')
 
-    @property
-    def standard_state_correction_method(self):
-        """str: The default method to use in :func:`get_standard_state_correction`.
-
-        This can be either 'analytical' or 'numerical'.
-
-        """
-        return self._standard_state_correction_method
-
-    @standard_state_correction_method.setter
-    def standard_state_correction_method(self, value):
-        if value not in ['analytical', 'numerical']:
-            raise ValueError("The standard state correction method must be one between "
-                             "'analytical' and 'numerical', got {}.".format(value))
-        self._standard_state_correction_method = value
-
     # -------------------------------------------------------------------------
     # Public methods.
     # -------------------------------------------------------------------------
@@ -1526,10 +1523,10 @@ class Boresch(ReceptorLigandRestraint):
             lambda_restraints * E;
             E = (K_r/2)*(distance(p3,p4) - r_aA0)^2
             + (K_thetaA/2)*(angle(p2,p3,p4)-theta_A0)^2 + (K_thetaB/2)*(angle(p3,p4,p5)-theta_B0)^2
-            + (K_phiA/2)*dphi_A^2 + (K_phiB/2)*dphi_B^2 + (K_phiC/2)*dphi_C^2;
-            dphi_A = dA - floor(dA/(2*pi)+0.5)*(2*pi); dA = dihedral(p1,p2,p3,p4) - phi_A0;
-            dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = dihedral(p2,p3,p4,p5) - phi_B0;
-            dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = dihedral(p3,p4,p5,p6) - phi_C0;
+            + (K_phiA/2)*uphi_A + (K_phiB/2)*uphi_B + (K_phiC/2)*uphi_C;
+            uphi_A = pi^2 * (1-cos(dA))/2; dA = dihedral(p1,p2,p3,p4) - phi_A0;
+            uphi_B = pi^2 * (1-cos(dB))/2; dB = dihedral(p2,p3,p4,p5) - phi_B0;
+            uphi_C = pi^2 * (1-cos(dC))/2; dC = dihedral(p3,p4,p5,p6) - phi_C0;
             pi = %f;
             """ % np.pi
 
@@ -1563,10 +1560,48 @@ class Boresch(ReceptorLigandRestraint):
            Computed standard-state correction in dimensionless units (kT).
 
         """
-        if self.standard_state_correction_method == 'analytical':
-            return self._get_standard_state_correction_analytical(thermodynamic_state)
-        else:  # The property checks that the value is known in the setter.
-            return self._get_standard_state_correction_numerical(thermodynamic_state)
+        self._check_parameters_defined()
+
+        def strip(passed_unit):
+            """Cast the passed_unit into md unit system for integrand lambda functions"""
+            return passed_unit.value_in_unit_system(unit.md_unit_system)
+
+        def hav(angle):
+            """Simple Haversin function for space later"""
+            return (1-np.cos(angle))/2
+
+        # Shortcuts variables.
+        pi = np.pi
+        kT = thermodynamic_state.kT
+        p = self  # For the parameters.
+
+        # Radial
+        sigma = 1 / unit.sqrt(p.K_r / kT)
+        rmin = min(0*unit.angstrom, p.r_aA0 - 8 * sigma)
+        rmax = p.r_aA0 + 8 * sigma
+        I = lambda r: r ** 2 * np.exp(-strip(p.K_r) / (2 * strip(kT)) * (r - strip(p.r_aA0)) ** 2)
+        DGIntegral, dDGIntegral = scipy.integrate.quad(I, strip(rmin), strip(rmax)) * unit.nanometer**3
+        ExpDeltaG = DGIntegral
+
+        # Angular
+        for name in ['A', 'B']:
+            theta0 = getattr(p, 'theta_' + name + '0')
+            K_theta = getattr(p, 'K_theta' + name)
+            I = lambda theta: np.sin(theta) * np.exp(-strip(K_theta) / (2 * strip(kT)) * (theta - strip(theta0)) ** 2)
+            integral_packet = scipy.integrate.quad(I, 0, pi)
+            fe_integral = integral_packet[0]
+            ExpDeltaG *= fe_integral
+
+        # Torsion
+        for name in ['A', 'B', 'C']:
+            phi0 = getattr(p, 'phi_' + name + '0')
+            K_phi = getattr(p, 'K_phi' + name)
+            I = lambda phi: np.exp(-strip(K_phi)/(2*strip(kT)) * hav(phi - phi0) * pi**2)
+            integral_packet = scipy.integrate.quad(I, 0, 2*pi)
+            ExpDeltaG *= integral_packet[0]
+
+        DeltaG = -np.log(8 * pi**2 * V0 / ExpDeltaG)
+        return DeltaG
 
     def determine_missing_parameters(self, thermodynamic_state, sampler_state, topography):
         """Determine parameters and restrained atoms automatically.
@@ -1605,7 +1640,7 @@ class Boresch(ReceptorLigandRestraint):
                 logger.debug('Attempt {} / {} at automatically selecting atoms and '
                              'restraint parameters...'.format(attempt, MAX_ATTEMPTS))
 
-                # Randomly pick non-collinear atoms.
+                # Smi-Randomly pick non-collinear atoms with rules
                 restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
                 self.restrained_receptor_atoms = restrained_atoms[:3]
                 self.restrained_ligand_atoms = restrained_atoms[3:]
@@ -1617,15 +1652,6 @@ class Boresch(ReceptorLigandRestraint):
                 if self._is_analytical_correction_robust(thermodynamic_state.kT) is True:
                     break
 
-        # Check if the analytical standard state correction is robust with these parameters.
-        # This check is must be performed both in the case where the user has provided the
-        # restrained atoms, and in the case where we exhausted the number of attempts.
-        if (not self._is_analytical_correction_robust(thermodynamic_state.kT) and
-                self.standard_state_correction_method == 'analytical'):
-            logger.warning('The provided restrained atoms do not guarantee a robust calculation of '
-                           'the standard state correction. Switching to the numerical scheme.')
-            self.standard_state_correction_method = 'numerical'
-
     # -------------------------------------------------------------------------
     # Internal-usage
     # -------------------------------------------------------------------------
@@ -1636,8 +1662,7 @@ class Boresch(ReceptorLigandRestraint):
         parameter_names, _, _, _ = inspect.getargspec(self.__init__)
 
         # Exclude non-parameters arguments.
-        for exclusion in ['self', 'restrained_receptor_atoms', 'restrained_ligand_atoms',
-                          'standard_state_correction_method']:
+        for exclusion in ['self', 'restrained_receptor_atoms', 'restrained_ligand_atoms']:
             parameter_names.remove(exclusion)
 
         # Retrieve and store options.
@@ -1687,101 +1712,6 @@ class Boresch(ReceptorLigandRestraint):
             is_robust = False
 
         return is_robust
-
-    def _get_standard_state_correction_analytical(self, thermodynamic_state):
-        """Return the standard state correction using the analytical method.
-
-        Uses analytical approach from [1], but this approach is known to be inexact.
-        This approach breaks down when the equilibrium restraint angles are near the
-        limits of their domains and when equilibrium distance is near 0.
-
-        Parameters
-        ----------
-        thermodynamic_state : openmmtools.states.ThermodynamicState
-            The thermodynamic state.
-
-        Returns
-        -------
-        DeltaG : float
-           Computed standard-state correction in dimensionless units (kT).
-
-        """
-        # Check if all parameters are defined.
-        self._check_parameters_defined()
-
-        # Shortcuts variables.
-        pi = np.pi
-        kT = thermodynamic_state.kT
-        p = self  # For the parameters.
-
-        # Eq 32 of Ref [1]. Multiply by unit.radian**5 to remove the
-        # expected unit value radians is a soft unit in this case, it
-        # cancels in the math, but not in the equations above.
-        DeltaG = -np.log(
-            (8. * pi ** 2 * V0) / (p.r_aA0 ** 2 * unit.sin(p.theta_A0) * unit.sin(p.theta_B0)) *
-            unit.sqrt(p.K_r * p.K_thetaA * p.K_thetaB * p.K_phiA * p.K_phiB * p.K_phiC) / (2 * pi * kT) ** 3 *
-            unit.radian**5
-        )
-
-        return DeltaG
-
-    def _get_standard_state_correction_numerical(self, thermodynamic_state):
-        """Return the standard state correction using the numerical method.
-
-        Uses numerical integral to the partition function contributions for
-        r and theta, analytical for phi
-
-        Parameters
-        ----------
-        thermodynamic_state : openmmtools.states.ThermodynamicState
-            The thermodynamic state.
-
-        Returns
-        -------
-        DeltaG : float
-           Computed standard-state correction in dimensionless units (kT).
-
-        """
-        # Check if all parameters are defined.
-        self._check_parameters_defined()
-
-        def strip(passed_unit):
-            """Cast the passed_unit into md unit system for integrand lambda functions"""
-            return passed_unit.value_in_unit_system(unit.md_unit_system)
-
-        # Shortcuts variables.
-        pi = np.pi
-        kT = thermodynamic_state.kT
-        p = self  # For the parameters.
-
-        # Radial
-        sigma = 1 / unit.sqrt(p.K_r / kT)
-        rmin = min(0*unit.angstrom, p.r_aA0 - 8 * sigma)
-        rmax = p.r_aA0 + 8 * sigma
-        I = lambda r: r ** 2 * np.exp(-strip(p.K_r) / (2 * strip(kT)) * (r - strip(p.r_aA0)) ** 2)
-        DGIntegral, dDGIntegral = scipy.integrate.quad(I, strip(rmin), strip(rmax)) * unit.nanometer**3
-        ExpDeltaG = DGIntegral
-
-        # Angular
-        for name in ['A', 'B']:
-            theta0 = getattr(p, 'theta_' + name + '0')
-            K_theta = getattr(p, 'K_theta' + name)
-            I = lambda theta: np.sin(theta) * np.exp(-strip(K_theta) / (2 * strip(kT)) * (theta - strip(theta0)) ** 2)
-            DGIntegral, dDGIntegral = scipy.integrate.quad(I, 0, pi)
-            ExpDeltaG *= DGIntegral
-
-        # Torsion
-        for name in ['A', 'B', 'C']:
-            phi0 = getattr(p, 'phi_' + name + '0')
-            K_phi = getattr(p, 'K_phi' + name)
-            kshort = strip(K_phi/kT)
-            ExpDeltaG *= math.sqrt(pi/2.0) * (
-                math.erf((strip(phi0)+pi)*unit.sqrt(kshort)/math.sqrt(2)) -
-                math.erf((strip(phi0)-pi)*unit.sqrt(kshort)/math.sqrt(2))
-            ) / unit.sqrt(kshort)
-
-        DeltaG = -np.log(8 * pi**2 * V0 / ExpDeltaG)
-        return DeltaG
 
     @staticmethod
     def _is_collinear(positions, atoms, threshold=0.9):
@@ -1914,26 +1844,62 @@ class Boresch(ReceptorLigandRestraint):
             raise ValueError(error_msg.format(min_distance, max_distance))
         r3_l1_pairs = r3_l1_pairs[indices_of_in_range_pairs].tolist()
 
+        def find_bonded_to(input_atom_index, comparison_set):
+            """Find bonded network between the atoms"""
+            # Probably could make this faster if we added a graph module like networkx dep, but not needed
+            # Get topology
+            top = topography.topology
+            bonds = np.zeros([top.n_atoms, top.n_atoms], dtype=bool)
+            # Create bond graph
+            for a1, a2 in top.bonds:
+                bonds[a1, a2] = bonds[a2, a1] = True
+            all_bond_optons = []
+            # Cycle through all bonds on the reference
+            for a2, first_bond in enumerate(bonds[input_atom_index]):
+                # Enumerate all secondary bonds from the reference but only if in comparison set
+                if first_bond is True and a2 in comparison_set:
+                    # Same as first
+                    for a3, second_bond in enumerate(bonds[a2]):
+                        if second_bond is True and a3 in comparison_set and a3 != input_atom_index:
+                            all_bond_optons.append([a2, a3])
+            # This will raise a ValueError if nothing is found
+            return random.sample(all_bond_optons, 1)[0]
+
         # Iterate until we have found a set of non-collinear atoms.
         accepted = False
+        MAX_ATTEMPTS = 100
+        attempts = 0
         while not accepted:
             # Select a receptor/ligand atom in range of each other for the distance constraint.
             r3_l1_atoms = random.sample(r3_l1_pairs, 1)[0]
-            r3_l1_atoms_set = set(r3_l1_atoms)
-
             # Determine remaining receptor/ligand atoms.
             if isinstance(heavy_receptor_atoms, list):
                 r1_r2_atoms = heavy_receptor_atoms[:2]
             else:
-                r1_r2_atoms = random.sample(heavy_receptor_atoms - r3_l1_atoms_set, 2)
+                try:
+                    r1_r2_atoms = find_bonded_to(r3_l1_atoms[0], heavy_receptor_atoms)[::-1]
+                except ValueError:
+                    r1_r2_atoms = None
             if isinstance(heavy_ligand_atoms, list):
                 l2_l3_atoms = heavy_ligand_atoms[1:]
             else:
-                l2_l3_atoms = random.sample(heavy_ligand_atoms - r3_l1_atoms_set, 2)
-
+                try:
+                    l2_l3_atoms = find_bonded_to(r3_l1_atoms[-1], heavy_ligand_atoms)
+                except ValueError:
+                    l2_l3_atoms = None
             # Reject collinear sets of atoms.
             restrained_atoms = r1_r2_atoms + r3_l1_atoms + l2_l3_atoms
-            accepted = not self._is_collinear(sampler_state.positions, restrained_atoms)
+            if r1_r2_atoms is None or l2_l3_atoms is None:
+                accepted = False
+            else:
+                accepted = not self._is_collinear(sampler_state.positions, restrained_atoms)
+            if attempts > MAX_ATTEMPTS:
+                raise RuntimeError("Could not find any good sets of bonded atoms to make stable Boresch "
+                                   "restraints from. There should be at least 1 real defined angle in the"
+                                   "selected restrained ligand atoms and 1 in the selected restrained receptor atoms "
+                                   "for good numerical stability")
+            else:
+                attempts += 1
 
         logger.debug('Selected atoms to restrain: {}'.format(restrained_atoms))
         return restrained_atoms

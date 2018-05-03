@@ -11,6 +11,9 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Added more robust last good iteration saving
 - Added more robust restore from checkpoint access
 - Exposed checkpoint interval iterations in ``MultiStateReporter``
+- Boresch restraint automatic atom selection now picks bonded heavy atoms
+- Boresch restraint's functional form is different to support more numerically stable periodic energy functions
+- Boresch restraints no longer accept ``standard_state_correction_method`` as an option
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------
