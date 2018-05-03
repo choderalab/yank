@@ -153,18 +153,11 @@ def dispatch_extract_trajectory(args):
     # Extract trajectory
     trajectory = analyze.extract_trajectory(nc_path, **kwargs)
 
-    # Detect output format.
-    extension = os.path.splitext(output_path)[1][1:]  # remove dot
-    try:
-        save_function = getattr(trajectory, 'save_' + extension)
-    except AttributeError:
-        raise ValueError('Cannot detect format from extension of file {}'.format(output_path))
-
     # Create output directory and save trajectory
     output_dir = os.path.dirname(output_path)
     if output_dir != '' and not os.path.isdir(output_dir):
         os.makedirs(output_dir)
-    save_function(output_path)
+    trajectory.save(output_path)
 
     return True
 
