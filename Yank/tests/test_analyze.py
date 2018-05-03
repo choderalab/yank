@@ -412,9 +412,6 @@ class TestMultiPhaseAnalyzer(object):
         def check_cached_properties(is_in):
             for cached_property in cached_properties:
                 err_msg = '{} is cached != {}'.format(cached_property, is_in)
-                if not (cached_property in analyzer._cache) is is_in:
-                    print(cached_property)
-                    import pdb; pdb.set_trace()
                 assert (cached_property in analyzer._cache) is is_in, err_msg
             assert (analyzer._computed_observables['free_energy'] is not None) is is_in
 
