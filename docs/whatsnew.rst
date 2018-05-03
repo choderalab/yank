@@ -8,9 +8,11 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 0.21.3 Post-Triage Bugfixes
 ---------------------------
-- Added more robust last good iteration saving
-- Added more robust restore from checkpoint access
-- Exposed checkpoint interval iterations in ``MultiStateReporter``
+- Added more robust last good iteration saving.
+- Added more robust restore from checkpoint access.
+- Exposed checkpoint interval iterations in ``MultiStateReporter``.
+- Fix bug #941 where unbiasing the restraint would crash the analysis if using a 32-bit OpenCL platform.
+- Fix bug #945 where relative imports of OpenEye tools would cause problems on some systems.
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------
