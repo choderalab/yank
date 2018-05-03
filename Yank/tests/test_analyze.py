@@ -412,6 +412,9 @@ class TestMultiPhaseAnalyzer(object):
         def check_cached_properties(is_in):
             for cached_property in cached_properties:
                 err_msg = '{} is cached != {}'.format(cached_property, is_in)
+                if not (cached_property in analyzer._cache) is is_in:
+                    print(cached_property)
+                    import pdb; pdb.set_trace()
                 assert (cached_property in analyzer._cache) is is_in, err_msg
             assert (analyzer._computed_observables['free_energy'] is not None) is is_in
 
@@ -422,8 +425,9 @@ class TestMultiPhaseAnalyzer(object):
         # The cached value and its dependencies are generated lazily when calling the property.
         cached_properties = ['mbar', 'decorrelated_state_indices_ln', 'equilibration_data']
         yield check_cached_properties, False
-        analyzer._decorrelated_state_indices_ln
         self.help_fe_calc(analyzer)
+        analyzer._decorrelated_state_indices_ln
+        analyzer.get_free_energy()
         yield check_cached_properties, True
 
         # If we invalidate one of the dependencies, the values that depend on it are invalidated too.
@@ -509,9 +513,11 @@ class TestMultiPhaseAnalyzer(object):
 
     def test_extract_trajectory(self):
         """extract_trajectory handles checkpointing and skip frame correctly."""
+        n_frames = self.reporter.read_last_iteration(False) + 1  # Include minimization iteration.
+
         # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
         solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=False)
-        assert len(solute_trajectory) == self.n_steps
+        assert len(solute_trajectory) == n_frames
         assert solute_trajectory.n_atoms == len(self.analysis_atoms)
 
         # Check that only the checkpoint trajectory is returned when keep_solvent is True.
@@ -519,12 +525,12 @@ class TestMultiPhaseAnalyzer(object):
         # Should this change in analyze, then this logic will need to be changed as well.
         # The int() rounds down from sampling to a state in between the interval.
         full_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=True)
-        assert len(full_trajectory) == int((self.n_steps + 1) / self.checkpoint_interval)
+        assert len(full_trajectory) == (n_frames + 1) // self.checkpoint_interval
 
         # Check that skip_frame reduces the trajectory length correctly.
         skip_frame = 2
         trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, skip_frame=skip_frame)
-        assert len(trajectory) == int(self.n_steps / self.checkpoint_interval / skip_frame) + 1
+        assert len(trajectory) == n_frames / self.checkpoint_interval // skip_frame + 1
 
         # Extracting the trajectory of a state does not incur into errors.
         analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
