@@ -372,8 +372,7 @@ class MultiStateSampler(object):
                 new_value = self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
             # Update storage if we ReplicaExchange is initialized.
-            # TODO: JDC Please review this change!
-            if instance._thermodynamic_states is not None and instance._reporter is not None:
+            if instance._reporter is not None and instance._reporter.is_open():
                 mpi.run_single_node(0, instance._store_options)
 
         # ----------------------------------
@@ -493,21 +492,33 @@ class MultiStateSampler(object):
         metadata : dict, optional, default=None
            Simulation metadata to be stored in the file.
         """
+        # Handle case in which storage is a string and not a Reporter object.
+        self._reporter = self._reporter_from_storage(storage, check_exist=False)
 
+        # Check if netcdf files exist. This is run only on MPI node 0 and
+        # broadcasted. This is to avoid the case where the other nodes
+        # arrive to this line after node 0 has already created the storage
+        # file, causing an error.
+        if mpi.run_single_node(0, self._reporter.storage_exists, broadcast_result=True):
+            raise RuntimeError('Storage file {} already exists; cowardly '
+                               'refusing to overwrite.'.format(self._reporter.filepath))
+
+        # Make sure that only the root node has an open reporter.
+        self._reporter.close()
+
+        # Make sure sampler_states is an iterable of SamplerStates.
+        if isinstance(sampler_states, mmtools.states.SamplerState):
+            sampler_states = [sampler_states]
+
+        # Initialize internal attribute and dataset.
         self._pre_write_create(thermodynamic_states, sampler_states, storage,
                                initial_thermodynamic_states=initial_thermodynamic_states,
                                unsampled_thermodynamic_states=unsampled_thermodynamic_states,
                                metadata=metadata)
 
-        # Handle case in which storage is a string.
-        reporter = self._reporter_from_storage(storage, check_exist=False)
-
         # Display papers to be cited.
         self._display_citations()
 
-        # Close the reporter file so its ready for use
-        reporter.close()
-        self._reporter = reporter
         self._initialize_reporter()
 
     def _pre_write_create(self,
@@ -523,10 +534,6 @@ class MultiStateSampler(object):
         :func:`_report_iteration`.
         All calls to this function should be *identical* to :func:`create` itself
         """
-        # Make sure sampler_states is an iterable of SamplerStates for later.
-        if isinstance(sampler_states, mmtools.states.SamplerState):
-            sampler_states = [sampler_states]
-
         # Check all systems are either periodic or not.
         is_periodic = thermodynamic_states[0].is_periodic
         for thermodynamic_state in thermodynamic_states:
@@ -549,17 +556,6 @@ class MultiStateSampler(object):
                     raise ValueError('All ThermodynamicStates and SamplerStates must '
                                      'have the same number of particles')
 
-        # Handle case in which storage is a string.
-        reporter = self._reporter_from_storage(storage, check_exist=False)
-
-        # Check if netcdf files exist. This is run only on MPI node 0 and
-        # broadcasted. This is to avoid the case where the other nodes
-        # arrive to this line after node 0 has already created the storage
-        # file, causing an error.
-        if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
-            raise RuntimeError('Storage file {} already exists; cowardly '
-                               'refusing to overwrite.'.format(reporter.filepath))
-
         # Handle default argument for metadata and add default simulation title.
         default_title = (self._TITLE_TEMPLATE.format(time.asctime(time.localtime())))
         if metadata is None:
@@ -579,12 +575,6 @@ class MultiStateSampler(object):
 
         # Deep copy sampler states.
         self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
-
-        # Make sure all sampler states have box vectors defined; add dummies if needed.
-        default_box_vectors = thermodynamic_states[0].system.getDefaultPeriodicBoxVectors()
-        for sampler_state in self._sampler_states:
-            if sampler_state.box_vectors is None:
-                sampler_state.box_vectors = default_box_vectors
 
         # Set initial thermodynamic state indices if not specified
         if initial_thermodynamic_states is None:
@@ -622,7 +612,6 @@ class MultiStateSampler(object):
         self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
         self._neighborhoods = np.zeros([self.n_replicas, self.n_states], 'i1')
         self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
-        reporter.close()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, tolerance=1.0 * unit.kilojoules_per_mole / unit.nanometers,
@@ -984,7 +973,8 @@ class MultiStateSampler(object):
     # Internal-usage: Initialization and storage utilities.
     # -------------------------------------------------------------------------
 
-    def _default_initial_thermodynamic_states(self, thermodynamic_states, sampler_states):
+    @classmethod
+    def _default_initial_thermodynamic_states(cls, thermodynamic_states, sampler_states):
         """
         Create the initial_thermodynamic_states obeying the following rules:
 
@@ -999,8 +989,6 @@ class MultiStateSampler(object):
           to give each ``thermodynamic_state`` an equal number. Then the rules from the previous point are
           followed.
         """
-        # Ignore IDE's saying this may be static because subclasses implement changes and need to call super()
-        # which does not work for staticmethods
         n_thermo = len(thermodynamic_states)
         n_sampler = len(sampler_states)
         thermo_indices = np.arange(n_thermo, dtype=int)
