@@ -1215,52 +1215,47 @@ class Mol2File(object):
 
 def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     """
-    Check if a given OpenEye tool is installed and Licensed
+    Check if a given OpenEye tool is installed and Licensed.
 
-    If the OpenEye toolkit is not installed, returns False
+    If the OpenEye toolkit is not installed, returns False.
 
     Parameters
     ----------
     oetools : str or iterable of strings, Optional, Default: ('oechem', 'oequacpac', 'oeiupac', 'oeomega')
-        Set of tools to check by their string name. Defaults to the complete set that YANK *could* use, depending on
-        feature requested.
+        Set of tools to check by their string name. Defaults to the
+        complete set that YANK *could* use, depending on feature requested.
 
-        Only checks the subset of tools if passed. Also accepts a single tool to check as a string instead of an
-        iterable of length 1.
+        Only checks the subset of tools if passed. Also accepts a single
+        tool to check as a string instead of an iterable of length 1.
 
     Returns
     -------
     all_installed : bool
-        True if all tools in ``oetools`` are installed and licensed, False otherwise
+        True if all tools in ``oetools`` are installed and licensed, False otherwise.
     """
-    # Complete list of module: License check
+    # Complete list of module: License function name.
     tools_license = {'oechem': 'OEChemIsLicensed',
                      'oequacpac': 'OEQuacPacIsLicensed',
                      'oeiupac': 'OEIUPACIsLicensed',
                      'oeomega': 'OEOmegaIsLicensed'}
-    tool_keys = tools_license.keys()
-    # Cast oetools to tuple if its a single string
+
+    # Cast oetools to tuple if its a single string.
     if type(oetools) is str:
         oetools = (oetools,)
-    tool_set = set(oetools)
-    valid_tool_set = set(tool_keys)
-    if tool_set & valid_tool_set == set():
-        # Check for empty set intersection
-        raise ValueError("Expected OpenEye tools to have at least of the following {}, "
-                         "but instead got {}".format(tool_keys, oetools))
-    try:
-        for tool in oetools:
-            if tool in tool_keys:
-                # Try loading the module
-                try:
-                    module = importlib.import_module('openeye', tool)
-                except SystemError: # Python 3.4 relative import fix
-                    module = importlib.import_module('openeye.' + tool)
-                # Check that we have the license
-                if not getattr(module, tools_license[tool])():
-                    raise ImportError
-    except ImportError:
-        return False
+    # Check if the input oetools are known.
+    if not set(oetools).issubset(set(tools_license)):
+        raise ValueError("Expected an OpenEye tools subset of {}, but instead "
+                         "got {}".format(tuple(tools_license), oetools))
+
+    # Try loading the module.
+    for tool in oetools:
+        try:
+            module = importlib.import_module('openeye.' + tool)
+        except ImportError:
+            return False
+        # Check that we have the license.
+        if not getattr(module, tools_license[tool])():
+            return False
     return True
 
 
