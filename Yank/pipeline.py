@@ -448,6 +448,9 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
             serialized_system = f.read()
 
         system = openmm.XmlSerializer.deserialize(serialized_system)
+        box_vectors = positions_file.topology.getPeriodicBoxVectors()
+        if box_vectors is None:
+            box_vectors = system.getDefaultPeriodicBoxVectors()
 
     # Read Amber prmtop and inpcrd files.
     elif parameters_file_extension == '.prmtop':
