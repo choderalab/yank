@@ -32,7 +32,6 @@ import scipy.integrate
 import mdtraj as md
 import openmmtools as mmtools
 from simtk import openmm, unit
-import scipy.sparse.csgraph as cs
 
 from . import pipeline
 from .utils import methoddispatch
@@ -1298,9 +1297,9 @@ class Boresch(ReceptorLigandRestraint):
                     K_r/2 * [|r3 - l1| - r_aA0]^2 +
                     + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
                     + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
-                    + K_phiA/2 * hav[dihedral(r1,r2,r3,l1) - phi_A0] * pi^2 +
-                    + K_phiB/2 * hav[dihedral(r2,r3,l1,l2) - phi_B0] * pi^2 +
-                    + K_phiC/2 * hav[dihedral(r3,l1,l2,l3) - phi_C0] * pi^2
+                    + K_phiA/2 * hav(dihedral(r1,r2,r3,l1) - phi_A0) * pi^2 +
+                    + K_phiB/2 * hav(dihedral(r2,r3,l1,l2) - phi_B0) * pi^2 +
+                    + K_phiC/2 * hav(dihedral(r3,l1,l2,l3) - phi_C0) * pi^2
                 }
 
     , where ``hav`` is the Haversine function ``(1-cos(x))/2`` and the parameters are:
@@ -1596,7 +1595,7 @@ class Boresch(ReceptorLigandRestraint):
         for name in ['A', 'B', 'C']:
             phi0 = getattr(p, 'phi_' + name + '0')
             K_phi = getattr(p, 'K_phi' + name)
-            I = lambda phi: np.exp(-strip(K_phi)/(2*strip(kT)) * hav(phi - phi0) * pi**2)
+            I = lambda phi: np.exp(-strip(K_phi)/(2*strip(kT)) * hav(phi - strip(phi0)) * pi**2)
             integral_packet = scipy.integrate.quad(I, 0, 2*pi)
             ExpDeltaG *= integral_packet[0]
 
@@ -1634,6 +1633,9 @@ class Boresch(ReceptorLigandRestraint):
         if self._are_restrained_atoms_defined:
             self._determine_restraint_parameters(sampler_state, topography)
         else:
+            # Cache initial selection to reset after each attempt
+            initial_restrained_receptor = self.restrained_receptor_atoms
+            initial_restrained_ligand = self.restrained_ligand_atoms
             # Keep selecting random retrained atoms until the parameters
             # make the standard state correction robust.
             for attempt in range(MAX_ATTEMPTS):
@@ -1641,12 +1643,18 @@ class Boresch(ReceptorLigandRestraint):
                              'restraint parameters...'.format(attempt, MAX_ATTEMPTS))
 
                 # Smi-Randomly pick non-collinear atoms with rules
+                self.restrained_ligand_atoms = initial_restrained_ligand
+                self.restrained_receptor_atoms = initial_restrained_receptor
                 restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
                 self.restrained_receptor_atoms = restrained_atoms[:3]
                 self.restrained_ligand_atoms = restrained_atoms[3:]
 
                 # Determine restraint parameters for these atoms.
                 self._determine_restraint_parameters(sampler_state, topography)
+
+                # TODO: JDC/AXR do we need a check for robustness now that we are on numerical only?
+                # TODO: If not, this block can be simplified, greatly
+                break
 
                 # Check if we have found a good solution.
                 if self._is_analytical_correction_robust(thermodynamic_state.kT) is True:
@@ -1779,7 +1787,27 @@ class Boresch(ReceptorLigandRestraint):
 
         @functools.singledispatch
         def compute_atom_set(input_atoms, topography_key):
-            """Helper function for doing set operations on heavy ligand atoms of all other types"""
+            """
+            Helper function for doing set operations on heavy ligand atoms of all other types
+
+            Parameters
+            ----------
+            input_atoms : iterable of int, int, string, or None
+                Atom selection language. Can be any number of valid selections such as
+                iterable of ints like lists or sets,
+                a single int when only 1 atom is chosen,
+                None to just choose all of the atoms in topography_key
+                or a string to pass to :func:`yank.Topography.select`
+            topography_key : str
+                Matching sub-selection in the Topography to create the intersect with
+
+            Returns
+            -------
+            intersect : set or list
+                Returns the set that is the intersect of the input atoms and topography_key
+                In special cases when the input_atoms is exactly a list of 3, then the exact list
+                is returned because those atoms have been specially chosen
+            """
             # If the length is 3, we don't want to make ANY changes, so don't modify the set
             input_set = set(input_atoms)
             topography_set = set(getattr(topography, topography_key))
@@ -1809,7 +1837,7 @@ class Boresch(ReceptorLigandRestraint):
                 logger.warning(atom_inclusion_warning.format(topography_key))
             # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
             # If they come out as np.int64's, OpenMM complains
-            return [*map(int, final_output)]
+            return {*map(int, final_output)}
 
         heavy_ligand_atoms = compute_atom_set(heavy_ligand_atoms, 'ligand_atoms')
         heavy_receptor_atoms = compute_atom_set(heavy_receptor_atoms, 'receptor_atoms')
@@ -1845,22 +1873,41 @@ class Boresch(ReceptorLigandRestraint):
         r3_l1_pairs = r3_l1_pairs[indices_of_in_range_pairs].tolist()
 
         def find_bonded_to(input_atom_index, comparison_set):
-            """Find bonded network between the atoms"""
+            """
+            Find bonded network between the atoms to create a selection with 1 angle to the reference
+
+            Parameters
+            ----------
+            input_atom_index : int
+                Reference atom index to try and create the selection from the bonds
+            comparison_set : iterable of int
+                Set of additional atoms to try and make the selection from. There should be at least
+                one non-colinear set 3 atoms which are bonded together in R-B-C where R is the input_atom_index
+                and B, C are atoms in the comparison_set bonded to each other.
+                Can be inclusive of input_atom_index and C can be bound to R as well as B
+
+            Returns
+            -------
+            bonded_atoms : list of int, length 3
+                Returns the list of atoms in order of input_atom_index <- bonded atom <- bonded atom
+            """
             # Probably could make this faster if we added a graph module like networkx dep, but not needed
             # Get topology
             top = topography.topology
             bonds = np.zeros([top.n_atoms, top.n_atoms], dtype=bool)
             # Create bond graph
             for a1, a2 in top.bonds:
+                a1 = a1.index
+                a2 = a2.index
                 bonds[a1, a2] = bonds[a2, a1] = True
             all_bond_optons = []
             # Cycle through all bonds on the reference
             for a2, first_bond in enumerate(bonds[input_atom_index]):
                 # Enumerate all secondary bonds from the reference but only if in comparison set
-                if first_bond is True and a2 in comparison_set:
+                if first_bond and a2 in comparison_set:
                     # Same as first
                     for a3, second_bond in enumerate(bonds[a2]):
-                        if second_bond is True and a3 in comparison_set and a3 != input_atom_index:
+                        if second_bond and a3 in comparison_set and a3 != input_atom_index:
                             all_bond_optons.append([a2, a3])
             # This will raise a ValueError if nothing is found
             return random.sample(all_bond_optons, 1)[0]
@@ -1888,10 +1935,10 @@ class Boresch(ReceptorLigandRestraint):
                 except ValueError:
                     l2_l3_atoms = None
             # Reject collinear sets of atoms.
-            restrained_atoms = r1_r2_atoms + r3_l1_atoms + l2_l3_atoms
             if r1_r2_atoms is None or l2_l3_atoms is None:
                 accepted = False
             else:
+                restrained_atoms = r1_r2_atoms + r3_l1_atoms + l2_l3_atoms
                 accepted = not self._is_collinear(sampler_state.positions, restrained_atoms)
             if attempts > MAX_ATTEMPTS:
                 raise RuntimeError("Could not find any good sets of bonded atoms to make stable Boresch "
