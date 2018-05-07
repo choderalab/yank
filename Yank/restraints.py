@@ -1282,8 +1282,10 @@ class FlatBottom(RadiallySymmetricRestraint):
 # Orientation-dependent receptor-ligand restraints.
 # ==============================================================================
 
-class Boresch(ReceptorLigandRestraint):
-    """Impose Boresch-style orientational restraints on protein-ligand system.
+class BoreschLike(ReceptorLigandRestraint, ABC):
+    """
+    Abstract class to impose Boresch-like orientational restraints on protein-ligand system.
+    Subclasses are specific implementations of the energy functions
 
     This restraints the ligand binding mode by constraining 1 distance, 2
     angles and 3 dihedrals between 3 atoms of the receptor and 3 atoms of
@@ -1297,9 +1299,9 @@ class Boresch(ReceptorLigandRestraint):
                     K_r/2 * [|r3 - l1| - r_aA0]^2 +
                     + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
                     + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
-                    + K_phiA/2 * hav(dihedral(r1,r2,r3,l1) - phi_A0) * pi^2 +
-                    + K_phiB/2 * hav(dihedral(r2,r3,l1,l2) - phi_B0) * pi^2 +
-                    + K_phiC/2 * hav(dihedral(r3,l1,l2,l3) - phi_C0) * pi^2
+                    + K_phiA/2 * hav(dihedral(r1,r2,r3,l1) - phi_A0) * 2 +
+                    + K_phiB/2 * hav(dihedral(r2,r3,l1,l2) - phi_B0) * 2 +
+                    + K_phiC/2 * hav(dihedral(r3,l1,l2,l3) - phi_C0) * 2
                 }
 
     , where ``hav`` is the Haversine function ``(1-cos(x))/2`` and the parameters are:
@@ -1346,7 +1348,10 @@ class Boresch(ReceptorLigandRestraint):
                 }
 
     However, the form at the top is periodic with the dihedral angle and imposes a more steep energy penalty
-    while still maintaining the same maximum at the periodic border.
+    while still maintaining the same Taylor series expanded force and energy near phi_X0. The ``*2`` on the
+    ``hav()`` functions in the energy expression are shown as the explicit correction to the ``hav()`` function
+    to make the leading spring constant force consistent with the original harmonic Boresch restraint. In practice,
+    the ``1/2`` from the ``hav()`` function is omitted.
 
 
     *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
@@ -1518,16 +1523,7 @@ class Boresch(ReceptorLigandRestraint):
         # Check if all parameters are defined.
         self._check_parameters_defined()
 
-        energy_function = """
-            lambda_restraints * E;
-            E = (K_r/2)*(distance(p3,p4) - r_aA0)^2
-            + (K_thetaA/2)*(angle(p2,p3,p4)-theta_A0)^2 + (K_thetaB/2)*(angle(p3,p4,p5)-theta_B0)^2
-            + (K_phiA/2)*uphi_A + (K_phiB/2)*uphi_B + (K_phiC/2)*uphi_C;
-            uphi_A = pi^2 * (1-cos(dA))/2; dA = dihedral(p1,p2,p3,p4) - phi_A0;
-            uphi_B = pi^2 * (1-cos(dB))/2; dB = dihedral(p2,p3,p4,p5) - phi_B0;
-            uphi_C = pi^2 * (1-cos(dC))/2; dC = dihedral(p3,p4,p5,p6) - phi_C0;
-            pi = %f;
-            """ % np.pi
+        energy_function = self._get_energy_function_string()
 
         # Add constant definitions to the energy function
         for name, value in self._parameters.items():
@@ -1565,10 +1561,6 @@ class Boresch(ReceptorLigandRestraint):
             """Cast the passed_unit into md unit system for integrand lambda functions"""
             return passed_unit.value_in_unit_system(unit.md_unit_system)
 
-        def hav(angle):
-            """Simple Haversin function for space later"""
-            return (1-np.cos(angle))/2
-
         # Shortcuts variables.
         pi = np.pi
         kT = thermodynamic_state.kT
@@ -1576,26 +1568,27 @@ class Boresch(ReceptorLigandRestraint):
 
         # Radial
         sigma = 1 / unit.sqrt(p.K_r / kT)
-        rmin = min(0*unit.angstrom, p.r_aA0 - 8 * sigma)
-        rmax = p.r_aA0 + 8 * sigma
-        I = lambda r: r ** 2 * np.exp(-strip(p.K_r) / (2 * strip(kT)) * (r - strip(p.r_aA0)) ** 2)
-        DGIntegral, dDGIntegral = scipy.integrate.quad(I, strip(rmin), strip(rmax)) * unit.nanometer**3
-        ExpDeltaG = DGIntegral
+        rmin = strip(min(0*unit.angstrom, p.r_aA0 - 8 * sigma))
+        rmax = strip(p.r_aA0 + 8 * sigma)
+        r0 = strip(p.r_aA0)
+        K_r = strip(p.K_r)
+        I = lambda r: self._numerical_distance_integrand(r, r0, K_r, strip(kT))
+        integral_packet = scipy.integrate.quad(I, rmin, rmax) * unit.nanometer**3
+        ExpDeltaG = integral_packet[0]
 
         # Angular
         for name in ['A', 'B']:
-            theta0 = getattr(p, 'theta_' + name + '0')
-            K_theta = getattr(p, 'K_theta' + name)
-            I = lambda theta: np.sin(theta) * np.exp(-strip(K_theta) / (2 * strip(kT)) * (theta - strip(theta0)) ** 2)
+            theta0 = strip(getattr(p, 'theta_' + name + '0'))
+            K_theta = strip(getattr(p, 'K_theta' + name))
+            I = lambda theta: self._numerical_angle_integrand(theta, theta0, K_theta, kT)
             integral_packet = scipy.integrate.quad(I, 0, pi)
-            fe_integral = integral_packet[0]
-            ExpDeltaG *= fe_integral
+            ExpDeltaG *= integral_packet[0]
 
         # Torsion
         for name in ['A', 'B', 'C']:
-            phi0 = getattr(p, 'phi_' + name + '0')
-            K_phi = getattr(p, 'K_phi' + name)
-            I = lambda phi: np.exp(-strip(K_phi)/(2*strip(kT)) * hav(phi - strip(phi0)) * pi**2)
+            phi0 = strip(getattr(p, 'phi_' + name + '0'))
+            K_phi = strip(getattr(p, 'K_phi' + name))
+            I = lambda phi: self._numerical_torsion_integrand(phi, phi0, K_phi, kT)
             integral_packet = scipy.integrate.quad(I, 0, 2*pi)
             ExpDeltaG *= integral_packet[0]
 
@@ -1625,7 +1618,6 @@ class Boresch(ReceptorLigandRestraint):
             The topography with labeled receptor and ligand atoms.
 
         """
-        MAX_ATTEMPTS = 100
 
         logger.debug('Automatically selecting restraint atoms and parameters:')
 
@@ -1633,32 +1625,126 @@ class Boresch(ReceptorLigandRestraint):
         if self._are_restrained_atoms_defined:
             self._determine_restraint_parameters(sampler_state, topography)
         else:
-            # Cache initial selection to reset after each attempt
-            initial_restrained_receptor = self.restrained_receptor_atoms
-            initial_restrained_ligand = self.restrained_ligand_atoms
-            # Keep selecting random retrained atoms until the parameters
-            # make the standard state correction robust.
-            for attempt in range(MAX_ATTEMPTS):
-                logger.debug('Attempt {} / {} at automatically selecting atoms and '
-                             'restraint parameters...'.format(attempt, MAX_ATTEMPTS))
+            restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
+            self.restrained_receptor_atoms = restrained_atoms[:3]
+            self.restrained_ligand_atoms = restrained_atoms[3:]
 
-                # Smi-Randomly pick non-collinear atoms with rules
-                self.restrained_ligand_atoms = initial_restrained_ligand
-                self.restrained_receptor_atoms = initial_restrained_receptor
-                restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
-                self.restrained_receptor_atoms = restrained_atoms[:3]
-                self.restrained_ligand_atoms = restrained_atoms[3:]
+            # Determine restraint parameters for these atoms.
+            self._determine_restraint_parameters(sampler_state, topography)
 
-                # Determine restraint parameters for these atoms.
-                self._determine_restraint_parameters(sampler_state, topography)
+    # -------------------------------------------------------------------------
+    # Abstract Functions
+    # -------------------------------------------------------------------------
 
-                # TODO: JDC/AXR do we need a check for robustness now that we are on numerical only?
-                # TODO: If not, this block can be simplified, greatly
-                break
+    @abc.abstractmethod
+    def _get_energy_function_string(self):
+        """
+        Get the energy function string which defines the full restraint compatible with OpenMM Custom*Force
+        expressions.
 
-                # Check if we have found a good solution.
-                if self._is_analytical_correction_robust(thermodynamic_state.kT) is True:
-                    break
+        Restraint constants can be used in this function and will be substituted in
+
+          * K_r, r_aA0
+          * K_thetaA, theta_A0,
+          * K_thetaB, theta_B0,
+          * K_phiA, phi_A0,
+          * K_phiB, phi_B0,
+          * K_phiC, phi_C0
+
+        Variables should also be used:
+
+          * lambda_restraints    : Alchemical variable, should be scalar on whole energy
+          * distance(p3,p4)      : Restrained distance
+          * angle(p2,p3,p4)      : Restrained angle "A"
+          * angle(p3,p4,p5)      : Restrained angle "B"
+          * dihedral(p1,p2,p3,p4): Restrained torsion "A"
+          * dihedral(p2,p3,p4,p5): Restrained torsion "B"
+          * dihedral(p3,p4,p5,p6): Restrained torsion "C"
+
+        Returns
+        -------
+        energy_function : string
+            String defining the force compatible with OpenMM Custom
+        """
+        pass
+
+    @abc.abstractmethod
+    def _numerical_torsion_integrand(self, phi, phi0, spring_constant, kt):
+        """
+        Integrand for the torsion (phi) restraints which will be integrated numerically for standard state correction
+
+        Domain is on [0, 2*pi]
+
+        Parameters
+        ----------
+        phi : float or np.ndarray of float
+            Torsion angle which will be integrated, units of radians
+        phi0 : float
+            Equilibrium torsion angle at which force of restraint often is 0, units of radians
+        spring_constant : float
+            Spring constant for this torsion in units of with kJ/(mol * nm**2)
+        kt : float
+            Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
+            in units of kJ/mol
+
+        Returns
+        -------
+        integrand : float
+            Value of the integrated
+        """
+        pass
+
+    @abc.abstractmethod
+    def _numerical_angle_integrand(self, theta, theta0, spring_constant, kt):
+        """
+        Integrand for the angle (theta) restraints which will be integrated numerically for standard state correction
+
+        Domain is on [0, pi]
+
+        Parameters
+        ----------
+        theta : float or np.ndarray of float
+            Angle which will be integrated, units of radians
+        theta0 : float
+            Equilibrium angle at which force of restraint often is 0, units of radians
+        spring_constant : float
+            Spring constant for this angle in units of with kilocalories_per_mole/nm**2
+        kt : float
+            Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
+            in units of kJ/mol
+
+        Returns
+        -------
+        integrand : float
+            Value of the integrated
+        """
+        pass
+
+    @abc.abstractmethod
+    def _numerical_distance_integrand(self, r, r0, spring_constant, kt):
+        """
+        Integrand for the distance restraint which will be integrated numerically for standard state correction
+
+        Domain is on [0, +infinity]
+
+        Parameters
+        ----------
+        r : float or np.ndarray of float
+           Distance which will be integrated, units of nm
+        r0 : float
+            Equilibrium distance at which force of restraint often is 0, nm
+        spring_constant : float
+            Spring constant for this distance in units of with kilocalories_per_mole/nm**2
+        kt : float
+            Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
+            in units of kJ/mol
+
+        Returns
+        -------
+        integrand : float
+            Value of the integrated
+        """
+        pass
 
     # -------------------------------------------------------------------------
     # Internal-usage
@@ -1686,7 +1772,7 @@ class Boresch(ReceptorLigandRestraint):
         # Find undefined parameters and raise error.
         undefined_parameters = [name for name, value in self._parameters.items() if value is None]
         if len(undefined_parameters) > 0:
-            err_msg = 'Undefined parameters for Boresch restraint: {}'.format(undefined_parameters)
+            err_msg = 'Undefined parameters for Boresch-like restraint: {}'.format(undefined_parameters)
             raise RestraintParameterError(err_msg)
 
     @property
@@ -1697,29 +1783,6 @@ class Boresch(ReceptorLigandRestraint):
             if atoms is None or not (isinstance(atoms, list) and len(atoms) == 3):
                 return False
         return True
-
-    def _is_analytical_correction_robust(self, kT):
-        """Check that the analytical standard state correction is valid for the current parameters."""
-        N_SIGMA = 4
-        is_robust = True
-
-        for name in ['A', 'B']:
-            theta0 = getattr(self, 'theta_' + name + '0')
-            K = getattr(self, 'K_theta' + name)
-            sigma = unit.sqrt(N_SIGMA * kT * 2.0 / K)
-            if theta0 < sigma or theta0 > np.pi*unit.radians - sigma:
-                logger.debug('theta_' + name + '0 is too close to 0 or pi '
-                             'for standard state correction to be accurate.')
-                is_robust = False
-
-        r0 = getattr(self, 'r_aA0')
-        K = getattr(self, 'K_r')
-        sigma = unit.sqrt(N_SIGMA * kT * 2.0 / K)
-        if r0 < sigma:
-            logger.debug('r_aA0 is too close to 0 for standard state correction to be accurate.')
-            is_robust = False
-
-        return is_robust
 
     @staticmethod
     def _is_collinear(positions, atoms, threshold=0.9):
@@ -1914,9 +1977,11 @@ class Boresch(ReceptorLigandRestraint):
 
         # Iterate until we have found a set of non-collinear atoms.
         accepted = False
-        MAX_ATTEMPTS = 100
+        max_attempts = 100
         attempts = 0
         while not accepted:
+            logger.debug('Attempt {} / {} at automatically selecting atoms and '
+                         'restraint parameters...'.format(attempts, max_attempts))
             # Select a receptor/ligand atom in range of each other for the distance constraint.
             r3_l1_atoms = random.sample(r3_l1_pairs, 1)[0]
             # Determine remaining receptor/ligand atoms.
@@ -1940,8 +2005,8 @@ class Boresch(ReceptorLigandRestraint):
             else:
                 restrained_atoms = r1_r2_atoms + r3_l1_atoms + l2_l3_atoms
                 accepted = not self._is_collinear(sampler_state.positions, restrained_atoms)
-            if attempts > MAX_ATTEMPTS:
-                raise RuntimeError("Could not find any good sets of bonded atoms to make stable Boresch "
+            if attempts > max_attempts:
+                raise RuntimeError("Could not find any good sets of bonded atoms to make stable Boresch-like "
                                    "restraints from. There should be at least 1 real defined angle in the"
                                    "selected restrained ligand atoms and 1 in the selected restrained receptor atoms "
                                    "for good numerical stability")
@@ -2003,6 +2068,444 @@ class Boresch(ReceptorLigandRestraint):
         for parameter_name, parameter_value in self._parameters.items():
             msg += '%24s : %s\n' % (parameter_name, parameter_value)
         logger.debug(msg)
+
+
+class Boresch(BoreschLike):
+    """
+    Impose Boresch-style orientational restraints on protein-ligand system.
+
+    This restraints the ligand binding mode by constraining 1 distance, 2
+    angles and 3 dihedrals between 3 atoms of the receptor and 3 atoms of
+    the ligand.
+
+    More precisely, the energy expression of the restraint is given by
+
+        .. code-block:: python
+
+            E = lambda_restraints * {
+                    K_r/2 * [|r3 - l1| - r_aA0]^2 +
+                    + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
+                    + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
+                    + K_phiA/2 * [dihedral(r1,r2,r3,l1) - phi_A0]^2 +
+                    + K_phiB/2 * [dihedral(r2,r3,l1,l2) - phi_B0]^2 +
+                    + K_phiC/2 * [dihedral(r3,l1,l2,l3) - phi_C0]^2
+                }
+
+    , where the parameters are:
+
+        ``r1``, ``r2``, ``r3``: the coordinates of the 3 receptor atoms.
+
+        ``l1``, ``l2``, ``l3``: the coordinates of the 3 ligand atoms.
+
+        ``K_r``: the spring constant for the restrained distance ``|r3 - l1|``.
+
+        ``r_aA0``: the equilibrium distance of ``|r3 - l1|``.
+
+        ``K_thetaA``, ``K_thetaB``: the spring constants for ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+
+        ``theta_A0``, ``theta_B0``: the equilibrium angles of ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+
+        ``K_phiA``, ``K_phiB``, ``K_phiC``: the spring constants for ``dihedral(r1,r2,r3,l1)``,
+        ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
+
+        ``phi_A0``, ``phi_B0``, ``phi_C0``: the equilibrium torsion of ``dihedral(r1,r2,r3,l1)``,
+        ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
+
+        ``lambda_restraints``: a scale factor that can be used to control the strength
+        of the restraint.
+
+    You can control ``lambda_restraints`` through the class :class:`RestraintState`.
+
+    The class supports automatic determination of the parameters left undefined
+    in the constructor through :func:`determine_missing_parameters`.
+
+    *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
+    See Ref [1] and [2] for more information on correcting for ligand symmetry.
+
+    *Warning*: Only heavy atoms can be restrained. Hydrogens will automatically be excluded.
+
+    Parameters
+    ----------
+    restrained_receptor_atoms : iterable of int, str, or None; Optional
+        The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Select String <yank.Topography.select>`.
+        If this is a list of three ints, the receptor atoms will be restrained in order, r1, r2, r3. If there are more
+        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
+        be chosen at random from the selection.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression or Topography region is provided (default is None).
+    restrained_ligand_atoms : iterable of int, str, or None; Optional
+        The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Select String <yank.Topography.select>`.
+        If this is a list of three ints, the receptor atoms will be restrained in order, l1, l2, l3. If there are more
+        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
+        be chosen at random from the selection.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression or Topography region is provided (default is None).
+    K_r : simtk.unit.Quantity, optional
+        The spring constant for the restrained distance ``|r3 - l1|`` (units
+        compatible with kilocalories_per_mole/angstrom**2).
+    r_aA0 : simtk.unit.Quantity, optional
+        The equilibrium distance between r3 and l1 (units of length).
+    K_thetaA, K_thetaB : simtk.unit.Quantity, optional
+        The spring constants for ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
+        (units compatible with kilocalories_per_mole/radians**2).
+    theta_A0, theta_B0 : simtk.unit.Quantity, optional
+        The equilibrium angles of ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
+        (units compatible with radians).
+    K_phiA, K_phiB, K_phiC : simtk.unit.Quantity, optional
+        The spring constants for ``dihedral(r1, r2, r3, l1)``,
+        ``dihedral(r2, r3, l1, l2)`` and ``dihedral(r3,l1,l2,l3)`` (units compatible
+        with kilocalories_per_mole/radians**2).
+    phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
+        The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
+        and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
+
+    Attributes
+    ----------
+    restrained_receptor_atoms : list of int
+        The indices of the 3 receptor atoms to restrain [r1, r2, r3].
+    restrained_ligand_atoms : list of int
+        The indices of the 3 ligand atoms to restrain [l1, l2, l3].
+
+    References
+    ----------
+    [1] Boresch S, Tettinger F, Leitgeb M, Karplus M. J Phys Chem B. 107:9535, 2003.
+        http://dx.doi.org/10.1021/jp0217839
+    [2] Mobley DL, Chodera JD, and Dill KA. J Chem Phys 125:084902, 2006.
+        https://dx.doi.org/10.1063%2F1.2221683
+
+    Examples
+    --------
+    Create the ThermodynamicState.
+
+    >>> from openmmtools import testsystems, states
+    >>> system_container = testsystems.LysozymeImplicit()
+    >>> system, positions = system_container.system, system_container.positions
+    >>> thermodynamic_state = states.ThermodynamicState(system, 298*unit.kelvin)
+    >>> sampler_state = states.SamplerState(positions)
+
+    Identify ligand atoms. Topography automatically identify receptor atoms too.
+
+    >>> from yank.yank import Topography
+    >>> topography = Topography(system_container.topology, ligand_atoms=range(2603, 2621))
+
+    Create a partially defined restraint
+
+    >>> restraint = Boresch(restrained_receptor_atoms=[1335, 1339, 1397],
+    ...                     restrained_ligand_atoms=[2609, 2607, 2606],
+    ...                     K_r=20.0*unit.kilocalories_per_mole/unit.angstrom**2,
+    ...                     r_aA0=0.35*unit.nanometer)
+
+    and automatically identify the other parameters. When trying to impose
+    a restraint with undefined parameters, RestraintParameterError is raised.
+
+    >>> try:
+    ...     restraint.restrain_state(thermodynamic_state)
+    ... except RestraintParameterError:
+    ...     print('There are undefined parameters. Choosing restraint parameters automatically.')
+    ...     restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+    ...     restraint.restrain_state(thermodynamic_state)
+    ...
+    There are undefined parameters. Choosing restraint parameters automatically.
+
+    Get standard state correction.
+
+    >>> correction = restraint.get_standard_state_correction(thermodynamic_state)
+    """
+
+    def _get_energy_function_string(self):
+        """
+        Get the energy function string which defines the full restraint compatible with OpenMM Custom*Force
+        expressions.
+
+        Returns
+        -------
+        energy_function : string
+            String defining the force compatible with OpenMM Custom
+        """
+        energy_function = """
+            lambda_restraints * E;
+            E = (K_r/2)*(distance(p3,p4) - r_aA0)^2
+            + (K_thetaA/2)*(angle(p2,p3,p4)-theta_A0)^2 + (K_thetaB/2)*(angle(p3,p4,p5)-theta_B0)^2
+            + (K_phiA/2)*dphi_A^2 + (K_phiB/2)*dphi_B^2 + (K_phiC/2)*dphi_C^2;
+            dphi_A = dA - floor(dA/(2*pi)+0.5)*(2*pi); dA = dihedral(p1,p2,p3,p4) - phi_A0;
+            dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = dihedral(p2,p3,p4,p5) - phi_B0;
+            dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = dihedral(p3,p4,p5,p6) - phi_C0;
+            pi = %f;
+            """ % np.pi
+        return energy_function
+
+    def _numerical_distance_integrand(self, r, r0, spring_constant, kt):
+        """
+        Integrand for the distance restraint which will be integrated numerically for standard state correction
+
+        Domain is on [0, +infinity], practically is only taken up to 8 thermal fluctuations.
+
+        Parameters
+        ----------
+        r : float or np.ndarray of float
+           Distance which will be integrated, units of nm
+        r0 : float
+            Equilibrium distance at which force of restraint often is 0, nm
+        spring_constant : float
+            Spring constant for this distance in units of with kilocalories_per_mole/nm**2
+        kt : float
+            Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
+            in units of kJ/mol
+
+        Returns
+        -------
+        integrand : float
+            Value of the integrated
+        """
+        return r ** 2 * np.exp(-spring_constant / (2 * kt) * (r - r0) ** 2)
+
+    def _numerical_angle_integrand(self, theta, theta0, spring_constant, kt):
+        """
+        Integrand for the angle (theta) restraints which will be integrated numerically for standard state correction
+
+        This uses a harmonic restraint centered around theta0
+
+        Domain is on [0, pi]
+
+        Parameters
+        ----------
+        theta : float or np.ndarray of float
+            Angle which will be integrated, units of radians
+        theta0 : float
+            Equilibrium angle at which force of restraint often is 0, units of radians
+        spring_constant : float
+            Spring constant for this angle in units of with kilocalories_per_mole/nm**2
+
+        Returns
+        -------
+        integrand : float
+            Value of the integrated
+        """
+        return np.sin(theta) * np.exp(-spring_constant / (2 * kt) * (theta - theta0) ** 2)
+
+    def _numerical_torsion_integrand(self, phi, phi0, spring_constant, kt):
+        """
+        Integrand for the torsion (phi) restraints which will be integrated numerically for standard state correction
+
+        Uses a harmonic restraint around phi0 with corrections to the OpenMM limits of dihedral calculation
+
+        Domain is on [0, 2*pi]
+
+        Parameters
+        ----------
+        phi : float or np.ndarray of float
+            Torsion angle which will be integrated, units of radians
+        phi0 : float
+            Equilibrium torsion angle at which force of restraint often is 0, units of radians
+        spring_constant : float
+            Spring constant for this torsion in units of with kJ/(mol * nm**2)
+        kt : float
+            Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
+            in units of kJ/mol
+
+        Returns
+        -------
+        integrand : float
+            Value of the integrated
+        """
+        d_tor = phi - phi0
+        dphi = d_tor - np.floor(d_tor / (2 * np.pi) + 0.5) * (2 * np.pi)
+        return np.exp(-(spring_constant / 2) / kt * dphi ** 2)
+
+
+class HaverBorTor(Boresch):
+    """
+    Impose Boresch-style orientational restraints on protein-ligand system where torsions are restrained by a
+    periodic instead of harmonic force
+
+    This restraints the ligand binding mode by constraining 1 distance, 2
+    angles and 3 dihedrals between 3 atoms of the receptor and 3 atoms of
+    the ligand.
+
+    More precisely, the energy expression of the restraint is given by
+
+        .. code-block:: python
+
+            E = lambda_restraints * {
+                    K_r/2 * [|r3 - l1| - r_aA0]^2 +
+                    + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
+                    + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
+                    + K_phiA/2 * hav(dihedral(r1,r2,r3,l1) - phi_A0) * 2 +
+                    + K_phiB/2 * hav(dihedral(r2,r3,l1,l2) - phi_B0) * 2 +
+                    + K_phiC/2 * hav(dihedral(r3,l1,l2,l3) - phi_C0) * 2
+                }
+
+    , where ``hav`` is the Haversine function ``(1-cos(x))/2`` and the parameters are:
+
+        ``r1``, ``r2``, ``r3``: the coordinates of the 3 receptor atoms.
+
+        ``l1``, ``l2``, ``l3``: the coordinates of the 3 ligand atoms.
+
+        ``K_r``: the spring constant for the restrained distance ``|r3 - l1|``.
+
+        ``r_aA0``: the equilibrium distance of ``|r3 - l1|``.
+
+        ``K_thetaA``, ``K_thetaB``: the spring constants for ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+
+        ``theta_A0``, ``theta_B0``: the equilibrium angles of ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+
+        ``K_phiA``, ``K_phiB``, ``K_phiC``: the spring constants for ``dihedral(r1,r2,r3,l1)``,
+        ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
+
+        ``phi_A0``, ``phi_B0``, ``phi_C0``: the equilibrium torsion of ``dihedral(r1,r2,r3,l1)``,
+        ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
+
+        ``lambda_restraints``: a scale factor that can be used to control the strength
+        of the restraint.
+
+    You can control ``lambda_restraints`` through the class :class:`RestraintState`.
+
+    The class supports automatic determination of the parameters left undefined
+    in the constructor through :func:`determine_missing_parameters`.
+
+
+    This function used to be based on the Boresch orientational restraints [1] and has similar form to
+    its energy equation
+
+        .. code-block:: python
+
+            E = lambda_restraints * {
+                    K_r/2 * [|r3 - l1| - r_aA0]^2 +
+                    + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
+                    + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
+                    + K_phiA/2 * [dihedral(r1,r2,r3,l1) - phi_A0]^2 +
+                    + K_phiB/2 * [dihedral(r2,r3,l1,l2) - phi_B0]^2 +
+                    + K_phiC/2 * [dihedral(r3,l1,l2,l3) - phi_C0]^2
+                }
+
+    However, the form at the top is periodic with the dihedral angle and imposes a more steep energy penalty
+    while still maintaining the same Taylor series expanded force and energy near phi_X0. The ``*2`` on the
+    ``hav()`` functions in the energy expression are shown as the explicit correction to the ``hav()`` function
+    to make the leading spring constant force consistent with the original harmonic Boresch restraint. In practice,
+    the ``1/2`` from the ``hav()`` function is omitted.
+
+
+    *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
+    See Ref [1] and [2] for more information on correcting for ligand symmetry.
+
+    *Warning*: Only heavy atoms can be restrained. Hydrogens will automatically be excluded.
+
+    Parameters
+    ----------
+    restrained_receptor_atoms : iterable of int, str, or None; Optional
+        The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Select String <yank.Topography.select>`.
+        If this is a list of three ints, the receptor atoms will be restrained in order, r1, r2, r3. If there are more
+        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
+        be chosen at random from the selection.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression or Topography region is provided (default is None).
+    restrained_ligand_atoms : iterable of int, str, or None; Optional
+        The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Select String <yank.Topography.select>`.
+        If this is a list of three ints, the receptor atoms will be restrained in order, l1, l2, l3. If there are more
+        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
+        be chosen at random from the selection.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression or Topography region is provided (default is None).
+    K_r : simtk.unit.Quantity, optional
+        The spring constant for the restrained distance ``|r3 - l1|`` (units
+        compatible with kilocalories_per_mole/angstrom**2).
+    r_aA0 : simtk.unit.Quantity, optional
+        The equilibrium distance between r3 and l1 (units of length).
+    K_thetaA, K_thetaB : simtk.unit.Quantity, optional
+        The spring constants for ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
+        (units compatible with kilocalories_per_mole/radians**2).
+    theta_A0, theta_B0 : simtk.unit.Quantity, optional
+        The equilibrium angles of ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
+        (units compatible with radians).
+    K_phiA, K_phiB, K_phiC : simtk.unit.Quantity, optional
+        The spring constants for ``dihedral(r1, r2, r3, l1)``,
+        ``dihedral(r2, r3, l1, l2)`` and ``dihedral(r3,l1,l2,l3)`` (units compatible
+        with kilocalories_per_mole/radians**2).
+    phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
+        The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
+        and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
+
+    Attributes
+    ----------
+    restrained_receptor_atoms : list of int
+        The indices of the 3 receptor atoms to restrain [r1, r2, r3].
+    restrained_ligand_atoms : list of int
+        The indices of the 3 ligand atoms to restrain [l1, l2, l3].
+
+    References
+    ----------
+    [1] Boresch S, Tettinger F, Leitgeb M, Karplus M. J Phys Chem B. 107:9535, 2003.
+        http://dx.doi.org/10.1021/jp0217839
+    [2] Mobley DL, Chodera JD, and Dill KA. J Chem Phys 125:084902, 2006.
+        https://dx.doi.org/10.1063%2F1.2221683
+    """
+
+    def _get_energy_function_string(self):
+        """
+        Get the energy function string which defines the full restraint compatible with OpenMM Custom*Force
+        expressions.
+
+        Returns
+        -------
+        energy_function : string
+            String defining the force compatible with OpenMM Custom
+        """
+        energy_function = """
+            lambda_restraints * E;
+            E = (K_r/2)*(distance(p3,p4) - r_aA0)^2
+            + (K_thetaA/2)*(angle(p2,p3,p4)-theta_A0)^2 + (K_thetaB/2)*(angle(p3,p4,p5)-theta_B0)^2
+            + (K_phiA/2)*uphi_A + (K_phiB/2)*uphi_B + (K_phiC/2)*uphi_C;
+            uphi_A = (1-cos(dA)); dA = dihedral(p1,p2,p3,p4) - phi_A0;
+            uphi_B = (1-cos(dB)); dB = dihedral(p2,p3,p4,p5) - phi_B0;
+            uphi_C = (1-cos(dC)); dC = dihedral(p3,p4,p5,p6) - phi_C0;
+            pi = %f;
+            """ % np.pi
+        return energy_function
+
+    def _numerical_torsion_integrand(self, phi, phi0, spring_constant, kt):
+        """
+        Integrand for the torsion (phi) restraints which will be integrated numerically for standard state correction
+
+        Uses a periodic restraint where the magnitude force constant is matched to the standard harmonic by tailor
+        series expansion around phi0.
+
+        Domain is on [0, 2*pi]
+
+        Parameters
+        ----------
+        phi : float or np.ndarray of float
+            Torsion angle which will be integrated, units of radians
+        phi0 : float
+            Equilibrium torsion angle at which force of restraint often is 0, units of radians
+        spring_constant : float
+            Spring constant for this torsion in units of with kJ/(mol * nm**2)
+        kt : float
+            Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
+            in units of kJ/mol
+
+        Returns
+        -------
+        integrand : float
+            Value of the integrated
+        """
+        def hav(angle):
+            """Simple Haversin function for space later"""
+            return (1-np.cos(angle))/2
+
+        # The 1/2 from the K/2 is just folded into the hav() function
+        return np.exp(-(spring_constant / kt) * hav(phi - phi0))
 
 
 if __name__ == '__main__':

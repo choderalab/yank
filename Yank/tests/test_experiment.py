@@ -933,6 +933,13 @@ def test_validation_correct_experiments():
     """.format(examples_paths()['lysozyme'], standard_protocol)
     basic_script = yank_load(basic_script)
 
+    bor = {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
+            'type': 'Boresch', 'restrained_receptor_atoms': [1335, 1339, 1397],
+            'restrained_ligand_atoms': [2609, 2607, 2606], 'r_aA0': '0.35*nanometer',
+            'K_r': '20.0*kilocalories_per_mole/angstrom**2'}}
+    haver_bor = {**bor}
+    haver_bor['type'] = 'HaverBortTor'
+
     experiments = [
         {'system': 'sys', 'protocol': 'absolute-binding'},
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': 'Harmonic'}},
@@ -940,10 +947,8 @@ def test_validation_correct_experiments():
             'type': 'Harmonic', 'spring_constant': '8*kilojoule_per_mole/nanometers**2'}},
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
             'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atoms': 1644}},
-        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
-            'type': 'Boresch', 'restrained_receptor_atoms': [1335, 1339, 1397],
-            'restrained_ligand_atoms': [2609, 2607, 2606], 'r_aA0': '0.35*nanometer',
-            'K_r': '20.0*kilocalories_per_mole/angstrom**2'}},
+        bor,
+        haver_bor
     ]
     for experiment in experiments:
         modified_script = basic_script.copy()

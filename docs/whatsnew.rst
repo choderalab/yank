@@ -13,9 +13,10 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Exposed checkpoint interval iterations in ``MultiStateReporter``
 - Fix bug #941 where unbiasing the restraint would crash the analysis if using a 32-bit OpenCL platform.
 - Fix bug #945 where relative imports of OpenEye tools would cause problems on some systems.
+- Generalized the Boresch restraints to a BoreschLike restraint to support new energy functions.
 - Boresch restraint automatic atom selection now picks bonded heavy atoms
-- Boresch restraint's functional form is different to support more numerically stable periodic energy functions
 - Boresch restraints no longer accept ``standard_state_correction_method`` as an option
+- Added new "Haversine Boresch Torsion" (HaverBorTor) Boresch-like restraint where functional form of torsion is periodic support more numerically stable energy functions
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------

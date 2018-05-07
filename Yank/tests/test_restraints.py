@@ -84,6 +84,7 @@ expected_restraints = {
     'Harmonic': yank.restraints.Harmonic,
     'FlatBottom': yank.restraints.FlatBottom,
     'Boresch': yank.restraints.Boresch,
+    'HaverBorTor': yank.restraints.HaverBorTor
 }
 
 restraint_test_yaml = """
@@ -189,6 +190,16 @@ def test_Boresch_free_energy():
                'restraint_type': 'Boresch'}
     general_restraint_run(options)
 
+@attr('slow')  # Skip on Travis-CI
+def test_HaverBorTor_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    # These need more samples to converge
+    options = {'number_of_iter': '1000',
+               'restraint_type': 'HaverBorTor'}
+    general_restraint_run(options)
+
 
 def test_harmonic_standard_state():
     """
@@ -233,12 +244,13 @@ def test_partial_parametrization():
                                                     temperature=300.0*unit.kelvin)
 
     # Test case: (restraint_type, constructor_kwargs)
+    boresch = dict(restrained_ligand_atoms=[130, 131, 136], K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2)
     test_cases = [
         ('Harmonic', dict(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
                           restrained_receptor_atoms=[5])),
         ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
-        ('Boresch', dict(restrained_ligand_atoms=[130, 131, 136],
-                         K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
+        ('Boresch', boresch),
+        ('HaverBorTor', boresch)
     ]
 
     for restraint_type, kwargs in test_cases:

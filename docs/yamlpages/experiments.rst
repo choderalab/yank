@@ -45,6 +45,7 @@ are accepted as arguments in the YAML file:
 * :class:`FlatBottom Radially-Symmetric Restraints <FlatBottom>`
 * :class:`Harmonic Radially-Symmetric Restraints <Harmonic>`
 * :class:`Boresch Orientational Restraints <Boresch>`
+* :class:`Periodic torsion restrained Boresch-like restraint <HaverBorTor>`
 
 The ``options`` directive lets you overwrite :doc:`any global setting <options>` specified in the header ``options`` for
 this specific experiment.
@@ -54,9 +55,9 @@ One option is to select restrained atoms through :class:`Topgraphical Regions <y
 :func:`compound region <yank.Topography.select>` where regions are combined through set operators
 ``and``/``or``.
 
-**Note:** The Boresch restraints require that the ligand and receptor are close to each other to make sure the standard
-state correction computation is stable. We recommend only using the ``Boresch`` options if you know the binding mode of
-your system already!
+**Note:** The Boresch0like restraints require that the ligand and receptor are close to each other to make sure the standard
+state correction computation is stable. We recommend only using the ``Boresch`` or ``HaverBorTor`` options if you know
+the binding mode of your system already!
 
 .. _yaml_experiments_multiple:
 
