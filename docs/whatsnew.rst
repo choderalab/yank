@@ -17,6 +17,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Boresch restraint automatic atom selection now picks bonded heavy atoms
 - Boresch restraints no longer accept ``standard_state_correction_method`` as an option
 - Added new Haversined Torsion Boresch Torsion (``PeriodicTorsionBoresch``) Boresch-like restraint where functional form of torsion is periodic support more numerically stable energy functions
+- Temporarily pinned NetCDF4 to 1.3.1 until we can fix the bug introduced in 1.4.0 where masked arrays are always returned. This pin will be lifted in future releases.
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------
