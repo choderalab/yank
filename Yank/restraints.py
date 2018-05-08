@@ -2319,7 +2319,7 @@ class Boresch(BoreschLike):
         return np.exp(-(spring_constant / 2) / kt * dphi ** 2)
 
 
-class HaverBorTor(Boresch):
+class PeriodicTorsionBoresch(Boresch):
     """
     Impose Boresch-style orientational restraints on protein-ligand system where torsions are restrained by a
     periodic instead of harmonic force
@@ -2501,7 +2501,7 @@ class HaverBorTor(Boresch):
             Value of the integrated
         """
         def hav(angle):
-            """Simple Haversin function for space later"""
+            """Simple Haversine function for space later"""
             return (1-np.cos(angle))/2
 
         # The 1/2 from the K/2 is just folded into the hav() function

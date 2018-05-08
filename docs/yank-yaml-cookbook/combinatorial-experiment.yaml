@@ -216,7 +216,7 @@ experiments:
   protocol: absolute-binding
   restraint:                                                 # Optionally, apply a restrain to the ligand to keep
     type: !Combinatorial [Harmonic, FlatBottom]              # it close to the receptor. Possible types are null,
-                                                             # Harmonic, FlatBottom, Boresch, and HaverBorTor.
+                                                             # Harmonic, FlatBottom, Boresch, and PeriodicTorsionBoresch.
   options:                                                   # All options that can be specified in the "options"
     temperature: !Combinatorial [298.0*kelvin, 307.0*kelvin] # section can be included here.
 

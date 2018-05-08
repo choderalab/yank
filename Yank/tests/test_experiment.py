@@ -937,8 +937,8 @@ def test_validation_correct_experiments():
             'type': 'Boresch', 'restrained_receptor_atoms': [1335, 1339, 1397],
             'restrained_ligand_atoms': [2609, 2607, 2606], 'r_aA0': '0.35*nanometer',
             'K_r': '20.0*kilocalories_per_mole/angstrom**2'}}
-    haver_bor = {**bor}
-    haver_bor['type'] = 'HaverBortTor'
+    period_tor_bor = {**bor}
+    period_tor_bor['restraint']['type'] = 'PeriodicTorsionBoresch'
 
     experiments = [
         {'system': 'sys', 'protocol': 'absolute-binding'},
@@ -948,7 +948,7 @@ def test_validation_correct_experiments():
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
             'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atoms': 1644}},
         bor,
-        haver_bor
+        period_tor_bor
     ]
     for experiment in experiments:
         modified_script = basic_script.copy()

@@ -16,7 +16,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Generalized the Boresch restraints to a BoreschLike restraint to support new energy functions.
 - Boresch restraint automatic atom selection now picks bonded heavy atoms
 - Boresch restraints no longer accept ``standard_state_correction_method`` as an option
-- Added new "Haversine Boresch Torsion" (HaverBorTor) Boresch-like restraint where functional form of torsion is periodic support more numerically stable energy functions
+- Added new Haversined Torsion Boresch Torsion (``PeriodicTorsionBoresch``) Boresch-like restraint where functional form of torsion is periodic support more numerically stable energy functions
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------

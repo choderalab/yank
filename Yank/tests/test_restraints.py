@@ -84,7 +84,7 @@ expected_restraints = {
     'Harmonic': yank.restraints.Harmonic,
     'FlatBottom': yank.restraints.FlatBottom,
     'Boresch': yank.restraints.Boresch,
-    'HaverBorTor': yank.restraints.HaverBorTor
+    'PeriodicTorsionBoresch': yank.restraints.PeriodicTorsionBoresch
 }
 
 restraint_test_yaml = """
@@ -191,13 +191,13 @@ def test_Boresch_free_energy():
     general_restraint_run(options)
 
 @attr('slow')  # Skip on Travis-CI
-def test_HaverBorTor_free_energy():
+def test_PeriodicTorsionBoresch_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
     # These need more samples to converge
     options = {'number_of_iter': '1000',
-               'restraint_type': 'HaverBorTor'}
+               'restraint_type': 'PeriodicTorsionBoresch'}
     general_restraint_run(options)
 
 
@@ -250,7 +250,7 @@ def test_partial_parametrization():
                           restrained_receptor_atoms=[5])),
         ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
         ('Boresch', boresch),
-        ('HaverBorTor', boresch)
+        ('PeriodicTorsionBoresch', boresch)
     ]
 
     for restraint_type, kwargs in test_cases:
