@@ -70,7 +70,7 @@ The default moves used by YANK are equivalent to the following:
                   splitting: 'VRORV' # use the high-quality BAOAB integrator
 
 
-``default1`` is used for the solvent phase and for complex phases using a ``Boresch`` restraint.
+``default1`` is used for the solvent phase and for complex phases using a ``BoreschLike`` restraint.
 For complex phases using any other restraint, ``default2`` is used.
 
 Each iteration of the sampler applies the MCMC move once.

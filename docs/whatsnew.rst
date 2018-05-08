@@ -8,11 +8,16 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 0.21.3 Post-Triage Bugfixes
 ---------------------------
-- Added more robust last good iteration saving.
-- Added more robust restore from checkpoint access.
-- Exposed checkpoint interval iterations in ``MultiStateReporter``.
+- Added more robust last good iteration saving
+- Added more robust restore from checkpoint access
+- Exposed checkpoint interval iterations in ``MultiStateReporter``
 - Fix bug #941 where unbiasing the restraint would crash the analysis if using a 32-bit OpenCL platform.
 - Fix bug #945 where relative imports of OpenEye tools would cause problems on some systems.
+- Generalized the Boresch restraints to a BoreschLike restraint to support new energy functions.
+- Boresch restraint automatic atom selection now picks bonded heavy atoms
+- Boresch restraints no longer accept ``standard_state_correction_method`` as an option
+- Added new Haversined Torsion Boresch Torsion (``PeriodicTorsionBoresch``) Boresch-like restraint where functional form of torsion is periodic support more numerically stable energy functions
+- Temporarily pinned NetCDF4 to 1.3.1 until we can fix the bug introduced in 1.4.0 where masked arrays are always returned. This pin will be lifted in future releases.
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------
