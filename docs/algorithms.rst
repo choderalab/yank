@@ -340,8 +340,8 @@ Orientational restraints are used to confine the ligand to a single binding pose
 
 .. _algorithm_boresch:
 
-Boresch restraints (``Boresch``)
-""""""""""""""""""""""""""""""""
+Boresch-like restraints (``Boresch``)
+"""""""""""""""""""""""""""""""""""""
 
 A common type of **orientational restraints** between receptor and ligand :cite:`Boresch2003`.
 These restrain a distance, two angles, and three torsions in an attempt to keep the ligand in a specific relative binding pose.
@@ -361,6 +361,13 @@ one-dimensional integrals from Eq. 12 of :cite:`Boresch2003`.
 Note that the analytical standard state correction described in Eq. 32 of :cite:`Boresch2003` is inaccurate
 (up to several ``kT``) in certain regimes (near :math:`r_{aA0}` and :math:`\theta_{A0}`, :math:`\theta_{B0}` near
 0 or :math:`\pi`) and should be avoided.
+
+Due to numerical instabilities and the generalization of the Boresch restraints, the analytical free energy
+contribution is no longer supported.
+
+There are a couple variants of the Boresch restraints. The first is the standard one "Boresch," and the second is a
+variant where the torsions are restrained by a periodic restraint instead of harmonic.
+
 
 .. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref :cite:`Boresch2003` and :cite:`Mobley2006:orientational-restraints` for more information on correcting for ligand symmetry.
 
@@ -597,8 +604,8 @@ proposed position is then evaluated as the MC move. The ligand in this case is t
 particle is translated by the same distance in each direction.
 
 Ligand rotation and displacements moves are disabled for the
-:ref:`orientational Boresch restraints <algorithm_boresch>`. This class of MCMC move under the orientational restraints
-will almost always be rejected so they are not enabled to reduce computational time.
+:ref:`orientational Boresch-like restraints <algorithm_boresch>`. This class of MCMC move under the orientational
+restraints will almost always be rejected so they are not enabled to reduce computational time.
 
 Automated equilibration detection
 =================================

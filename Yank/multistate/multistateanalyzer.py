@@ -595,7 +595,7 @@ class PhaseAnalyzer(ABC):
         """int: The total number of iterations of the phase."""
         if self._n_iterations is None:
             # The + 1 accounts for iteration 0.
-            self._n_iterations = self._reporter.read_last_iteration(full_iteration=False)
+            self._n_iterations = self._reporter.read_last_iteration(last_checkpoint=False)
         return self._n_iterations
 
     @property
@@ -1118,13 +1118,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         if number_equilibrated is None:
             number_equilibrated = self.n_equilibration_iterations
         states = self._reporter.read_replica_thermodynamic_states()
-        n_iterations, n_replicas = states.shape
         n_states = self._reporter.n_states
         n_ij = np.zeros([n_states, n_states], np.int64)
 
         # Compute empirical transition count matrix.
-        for iteration in range(number_equilibrated, n_iterations - 1):
-            for i_replica in range(n_replicas):
+        for iteration in range(number_equilibrated, self.max_n_iterations - 1):
+            for i_replica in range(self.n_replicas):
                 i_state = states[iteration, i_replica]
                 j_state = states[iteration + 1, i_replica]
                 n_ij[i_state, j_state] += 1

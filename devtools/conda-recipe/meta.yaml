@@ -15,8 +15,6 @@ requirements:
     - python
     - cython
     - setuptools
-    #- gcc 4.8.2 # [linux]
-    #- gcc 4.8.2 # [osx]
 
   run:
     - python
@@ -24,8 +22,8 @@ requirements:
     - numpy >=1.11
     - scipy
     - cython
-    - netcdf4
-    - openmm >=7.3.0
+    - netcdf4 ==1.3.1  # TODO: Fix this right after bugfix: "always return masked array by default, even if there are no masked values"
+    - openmm >=7.1
     - mdtraj >=1.7.2
     - openmmtools >=0.15.0
     - pymbar
@@ -36,12 +34,11 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - cerberus
+    - cerberus ==1.1.*
     - matplotlib
     - jupyter
     - pdbfixer
     - libnetcdf >=4.6.0
-    #- libgcc
 
 test:
   requires:

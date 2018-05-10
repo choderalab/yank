@@ -84,6 +84,7 @@ expected_restraints = {
     'Harmonic': yank.restraints.Harmonic,
     'FlatBottom': yank.restraints.FlatBottom,
     'Boresch': yank.restraints.Boresch,
+    'PeriodicTorsionBoresch': yank.restraints.PeriodicTorsionBoresch
     'RMSD': yank.restraints.RMSD,
 }
 
@@ -190,6 +191,16 @@ def test_Boresch_free_energy():
                'restraint_type': 'Boresch'}
     general_restraint_run(options)
 
+@attr('slow')  # Skip on Travis-CI
+def test_PeriodicTorsionBoresch_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    # These need more samples to converge
+    options = {'number_of_iter': '1000',
+               'restraint_type': 'PeriodicTorsionBoresch'}
+    general_restraint_run(options)
+
 
 def test_harmonic_standard_state():
     """
@@ -234,12 +245,13 @@ def test_partial_parametrization():
                                                     temperature=300.0*unit.kelvin)
 
     # Test case: (restraint_type, constructor_kwargs)
+    boresch = dict(restrained_ligand_atoms=[130, 131, 136], K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2)
     test_cases = [
         ('Harmonic', dict(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
                           restrained_receptor_atoms=[5])),
         ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
-        ('Boresch', dict(restrained_ligand_atoms=[130, 131, 136],
-                         K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2)),
+        ('Boresch', boresch),
+        ('PeriodicTorsionBoresch', boresch),
         ('RMSD', dict(restrained_ligand_atoms=[130, 131, 136],
                          K_RMSD=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
     ]
@@ -274,6 +286,7 @@ def test_partial_parametrization():
                 particles, _ = force.getBondParameters(0)
                 assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
             # RMSD restraint.
+            # TODO LNN: Trap this for dev only
             elif isinstance(force, openmm.CustomCVForce):
                 rmsd_cv = force.getCollectiveVariable(0)
                 particles = rmsd_cv.getParticles()
@@ -294,7 +307,7 @@ def restraint_selection_template(topography_ligand_atoms=None,
     thermodynamic_state = states.ThermodynamicState(test_system.system,
                                                     temperature=300.0 * unit.kelvin)
 
-    # Iniialize with DSL and without processing the string raises an error.
+    # Initialize with DSL and without processing the string raises an error.
     restraint = yank.restraints.Harmonic(spring_constant=2.0 * unit.kilojoule_per_mole / unit.nanometer ** 2,
                                          restrained_receptor_atoms=restrained_receptor_atoms,
                                          restrained_ligand_atoms=restrained_ligand_atoms)

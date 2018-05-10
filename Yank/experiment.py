@@ -2471,7 +2471,7 @@ class ExperimentBuilder(object):
             is_vacuum = len(phase.topography.receptor_atoms) == 0 and len(phase.topography.solvent_atoms) == 0
 
             # We may need to slowly turn on a Boresch restraint.
-            if isinstance(phase.restraint, restraints.Boresch):
+            if isinstance(phase.restraint, restraints.BoreschLike):
                 state_parameters.append(('lambda_restraints', [0.0, 1.0]))
 
             # We support only lambda sterics and electrostatics for now.
@@ -3011,7 +3011,7 @@ class ExperimentBuilder(object):
             # Create MCMC moves and sampler. Apply MC rotation displacement to ligand.
             # We don't try displacing and rotating the ligand with a Boresch restraint
             # since the attempts would likely always fail.
-            if len(topography.ligand_atoms) > 0 and not isinstance(restraint, restraints.Boresch):
+            if len(topography.ligand_atoms) > 0 and not isinstance(restraint, restraints.BoreschLike):
                 mc_atoms = topography.ligand_atoms
             else:
                 mc_atoms = []

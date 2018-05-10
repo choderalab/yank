@@ -199,9 +199,10 @@ class TestMultiPhaseAnalyzer(object):
         cls.sampler = cls.SAMPLER(mcmc_moves=move, number_of_iterations=cls.n_steps)
         cls.reporter = MultiStateReporter(storage_path, checkpoint_interval=cls.checkpoint_interval,
                                           analysis_particle_indices=analysis_atoms)
-        cls.call_sampler_create(cls.sampler,cls.reporter, thermodynamic_states, sampler_states, unsampled_states,
+        cls.call_sampler_create(cls.sampler, cls.reporter, thermodynamic_states, sampler_states, unsampled_states,
                                 metadata=metadata)
-        # run some iterations
+
+        # Run some iterations.
         cls.n_replicas = cls.N_SAMPLERS
         cls.n_states = n_states
         cls.analysis_atoms = analysis_atoms
@@ -421,8 +422,9 @@ class TestMultiPhaseAnalyzer(object):
         # The cached value and its dependencies are generated lazily when calling the property.
         cached_properties = ['mbar', 'decorrelated_state_indices_ln', 'equilibration_data']
         yield check_cached_properties, False
-        analyzer._decorrelated_state_indices_ln
         self.help_fe_calc(analyzer)
+        analyzer._decorrelated_state_indices_ln
+        analyzer.get_free_energy()
         yield check_cached_properties, True
 
         # If we invalidate one of the dependencies, the values that depend on it are invalidated too.
@@ -508,22 +510,27 @@ class TestMultiPhaseAnalyzer(object):
 
     def test_extract_trajectory(self):
         """extract_trajectory handles checkpointing and skip frame correctly."""
-        skip_frame = 2
-        trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, skip_frame=skip_frame)
-        assert len(trajectory) == int(self.n_steps / self.checkpoint_interval / skip_frame)
-        self.reporter.close()
-        full_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=True)
-        # This should work since its pure Python integer division
-        # Follows the checkpoint interval logic
-        # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems
-        # Should this change in analyze, then this logic will need to be changed as well
-        # The int() rounds down from sampling to a state in between the interval
-        assert len(full_trajectory) == int((self.n_steps + 1) / self.checkpoint_interval) - 1
-        self.reporter.close()
+        n_frames = self.reporter.read_last_iteration(False) + 1  # Include minimization iteration.
+
         # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
         solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=False)
-        assert len(solute_trajectory) == self.n_steps - 1
+        assert len(solute_trajectory) == n_frames
         assert solute_trajectory.n_atoms == len(self.analysis_atoms)
+
+        # Check that only the checkpoint trajectory is returned when keep_solvent is True.
+        # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems.
+        # Should this change in analyze, then this logic will need to be changed as well.
+        # The int() rounds down from sampling to a state in between the interval.
+        full_trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, keep_solvent=True)
+        assert len(full_trajectory) == (n_frames + 1) // self.checkpoint_interval
+
+        # Check that skip_frame reduces the trajectory length correctly.
+        skip_frame = 2
+        trajectory = analyze.extract_trajectory(self.reporter.filepath, replica_index=0, skip_frame=skip_frame)
+        assert len(trajectory) == n_frames / self.checkpoint_interval // skip_frame + 1
+
+        # Extracting the trajectory of a state does not incur into errors.
+        analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
 
 
 class TestRepexAnalyzer(TestMultiPhaseAnalyzer):
