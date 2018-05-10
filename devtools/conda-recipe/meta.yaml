@@ -15,8 +15,6 @@ requirements:
     - python
     - cython
     - setuptools
-    #- gcc 4.8.2 # [linux]
-    #- gcc 4.8.2 # [osx]
 
   run:
     - python
@@ -41,7 +39,6 @@ requirements:
     - jupyter
     - pdbfixer
     - libnetcdf >=4.6.0
-    #- libgcc
 
 test:
   requires:

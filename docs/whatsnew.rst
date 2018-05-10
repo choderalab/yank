@@ -18,6 +18,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Boresch restraints no longer accept ``standard_state_correction_method`` as an option
 - Added new Haversined Torsion Boresch Torsion (``PeriodicTorsionBoresch``) Boresch-like restraint where functional form of torsion is periodic support more numerically stable energy functions
 - Temporarily pinned NetCDF4 to 1.3.1 until we can fix the bug introduced in 1.4.0 where masked arrays are always returned. This pin will be lifted in future releases.
+- Added RMSD Type restraint, requires OpenMM 7.3 or greater to access. You can have older versions of OpenMM, but this feature is unavailable and will raise a graceful error should you attempt to use it.
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------

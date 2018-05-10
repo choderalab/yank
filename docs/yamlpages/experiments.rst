@@ -36,7 +36,7 @@ It takes a ``{UserDefinedSystem}`` (see :doc:`systems <systems>`) and a ``{UserD
 to create the experiment and are the only required arguments.
 
 The ``restraint`` is an **optional** keyword that applies a restraint to the ligand to keep it close to the receptor.
-The only required keyword is ``type``. Valid types are: ``FlatBottom``/``Harmonic``/``Boresch``/``null``. If not
+The only required keyword is ``type``. Valid types are: ``FlatBottom``/``Harmonic``/``Boresch``/``RMSD``/``PeriodicTorsionBoresch``/``null``. If not
 specified, assumes ``null``. Every restraint has his own set of optional parameters that are passed directly to the
 Python constructor of the restraint. See the API documentation in ``yank.restraints`` for the available parameters; you
 can use the links below to jump to each of individual restraint types, the keyword arguments for each restraint type
@@ -46,6 +46,7 @@ are accepted as arguments in the YAML file:
 * :class:`Harmonic Radially-Symmetric Restraints <Harmonic>`
 * :class:`Boresch Orientational Restraints <Boresch>`
 * :class:`Periodic torsion restrained Boresch-like restraint <PeriodicTorsionBoresch>`
+* :class:`RMSD Protein-Ligand Restraints <RMSD>`
 
 The ``options`` directive lets you overwrite :doc:`any global setting <options>` specified in the header ``options`` for
 this specific experiment.
@@ -55,9 +56,9 @@ One option is to select restrained atoms through :class:`Topgraphical Regions <y
 :func:`compound region <yank.Topography.select>` where regions are combined through set operators
 ``and``/``or``.
 
-**Note:** The Boresch0like restraints require that the ligand and receptor are close to each other to make sure the standard
-state correction computation is stable. We recommend only using the ``Boresch`` or ``PeriodicTorsionBoresch`` options if you know
-the binding mode of your system already!
+**Note:** The Boresch-like and RMSD restraints require that the ligand and receptor are close to each other to make sure
+the standard state correction computation is stable. We recommend only using the ``Boresch``,
+``PeriodicTorsionBoresch``, or ``RMSD``, options if you know the binding mode of your system already!
 
 .. _yaml_experiments_multiple:
 

@@ -31,6 +31,9 @@ import yank.restraints
 from yank.multistate import ReplicaExchangeSampler
 from yank.yank import *
 
+# Quiet down some of the global citations for tests
+ReplicaExchangeSampler._global_citation_silence = True
+
 
 # ==============================================================================
 # TEST UTILITIES
@@ -241,12 +244,13 @@ class TestAlchemicalPhase(object):
                 assert getattr(state, protocol_key) == protocol_values[i]
 
     @staticmethod
-    def check_standard_state_correction(alchemical_phase, topography):
+    def check_standard_state_correction(alchemical_phase, topography, restraint):
         """AlchemicalPhase carries the correct standard state correction."""
         is_complex = len(topography.ligand_atoms) > 0
         metadata = alchemical_phase._sampler.metadata
         standard_state_correction = metadata['standard_state_correction']
-        if is_complex:
+        # TODO: Once we get a SSC for RMSD, undo this check
+        if is_complex and "RMSD" not in restraint.__class__.__name__:
             assert standard_state_correction != 0
         else:
             assert standard_state_correction == 0
@@ -321,7 +325,10 @@ class TestAlchemicalPhase(object):
 
     def test_create(self):
         """Alchemical state correctly creates the simulation object."""
-        available_restraints = list(yank.restraints.available_restraint_classes().values())
+        available_restraints = [
+            restraint for restraint in yank.restraints.available_restraint_classes().values()
+            if not (hasattr(restraint, "dev_validate") and not restraint.dev_validate)
+        ]
 
         for test_index, test_case in enumerate(self.all_test_cases):
             test_name, thermodynamic_state, sampler_state, topography = test_case
@@ -355,7 +362,7 @@ class TestAlchemicalPhase(object):
 
                 yield prepare_yield(self.check_protocol, test_name, alchemical_phase, protocol)
                 yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
-                                    topography)
+                                    topography, restraint)
                 yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
                                     protocol, correction_cutoff, reference_system)
 

@@ -21,6 +21,7 @@ Provides many helper functions and common operations used by the various YANK su
 
 import os
 import re
+import abc
 import copy
 import glob
 import shutil
@@ -1729,6 +1730,75 @@ class TLeap:
         if unit_name[0].isdigit():
             unit_name = 'M' + unit_name
         return unit_name
+
+
+def generate_development_feature(feature_dict):
+    """
+    Helper function for generating a class which can flag classes, tests, and functions that are developmental.
+
+    Output class not quite a mixin because it has to be the first class due to the `__init__` flag
+
+    Parameters
+    ----------
+    feature_dict : dict
+        Dictionary of form "test_string : pre-computed test" where "test_string" is just an identifier and
+        "pre-computed test" is a boolean-like object, usually the result of some test. All pre-computed tests will
+        be cast to bool
+
+    Returns
+    -------
+    DevelopmentFeature : class
+        Class which checks against the feature_dict and can be used in several ways:
+
+        * Class Inherited: When inherited as a class, calling its ``__init__()`` will raise an error if features are
+          not met
+        * True/False check function: When calling ``dev_validate()`` will return bool if all features are true.
+        * True/False decorator: When decorating function with ``dev_validation``, function will only be called if
+          ``dev_validate()`` would return True, otherwise simply returns. Helpful for running tests.
+        * Dict of reasons: Property ``dev_reasons`` will return the dictionary of failed dependencies
+        * Dict of all: Property ``dev_features`` will return the dictionary of features it expects and their tests
+
+        With the exception of the `__init__``, all other functions are properties are Class based and do not
+        require instantiation. Function names are all given the `dev_` prefix to avoid clashes with other names its
+        a part of its psudo-mixin properties
+    """
+    base_err = ('This feature cannot be used because it has been marked as "Developmental" and ' 
+                'the following conditions have not been met:\n')
+    valid = True  # Assume valid until proven otherwise
+    check_dict = {}
+    for test_string, test in feature_dict.items():
+        test = bool(test)  # Cast tests to bool
+        if not test:
+            base_err += "\t- {}: {}\n".format(test_string, test)  # Add to error message
+            valid = False  # Not all features met
+            check_dict = {**check_dict, **{test_string: test}}  # Create check sub-dict
+
+    class DevelopmentFeature(object):
+        DEV_ERROR = base_err if not valid else None
+        dev_reasons = check_dict
+        dev_features = feature_dict
+        dev_validate = valid
+
+        def __init__(self, *args, **kwargs):
+            if not self.dev_validate:
+                raise RuntimeError(self.DEV_ERROR)
+
+        @classmethod
+        def dev_validation(cls, wrapped_function):
+            """
+            Decorator function which will only execute the wrapped_function if ``validate()`` is true, else will
+            do nothing.
+            """
+
+            def _empty_function(*args, **kwargs):
+                return
+
+            if cls.dev_validate:
+                return wrapped_function
+            else:
+                return _empty_function
+
+    return DevelopmentFeature
 
 
 # =============================================================================================
