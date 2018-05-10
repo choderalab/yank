@@ -321,7 +321,10 @@ class TestAlchemicalPhase(object):
 
     def test_create(self):
         """Alchemical state correctly creates the simulation object."""
-        available_restraints = list(yank.restraints.available_restraint_classes().values())
+        available_restraints = [
+            restraint for restraint in yank.restraints.available_restraint_classes().values()
+            if not (hasattr(restraint, "dev_validate") and not restraint.dev_validate)
+        ]
 
         for test_index, test_case in enumerate(self.all_test_cases):
             test_name, thermodynamic_state, sampler_state, topography = test_case

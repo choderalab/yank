@@ -255,9 +255,10 @@ def test_partial_parametrization():
         ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
         ('Boresch', boresch),
         ('PeriodicTorsionBoresch', boresch),
-        ('RMSD', dict(restrained_ligand_atoms=[130, 131, 136],
-                         K_RMSD=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
     ]
+    if OpenMM73.dev_validate:
+        test_cases.append(('RMSD', dict(restrained_ligand_atoms=[130, 131, 136],
+                           K_RMSD=1.0 * unit.kilojoule_per_mole / unit.angstroms ** 2)))
 
     for restraint_type, kwargs in test_cases:
         state = copy.deepcopy(thermodynamic_state)
