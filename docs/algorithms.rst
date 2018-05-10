@@ -393,6 +393,8 @@ If the receptor and ligand atom sets are not defined, receptor CA atoms (``name 
 
 .. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref :cite:`Boresch2003` and :cite:`Mobley2006:orientational-restraints` for more information on correcting for ligand symmetry.
 
+.. warning:: Requires OpenMM 7.3 which was in development at time of writing
+
 Restraint Selection Flowchart
 -----------------------------
 

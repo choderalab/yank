@@ -29,6 +29,8 @@ import yank.restraints
 from yank import experiment, Topography
 import yank.multistate as multistate
 
+OpenMM73 = yank.restraints.OpenMM73
+
 
 # =============================================================================================
 # UNIT TESTS
@@ -84,7 +86,7 @@ expected_restraints = {
     'Harmonic': yank.restraints.Harmonic,
     'FlatBottom': yank.restraints.FlatBottom,
     'Boresch': yank.restraints.Boresch,
-    'PeriodicTorsionBoresch': yank.restraints.PeriodicTorsionBoresch
+    'PeriodicTorsionBoresch': yank.restraints.PeriodicTorsionBoresch,
     'RMSD': yank.restraints.RMSD,
 }
 
@@ -191,6 +193,7 @@ def test_Boresch_free_energy():
                'restraint_type': 'Boresch'}
     general_restraint_run(options)
 
+
 @attr('slow')  # Skip on Travis-CI
 def test_PeriodicTorsionBoresch_free_energy():
     """
@@ -286,8 +289,7 @@ def test_partial_parametrization():
                 particles, _ = force.getBondParameters(0)
                 assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
             # RMSD restraint.
-            # TODO LNN: Trap this for dev only
-            elif isinstance(force, openmm.CustomCVForce):
+            elif OpenMM73.dev_validate and isinstance(force, openmm.CustomCVForce):
                 rmsd_cv = force.getCollectiveVariable(0)
                 particles = rmsd_cv.getParticles()
                 assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
@@ -381,6 +383,13 @@ def test_restraint_dispatch():
     """Test dispatch of various restraint types."""
     thermodynamic_state, sampler_state, topography = HostGuestNoninteracting.build_test_case()
     for restraint_type, restraint_class in expected_restraints.items():
+        # Trap the dev and ignore it
+        try:
+            valid = restraint_class.dev_validate
+            if not valid:
+                continue
+        except AttributeError:
+            pass
         # Add restraints and determine parameters.
         thermo_state = copy.deepcopy(thermodynamic_state)
         restraint = yank.restraints.create_restraint(restraint_type)
@@ -392,9 +401,16 @@ def test_restraint_dispatch():
 
 
 def test_restraint_force_group():
-    "The restraint force should be placed in its own force group for optimization."
+    """Test that the restraint force should be placed in its own force group for optimization."""
     thermodynamic_state, sampler_state, topography = HostGuestNoninteracting.build_test_case()
     for restraint_type, restraint_class in expected_restraints.items():
+        # Trap the dev and ignore it
+        try:
+            valid = restraint_class.dev_validate
+            if not valid:
+                continue
+        except AttributeError:
+            pass
         # Add restraints and determine parameters.
         thermo_state = copy.deepcopy(thermodynamic_state)
         restraint = yank.restraints.create_restraint(restraint_type)
@@ -440,6 +456,13 @@ class TestRestraintState(object):
     def get_restraint_cases(self):
         for cls_name, cls in yank.restraints.available_restraint_classes().items():
             # Create restraint and automatically determine parameters.
+            # Trap the dev and ignore it
+            try:
+                valid = cls.dev_validate
+                if not valid:
+                    continue
+            except AttributeError:
+                pass
             restraint = cls()
             thermodynamic_state, sampler_state, topography = copy.deepcopy(self.lysozyme_test_case)
             restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
