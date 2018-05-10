@@ -1026,7 +1026,13 @@ class ExperimentBuilder(object):
         for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
             if 'select' in comb_molecule and comb_molecule['select'] == 'all':
                 # Get the number of models in the file
-                extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
+                try:
+                    extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
+                except KeyError:
+                    # Trap an error caused by missing a filepath from the combinatorial expansion
+                    # This will ultimately fail cerberus validation, but will be easier to debug than
+                    # random Python error
+                    continue
                 with moltools.utils.temporary_cd(self._script_dir):
                     if extension == 'pdb':
                         n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
