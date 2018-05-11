@@ -135,7 +135,8 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
             In units of kT (dimensionless)
         """
         number_equilibrated, g_t, _ = self._equilibration_data
-        self.show_mixing_statistics(cutoff=cutoff, number_equilibrated=number_equilibrated)
+        if show_mixing:
+            self.show_mixing_statistics(cutoff=cutoff, number_equilibrated=number_equilibrated)
         data = {}
         # Accumulate free energy differences
         Deltaf_ij, dDeltaf_ij = self.get_free_energy()

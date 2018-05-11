@@ -188,7 +188,7 @@ class HealthReportData(object):
             g_t = g_i[i_max]
             self.Neff_maxs[phase_name] = n_effective_max
             self.nequils[phase_name] = n_equilibration
-            self.g_ts[phase_name] = g_t[int(self.nequils[phase_name])]
+            self.g_ts[phase_name] = g_t
             serial['discarded_from_start'] = int(discard_from_start)
             serial['effective_samples'] = float(self.Neff_maxs[phase_name])
             serial['equilibration_samples'] = int(self.nequils[phase_name])
@@ -243,7 +243,7 @@ class HealthReportData(object):
             # SECOND SUBPLOT: g_t trace
             x = i_t
             g = equilibration_figure.add_subplot(sub_grid[1])
-            g.plot(x, g_t)
+            g.plot(x, g_i)
             ylim = g.get_ylim()
             g.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
             g.set_ylim(*ylim)  # Reset limits in case vlines expanded them

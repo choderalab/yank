@@ -119,7 +119,7 @@ def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, max_subs
     ----------
     timeseries_to_analyze : np.ndarray
         1-D timeseries to analyze for equilibration
-    max_subset : int or None, optional, default: 1000
+    max_subset : int >= 1 or None, optional, default: 1000
         Maximum number of points in the ``timeseries_to_analyze`` on which to analyze the equilibration on.
         These are distributed uniformly over the timeseries so the final output will be size max_subset where indices
         are placed  approximately every ``(len(timeseries_to_analyze) - 1) / max_subset``.
@@ -152,11 +152,21 @@ def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, max_subs
     """
     # Cast to array if not already
     series = np.array(timeseries_to_analyze)
+    # Special trap for constant series
     time_size = series.size
     set_size = time_size - 1  # Cannot analyze the last entry
     # Set maximum
     if max_subset is None or set_size < max_subset:
         max_subset = set_size
+    # Special trap for series of size 1
+    if max_subset == 0:
+        max_subset = 1
+    # Special trap for constant or size 1 series
+    if series.std() == 0.0 or max_subset == 1:
+        return (np.arange(max_subset, dtype=int),  # i_t
+                np.array([1]*max_subset),  # g_i
+                np.arange(time_size, time_size-max_subset, -1)  # n_effective_i
+                )
     g_i = np.ones([max_subset], np.float32)
     n_effective_i = np.ones([max_subset], np.float32)
     counter = np.arange(max_subset)
