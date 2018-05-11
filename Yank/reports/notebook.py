@@ -181,9 +181,13 @@ class HealthReportData(object):
             self._n_discarded = discard_from_start
             self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[discard_from_start:]
             # Timeseries statistics
-            g_t, Neff_t = analyze.multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
-            self.Neff_maxs[phase_name] = Neff_t.max()
-            self.nequils[phase_name] = Neff_t.argmax()
+            i_t, g_i, n_effective_i = analyze.multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
+            n_effective_max = n_effective_i.max()
+            i_max = n_effective_i.argmax()
+            n_equilibration = i_t[i_max]
+            g_t = g_i[i_max]
+            self.Neff_maxs[phase_name] = n_effective_max
+            self.nequils[phase_name] = n_equilibration
             self.g_ts[phase_name] = g_t[int(self.nequils[phase_name])]
             serial['discarded_from_start'] = int(discard_from_start)
             serial['effective_samples'] = float(self.Neff_maxs[phase_name])
@@ -237,8 +241,9 @@ class HealthReportData(object):
                    )
 
             # SECOND SUBPLOT: g_t trace
+            x = i_t
             g = equilibration_figure.add_subplot(sub_grid[1])
-            g.plot(x[:-1], g_t)
+            g.plot(x, g_t)
             ylim = g.get_ylim()
             g.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
             g.set_ylim(*ylim)  # Reset limits in case vlines expanded them
@@ -247,7 +252,7 @@ class HealthReportData(object):
 
             # THRID SUBPLOT: Neff trace
             ne = equilibration_figure.add_subplot(sub_grid[2])
-            ne.plot(x[:-1], Neff_t)
+            ne.plot(x, n_effective_i)
             ylim = ne.get_ylim()
             ne.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
             ne.set_ylim(*ylim)  # Reset limits in case vlines expanded them
@@ -682,7 +687,11 @@ class HealthReportData(object):
                         (u_forward, s_forward, free_energy_trace_f), (u_reverse, s_reverse, free_energy_trace_r)]:
                     u_n = analyzer.get_effective_energy_timeseries(energies=energy_sub,
                                                                    replica_state_indices=state_sub)
-                    number_equilibrated, g_t, neff_max = analyze.multistate.utils.get_equilibration_data(u_n)
+
+                    i_t, g_i, n_effective_i = analyze.multistate.get_equilibration_data_per_sample(u_n)
+                    i_max = n_effective_i.argmax()
+                    number_equilibrated = i_t[i_max]
+                    g_t = g_i[i_max]
                     energy_sub = analyze.multistate.utils.remove_unequilibrated_data(energy_sub,
                                                                                      number_equilibrated,
                                                                                      -1)

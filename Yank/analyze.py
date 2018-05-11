@@ -105,7 +105,35 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
             self._computed_observables['standard_state_correction'] = ssc
         return self._computed_observables['standard_state_correction']
 
-    def analyze_phase(self, cutoff=0.05):
+    def analyze_phase(self, show_mixing=False, cutoff=0.05):
+        """
+        Auto-analysis function for the phase
+
+        Function which broadly handles "auto-analysis" for those that do not wish to call all the methods on their own.
+
+        This variant computes the following:
+
+        * Equilibration data (accessible through ``n_equilibration_iterations`` and ``statistical_inefficiency``
+          properties)
+        * Optional mixing statistics printout
+        * Free Energy difference between all states with error
+        * Enthalpy difference between all states with error (as expectation of the reduced potential)
+        * Free energy of the Standard State Correction for the phase.
+
+        Parameters
+        ----------
+        show_mixing : bool, optional. Default: False
+            Toggle to show mixing statistics or not. This can be a slow step so is disabled for speed by default.
+        cutoff : float, optional. Default: 0.05
+            Threshold below which % of mixing mixing from one state to another is not shown.
+            Makes the output table more clean to read (rendered as whitespace)
+
+        Returns
+        -------
+        data : dict
+            A dictionary of analysis objects, in this case Delta F, Delta H, and Standard State Free Energy
+            In units of kT (dimensionless)
+        """
         number_equilibrated, g_t, _ = self._equilibration_data
         self.show_mixing_statistics(cutoff=cutoff, number_equilibrated=number_equilibrated)
         data = {}
