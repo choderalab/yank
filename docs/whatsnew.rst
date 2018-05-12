@@ -8,18 +8,30 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 0.22.0 RMSD the Casbah
 ----------------------
+
+Enhancements and features
+"""""""""""""""""""""""""
 - Added RMSD Type restraint, requires OpenMM 7.3 or greater to access. You can have older versions of OpenMM, but this feature is unavailable and will raise a graceful error should you attempt to use it.
 - Added more robust last good iteration saving
 - Added more robust restore from checkpoint access
 - Exposed checkpoint interval iterations in ``MultiStateReporter``
-- Fix bug #941 where unbiasing the restraint would crash the analysis if using a 32-bit OpenCL platform.
-- Fix bug #945 where relative imports of OpenEye tools would cause problems on some systems.
 - Generalized the Boresch restraints to a BoreschLike restraint to support new energy functions.
 - Boresch restraint automatic atom selection now picks bonded heavy atoms
 - Boresch restraints no longer accept ``standard_state_correction_method`` as an option
 - Added new Haversined Torsion Boresch Torsion (``PeriodicTorsionBoresch``) Boresch-like restraint where functional form of torsion is periodic support more numerically stable energy functions
-- Temporarily pinned NetCDF4 to 1.3.1 until we can fix the bug introduced in 1.4.0 where masked arrays are always returned. This pin will be lifted in future releases.
 - Changed the timeseries analysis to only consider a maximum number of points on which to evaluate "is this equilibrium" to speed up process.
+- Implement #848 Use MDTraj Trajectory.save() method instead of inferring function from extension.
+- Implement #635 Allow extract-trajectory to handle trajectories with 1 frame.
+
+Bugfixes
+""""""""
+- Fix bug #941 where unbiasing the restraint would crash the analysis if using a 32-bit OpenCL platform.
+- Fix bug #945 where relative imports of OpenEye tools would cause problems on some systems.
+- Temporarily pinned NetCDF4 to 1.3.1 until we can fix the bug introduced in 1.4.0 where masked arrays are always returned. This pin will be lifted in future releases.
+- Fix a bug where max_n_iterations was ignored when computing the mixing statistics of the calculation (PR #963).
+- Fix bug #944 where ReplicaExchange.create() did not accept a single SamplerState anymore.
+- Fix a bug where the box vectors of SamplerStates were initialized incorrectly in MultiStateSampler.create() for NVT calculations (PR #969).
+- Fix bug #964 where using the state index argument in extract_trajectory with SAMS calculations would cause a crash.
 
 0.21.2 More Post-Sams Bugfixes
 ------------------------------
