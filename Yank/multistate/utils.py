@@ -103,7 +103,7 @@ def get_decorrelation_time(timeseries_to_analyze):
     return timeseries.statisticalInefficiency(timeseries_to_analyze)
 
 
-def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, max_subset=1000):
+def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, max_subset=100):
     """
     Compute the correlation time and n_effective per sample with tuning to how you want your data formatted
 
@@ -119,7 +119,7 @@ def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, max_subs
     ----------
     timeseries_to_analyze : np.ndarray
         1-D timeseries to analyze for equilibration
-    max_subset : int >= 1 or None, optional, default: 1000
+    max_subset : int >= 1 or None, optional, default: 100
         Maximum number of points in the ``timeseries_to_analyze`` on which to analyze the equilibration on.
         These are distributed uniformly over the timeseries so the final output will be size max_subset where indices
         are placed  approximately every ``(len(timeseries_to_analyze) - 1) / max_subset``.
