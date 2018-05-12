@@ -389,6 +389,50 @@ class MultiStateReporter(object):
                 self.close()
                 break
 
+    def read_end_thermodynamic_states(self):
+        """Read thermodynamic states at the ends of the protocol."
+
+        Returns
+        -------
+        end_thermodynamic_states : list of ThermodynamicState
+            unsampled_states, if present, or first and last sampled states
+        """
+        end_thermodynamic_states = list()
+
+        if 'unsampled_states' in self._storage_analysis.groups:
+            state_type = 'unsampled_states'
+        else:
+            state_type = 'thermodynamic_states'
+
+        # Read thermodynamic end states
+        states_serializations = dict()
+        n_states = len(self._storage_analysis.groups[state_type].variables)
+        for state_id in [0, n_states-1]:
+            serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id))
+
+            # Find the thermodynamic state representation.
+            serialized_thermodynamic_state = serialized_state
+            while 'thermodynamic_state' in serialized_thermodynamic_state:
+                # The while loop is necessary for nested CompoundThermodynamicStates.
+                serialized_thermodynamic_state = serialized_thermodynamic_state['thermodynamic_state']
+
+            # Check if the standard state is in a previous state.
+            try:
+                standard_system_name = serialized_thermodynamic_state.pop('_Reporter__compatible_state')
+            except KeyError:
+                # Cache the standard system serialization for future usage.
+                standard_system_name = '{}/{}'.format(state_type, state_id)
+                states_serializations[standard_system_name] = serialized_thermodynamic_state['standard_system']
+            else:
+                # The system serialization can be retrieved from another state.
+                serialized_standard_system = states_serializations[standard_system_name]
+                serialized_thermodynamic_state['standard_system'] = serialized_standard_system
+
+            # Create ThermodynamicState object.
+            end_thermodynamic_states.append(mmtools.utils.deserialize(serialized_state))
+
+        return end_thermodynamic_states
+
     @mmtools.utils.with_timer('Reading thermodynamic states from storage')
     def read_thermodynamic_states(self):
         """Retrieve the stored thermodynamic states from the checkpoint file.
