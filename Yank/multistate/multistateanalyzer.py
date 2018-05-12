@@ -621,7 +621,6 @@ class PhaseAnalyzer(ABC):
 
         """
         self._end_thermodynamic_states = self._reporter.read_end_thermodynamic_states()
-        print(self._end_thermodynamic_states)
         # Cache other useful informations since we have already read this.
         # TODO should we read temperatures of all the states and let kT property depend on reference_states?
         self._kT = self._end_thermodynamic_states[0].kT
