@@ -23,7 +23,7 @@ from simtk import unit
 
 from yank.yank import Topography
 from yank.restraints import RestraintState
-from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, SAMSSampler
+from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, SAMSSampler, utils
 import yank.analyze as analyze
 
 # ==============================================================================
@@ -86,6 +86,34 @@ class FEStandardStatePhase(FreeEnergyPhase):
     def get_standard_state_correction(self):
         self._computed_observables['standard_state_correction'] = self.ssc
         return self._computed_observables['standard_state_correction']
+
+
+# ==============================================================================
+# UTILITY TESTS
+# ==============================================================================
+
+def test_timeseries():
+    """Test that the timeseries analysis utilities behave as expected"""
+    timeseries = pymbar.timeseries
+    # Generate some data
+    a = 1
+    i_max = 20
+    n_i = 1000
+    i_t = np.linspace(0, i_max, n_i)
+    # Boltzmann distribution
+    series = np.sqrt(2/np.pi) * i_t**2 * np.exp(-i_t/(2*a**2))/a**3
+    scale = np.random.normal(size=n_i)*(1-i_t/i_max)/2  # Noise which decays
+    full_series = series + scale
+    # Analyze output
+    a_i_t, a_g_i, a_n_effective_i = utils.get_equilibration_data_per_sample(full_series, fast=True, max_subset=n_i)
+    a_n_effective_max = a_n_effective_i.max()
+    a_i_max = a_n_effective_i.argmax()
+    a_n_equilibration = a_i_t[a_i_max]
+    a_g_t = a_g_i[a_i_max]
+    a_equilibration_data = [a_n_equilibration, a_g_t, a_n_effective_max]
+    # MBAR output
+    m_equilibration_data = timeseries.detectEquilibration(full_series, fast=True)
+    assert np.allclose(m_equilibration_data, a_equilibration_data)
 
 
 # ==============================================================================

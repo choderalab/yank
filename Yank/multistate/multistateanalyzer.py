@@ -1840,7 +1840,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
-        equilibration_data = list(utils.get_equilibration_data(u_n[1:]))
+        i_t, g_i, n_effective_i = utils.get_equilibration_data_per_sample(u_n[1:])
+        n_effective_max = n_effective_i.max()
+        i_max = n_effective_i.argmax()
+        n_equilibration = i_t[i_max]
+        g_t = g_i[i_max]
+        equilibration_data = [n_equilibration, g_t, n_effective_max]
         # Discard also minimization frame.
         equilibration_data[0] += 1
         self._equilibration_data = tuple(equilibration_data)
