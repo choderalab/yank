@@ -612,18 +612,18 @@ class PhaseAnalyzer(ABC):
         return self._reporter.n_states
 
     def _get_end_thermodynamic_states(self):
-        """Read thermodynamic states at the ends of the protocol."""
-        # TODO: what if reference_states changes? This should become a CachedProperty.
-        # Check cached values.
-        if self._end_thermodynamic_states is None:
-            sampled_states, unsampled_states = self._reporter.read_thermodynamic_states()
-            if len(unsampled_states) == 0:
-                self._end_thermodynamic_states = [sampled_states[0], sampled_states[-1]]
-            else:
-                self._end_thermodynamic_states = unsampled_states
-            # Cache other useful informations since we have already read this.
-            # TODO should we read temperatures of all the states and let kT property depend on reference_states?
-            self._kT = self._end_thermodynamic_states[0].kT
+        """Read thermodynamic states at the ends of the protocol.
+
+        Returns
+        -------
+        end_thermodynamic_states : list of ThermodynamicState
+            The end thermodynamic states
+
+        """
+        self._end_thermodynamic_states = self._reporter.read_end_thermodynamic_states()
+        # Cache other useful informations since we have already read this.
+        # TODO should we read temperatures of all the states and let kT property depend on reference_states?
+        self._kT = self._end_thermodynamic_states[0].kT
         return self._end_thermodynamic_states
 
     @property
@@ -943,6 +943,7 @@ class PhaseAnalyzer(ABC):
         # Initialize MBAR (computing free energy estimates, which may take a while)
         logger.info("Computing free energy differences...")
         self.mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
+        logger.info('Done.')
         return self.mbar
 
     # -------------------------------------------------------------------------
@@ -1223,20 +1224,25 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             If there are no radially-symmetric restraints in the bound state.
 
         """
+        logger.info('Trying to get radially symmetric restraint data...')
+
         # Check cached value.
         if self._radially_symmetric_restraint_data is not None:
             return self._radially_symmetric_restraint_data
 
         # Isolate the end states.
+        logger.info('Retrieving end thermodynamic states...')
         end_states = self._get_end_thermodynamic_states()
 
         # Isolate restraint force.
+        logger.info('Isolating restraint force...')
         system = end_states[0].system
         restraint_parent_class = mmtools.forces.RadiallySymmetricRestraintForce
         # This raises mmtools.forces.NoForceFoundError if there's no restraint to unbias.
         force_idx, restraint_force = mmtools.forces.find_forces(system, force_type=restraint_parent_class,
                                                                 only_one=True, include_subclasses=True)
         # The force is owned by the System, we have to copy to avoid the memory to be deallocated.
+        logger.info('Deep copying restraint force...')
         restraint_force = copy.deepcopy(restraint_force)
 
         # Check that the restraint was turned on at the end states.
@@ -1244,11 +1250,13 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             raise TypeError('Cannot unbias a restraint that is turned off at one of the end states.')
 
         # Read the centroid weights (mass) of the restrained particles.
+        logger.info('Retrieving particle masses...')
         weights_group1 = [system.getParticleMass(i) for i in restraint_force.restrained_atom_indices1]
         weights_group2 = [system.getParticleMass(i) for i in restraint_force.restrained_atom_indices2]
 
         # Cache value so that we won't have to deserialize the system again.
         self._radially_symmetric_restraint_data = restraint_force, weights_group1, weights_group2
+        logger.info('Done.')
         return self._radially_symmetric_restraint_data
 
     # -------------------------------------------------------------------------
@@ -1292,6 +1300,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         n_replicas, n_states, n_iterations = energies.shape
 
+        logger.info("Assembling effective timeseries...")
         # Check for log weights
         has_log_weights = False
         if self.has_log_weights:
@@ -1311,6 +1320,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             if has_log_weights:
                 u_n[iteration] += - np.sum(log_weights[states_slice, iteration]) + (
                         n_replicas * logsumexp(-f_l[:] + log_weights[:, iteration]))
+
+        logger.info("Done.")
         return u_n
 
     def _compute_mbar_decorrelated_energies(self):
@@ -1336,6 +1347,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         sampled_energy_matrix, unsampled_energy_matrix, neighborhood, replicas_state_indices = energy_data
         number_equilibrated, g_t, Neff_max = self._get_equilibration_data(sampled_energy_matrix,
                                                                           replicas_state_indices)
+
+        logger.info("Assembling uncorrelated energies...")
 
         for i, energies in enumerate(energy_data):
             # Discard equilibration iterations.
@@ -1372,6 +1385,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # free energy profile along the restraint distance/energy cutoff.
         self._decorrelated_u_ln = energy_matrix
         self._decorrelated_N_l = samples_per_state
+
+        logger.info('Done.')
         return self._decorrelated_u_ln, self._decorrelated_N_l
 
     def _compute_mbar_unbiased_energies(self):
@@ -1392,6 +1407,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             The total number of samples drawn from each state (including the
             unbiased states).
         """
+        logger.info('Checking if we need to unbias the restraint...')
+
         # Check if we need to unbias the restraint.
         unbias_restraint = self.unbias_restraint
         if unbias_restraint:
@@ -1408,18 +1425,19 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Compute the restraint energies/distances.
         restraint_force, weights_group1, weights_group2 = restraint_data
-        logger.debug('Found {} restraint. The restraint will be unbiased.'.format(restraint_force.__class__.__name__))
+        logger.info('Found {} restraint. The restraint will be unbiased.'.format(restraint_force.__class__.__name__))
         logger.debug('Receptor restrained atoms: {}'.format(restraint_force.restrained_atom_indices1))
         logger.debug('ligand restrained atoms: {}'.format(restraint_force.restrained_atom_indices2))
 
 
         # Compute restraint energies/distances.
+        logger.info('Computing restraint energies...')
         energies_ln, distances_ln = self._compute_restraint_energies(restraint_force, weights_group1,
                                                                      weights_group2)
 
         # Convert energies to kT unit for comparison to energy cutoff.
         energies_ln = energies_ln / self.kT
-        logger.debug('Restraint energy mean: {} kT; std: {} kT'
+        logger.info('Restraint energy mean: {} kT; std: {} kT'
                      ''.format(np.mean(energies_ln), np.std(energies_ln, ddof=1)))
 
         # Don't modify the cached decorrelated energies.
@@ -1471,6 +1489,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Cache new values.
         self._unbiased_decorrelated_u_ln = u_ln_new
         self._unbiased_decorrelated_N_l = N_l_new
+
+        logger.info('Done.')
         return self._unbiased_decorrelated_u_ln, self._unbiased_decorrelated_N_l
 
     def _compute_restraint_energies(self, restraint_force, weights_group1, weights_group2):
