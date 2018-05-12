@@ -490,7 +490,6 @@ class MultiStateReporter(object):
 
                 # Create ThermodynamicState object.
                 states[state_type].append(mmtools.utils.deserialize(serialized_state))
-                state_id += 1
 
         return [states['thermodynamic_states'], states['unsampled_states']]
 
