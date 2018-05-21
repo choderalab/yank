@@ -82,7 +82,7 @@ class MultiStateSampler(object):
         The number of iterations to perform. Both ``float('inf')`` and
         ``numpy.inf`` are accepted for infinity. If you set this to infinity,
         be sure to set also ``online_analysis_interval``.
-    online_analysis_interval : None or Int >= 1, optional, default None
+    online_analysis_interval : "checkpoint", None, or Int >= 1, optional, default "checkpoint"
         Choose the interval at which to perform online analysis of the free energy.
 
         After every interval, the simulation will be stopped and the free energy estimated.
@@ -90,14 +90,22 @@ class MultiStateSampler(object):
         If the error in the free energy estimate is at or below ``online_analysis_target_error``, then the simulation
         will be considered completed.
 
-    online_analysis_target_error : float >= 0, optional, default 0.2
+        If set to ``"checkpoint"``, then the reporter checkpoint interval is chosen after the ``create`` call
+
+        If set to ``None``, then no online analysis is performed
+
+    online_analysis_target_error : float >= 0, optional, default 0.0
         The target error for the online analysis measured in kT per phase.
 
         Once the free energy is at or below this value, the phase will be considered complete.
 
         If ``online_analysis_interval`` is None, this option does nothing.
 
-    online_analysis_minimum_iterations : int >= 0, optional, default 50
+        Default is set to 0.0 since online analysis runs by default, but a finite ``number_of_iterations`` should also
+        be set to ensure there is some stop condition. If target error is 0 and an infinite number of iterations is set,
+        then the sampler will run until the user stop it manually.
+
+    online_analysis_minimum_iterations : int >= 0, optional, default 200
         Set the minimum number of iterations which must pass before online analysis is carried out.
 
         Since the initial samples likely not to yield a good estimate of free energy, save time and just skip them
@@ -132,8 +140,8 @@ class MultiStateSampler(object):
     # -------------------------------------------------------------------------
 
     def __init__(self, mcmc_moves=None, number_of_iterations=1,
-                 online_analysis_interval=None, online_analysis_target_error=0.2,
-                 online_analysis_minimum_iterations=50,
+                 online_analysis_interval="checkpoint", online_analysis_target_error=0.0,
+                 online_analysis_minimum_iterations=200,
                  locality=None):
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -381,7 +389,7 @@ class MultiStateSampler(object):
         # ----------------------------------
 
         @staticmethod
-        def _number_of_iterations_validator(instance, number_of_iterations):
+        def _number_of_iterations_validator(_, number_of_iterations):
             # Support infinite number of iterations.
             if not (0 <= number_of_iterations <= float('inf')):
                 raise ValueError('Accepted values for number_of_iterations are'
@@ -389,11 +397,11 @@ class MultiStateSampler(object):
             return number_of_iterations
 
         @staticmethod
-        def _oa_interval_validator(instance, online_analysis_interval):
+        def _oa_interval_validator(_, online_analysis_interval):
             """Check the online_analysis_interval value for consistency"""
-            if online_analysis_interval is not None and (
+            if online_analysis_interval is not None and online_analysis_interval != "checkpoint" and (
                             type(online_analysis_interval) != int or online_analysis_interval < 1):
-                raise ValueError("online_analysis_interval must be an integer 1 or greater, or None")
+                raise ValueError('online_analysis_interval must be an integer 1 or greater, "checkpoint", or None')
             return online_analysis_interval
 
         @staticmethod
@@ -414,12 +422,11 @@ class MultiStateSampler(object):
             return online_analysis_minimum_iterations
 
         @staticmethod
-        def _locality_validator(instance, locality):
+        def _locality_validator(_, locality):
             if locality is not None:
                 if (type(locality) != int) or (locality <= 0):
                     raise ValueError("locality must be an int > 0")
             return locality
-
 
     number_of_iterations = _StoredProperty('number_of_iterations',
                                            validate_function=_StoredProperty._number_of_iterations_validator)
@@ -521,97 +528,7 @@ class MultiStateSampler(object):
 
         self._initialize_reporter()
 
-    def _pre_write_create(self,
-                          thermodynamic_states,
-                          sampler_states,
-                          storage,
-                          initial_thermodynamic_states=None,
-                          unsampled_thermodynamic_states=None,
-                          metadata=None):
-        """
-        Internal function which allocates and sets up ALL variables prior to actually using them.
-        This is helpful to ensure subclasses have all variables created prior to writing them out with
-        :func:`_report_iteration`.
-        All calls to this function should be *identical* to :func:`create` itself
-        """
-        # Check all systems are either periodic or not.
-        is_periodic = thermodynamic_states[0].is_periodic
-        for thermodynamic_state in thermodynamic_states:
-            if thermodynamic_state.is_periodic != is_periodic:
-                raise Exception('Thermodynamic states contain a mixture of '
-                                'systems with and without periodic boundary conditions.')
-
-        # Check that sampler states specify box vectors if the system is periodic
-        if is_periodic:
-            for sampler_state in sampler_states:
-                if sampler_state.box_vectors is None:
-                    raise Exception('All sampler states must have box_vectors defined if the system is periodic.')
-
-        # Make sure all states have same number of particles. We don't
-        # currently support writing storage with different n_particles
-        n_particles = thermodynamic_states[0].n_particles
-        for states in [thermodynamic_states, sampler_states]:
-            for state in states:
-                if state.n_particles != n_particles:
-                    raise ValueError('All ThermodynamicStates and SamplerStates must '
-                                     'have the same number of particles')
-
-        # Handle default argument for metadata and add default simulation title.
-        default_title = (self._TITLE_TEMPLATE.format(time.asctime(time.localtime())))
-        if metadata is None:
-            metadata = dict(title=default_title)
-        elif 'title' not in metadata:
-            metadata['title'] = default_title
-        self._metadata = metadata
-
-        # Save thermodynamic states. This sets n_replicas.
-        self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
-
-        # Handle default unsampled thermodynamic states.
-        if unsampled_thermodynamic_states is None:
-            self._unsampled_states = []
-        else:
-            self._unsampled_states = copy.deepcopy(unsampled_thermodynamic_states)
-
-        # Deep copy sampler states.
-        self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
-
-        # Set initial thermodynamic state indices if not specified
-        if initial_thermodynamic_states is None:
-            initial_thermodynamic_states = self._default_initial_thermodynamic_states(thermodynamic_states,
-                                                                                      sampler_states)
-        self._replica_thermodynamic_states = np.array(initial_thermodynamic_states, np.int64)
-
-        # Assign default system box vectors if None has been specified.
-        for replica_id, thermodynamic_state_id in enumerate(self._replica_thermodynamic_states):
-            sampler_state = self._sampler_states[replica_id]
-            if sampler_state.box_vectors is not None:
-                continue
-            thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
-            sampler_state.box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
-
-        # Ensure there is an MCMCMove for each thermodynamic state.
-        if isinstance(self._mcmc_moves, mmtools.mcmc.MCMCMove):
-            self._mcmc_moves = [copy.deepcopy(self._mcmc_moves) for _ in range(self.n_states)]
-        elif len(self._mcmc_moves) != self.n_states:
-            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) must '
-                               'be the same.'.format(len(self._mcmc_moves), self.n_states))
-
-        # Reset iteration counter.
-        self._iteration = 0
-
-        # Reset statistics.
-        # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)
-        self._n_proposed_matrix = np.zeros([self.n_states, self.n_states], np.int64)
-
-        # Allocate memory for energy matrix. energy_thermodynamic/unsampled_states[k][l]
-        # is the reduced potential computed at the positions of SamplerState sampler_states[k]
-        # and ThermodynamicState thermodynamic/unsampled_states[l].
-        self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
-        self._neighborhoods = np.zeros([self.n_replicas, self.n_states], 'i1')
-        self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
+        self._set_online_iteration()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, tolerance=1.0 * unit.kilojoules_per_mole / unit.nanometers,
@@ -808,6 +725,106 @@ class MultiStateSampler(object):
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
+
+    def _set_online_iteration(self):
+        """
+        Internal function to set the checkpoint interval when its a function
+        Right now only affected by reporter checkpoint interval
+        """
+        if self.online_analysis_interval == "checkpoint":
+            self.online_analysis_interval = self._reporter.checkpoint_interval
+
+    def _pre_write_create(self,
+                          thermodynamic_states,
+                          sampler_states,
+                          storage,
+                          initial_thermodynamic_states=None,
+                          unsampled_thermodynamic_states=None,
+                          metadata=None):
+        """
+        Internal function which allocates and sets up ALL variables prior to actually using them.
+        This is helpful to ensure subclasses have all variables created prior to writing them out with
+        :func:`_report_iteration`.
+        All calls to this function should be *identical* to :func:`create` itself
+        """
+        # Check all systems are either periodic or not.
+        is_periodic = thermodynamic_states[0].is_periodic
+        for thermodynamic_state in thermodynamic_states:
+            if thermodynamic_state.is_periodic != is_periodic:
+                raise Exception('Thermodynamic states contain a mixture of '
+                                'systems with and without periodic boundary conditions.')
+
+        # Check that sampler states specify box vectors if the system is periodic
+        if is_periodic:
+            for sampler_state in sampler_states:
+                if sampler_state.box_vectors is None:
+                    raise Exception('All sampler states must have box_vectors defined if the system is periodic.')
+
+        # Make sure all states have same number of particles. We don't
+        # currently support writing storage with different n_particles
+        n_particles = thermodynamic_states[0].n_particles
+        for states in [thermodynamic_states, sampler_states]:
+            for state in states:
+                if state.n_particles != n_particles:
+                    raise ValueError('All ThermodynamicStates and SamplerStates must '
+                                     'have the same number of particles')
+
+        # Handle default argument for metadata and add default simulation title.
+        default_title = (self._TITLE_TEMPLATE.format(time.asctime(time.localtime())))
+        if metadata is None:
+            metadata = dict(title=default_title)
+        elif 'title' not in metadata:
+            metadata['title'] = default_title
+        self._metadata = metadata
+
+        # Save thermodynamic states. This sets n_replicas.
+        self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
+
+        # Handle default unsampled thermodynamic states.
+        if unsampled_thermodynamic_states is None:
+            self._unsampled_states = []
+        else:
+            self._unsampled_states = copy.deepcopy(unsampled_thermodynamic_states)
+
+        # Deep copy sampler states.
+        self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
+
+        # Set initial thermodynamic state indices if not specified
+        if initial_thermodynamic_states is None:
+            initial_thermodynamic_states = self._default_initial_thermodynamic_states(thermodynamic_states,
+                                                                                      sampler_states)
+        self._replica_thermodynamic_states = np.array(initial_thermodynamic_states, np.int64)
+
+        # Assign default system box vectors if None has been specified.
+        for replica_id, thermodynamic_state_id in enumerate(self._replica_thermodynamic_states):
+            sampler_state = self._sampler_states[replica_id]
+            if sampler_state.box_vectors is not None:
+                continue
+            thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+            sampler_state.box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
+
+        # Ensure there is an MCMCMove for each thermodynamic state.
+        if isinstance(self._mcmc_moves, mmtools.mcmc.MCMCMove):
+            self._mcmc_moves = [copy.deepcopy(self._mcmc_moves) for _ in range(self.n_states)]
+        elif len(self._mcmc_moves) != self.n_states:
+            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) must '
+                               'be the same.'.format(len(self._mcmc_moves), self.n_states))
+
+        # Reset iteration counter.
+        self._iteration = 0
+
+        # Reset statistics.
+        # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
+        # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
+        self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)
+        self._n_proposed_matrix = np.zeros([self.n_states, self.n_states], np.int64)
+
+        # Allocate memory for energy matrix. energy_thermodynamic/unsampled_states[k][l]
+        # is the reduced potential computed at the positions of SamplerState sampler_states[k]
+        # and ThermodynamicState thermodynamic/unsampled_states[l].
+        self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
+        self._neighborhoods = np.zeros([self.n_replicas, self.n_states], 'i1')
+        self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
 
     @classmethod
     def _instantiate_sampler_from_storage(cls, storage):

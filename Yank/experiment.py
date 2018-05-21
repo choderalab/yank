@@ -236,7 +236,7 @@ class AlchemicalPhaseFactory(object):
         'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
         'number_of_equilibration_iterations': 0,
         'equilibration_timestep': 1.0 * unit.femtosecond,
-        'checkpoint_interval': 10,
+        'checkpoint_interval': 200,
         'store_solute_trajectory': True
     }
 

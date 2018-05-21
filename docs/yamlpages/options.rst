@@ -633,7 +633,7 @@ Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
 .. code-block:: yaml
 
    options:
-     checkpoint_interval: 10
+     checkpoint_interval: 200
 
 Specify how frequently checkpoint information should be saved to file relative to iterations. YANK simulations can be
 resumed only from checkpoints, so if something crashes, up to ``checkpoint_interval`` worth of iterations will be lost
@@ -645,7 +645,7 @@ you will get. If you want to write a checkpoint every iteration, set this to ``1
 Checkpoint information includes things like full coordinates and box vectors, as well as more static information such
 as metadata, simulation options, and serialized thermodynamic states.
 
-Valid Options (10): <Integer ``>= 1``>
+Valid Options (200): <Integer ``>= 1``>
 
 
 

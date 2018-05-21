@@ -75,7 +75,7 @@ class MultiStateReporter(object):
 
         If None, the storage file won't be open on construction, and a call to
         :func:`Reporter.open` will be needed before attempting read/write operations.
-    checkpoint_interval : int >= 1, Default: 10
+    checkpoint_interval : int >= 1, Default: 200
         The frequency at which checkpointing information is written relative to analysis information.
 
         This is a multiple
@@ -99,10 +99,15 @@ class MultiStateReporter(object):
     Attributes
     ----------
     filepath
+    checkpoint_interval
+    is_periodic
+    n_states
+    n_replicas
+    analysis_particle_indices
 
     """
     def __init__(self, storage, open_mode=None,
-                 checkpoint_interval=10, checkpoint_storage=None,
+                 checkpoint_interval=200, checkpoint_storage=None,
                  analysis_particle_indices=()):
         # Handle checkpointing
         if type(checkpoint_interval) != int:
@@ -179,6 +184,11 @@ class MultiStateReporter(object):
     def analysis_particle_indices(self):
         """Return the tuple of indices of the particles which additional information is stored on for analysis"""
         return self._analysis_particle_indices
+
+    @property
+    def checkpoint_interval(self):
+        """Returns the checkpoint interval"""
+        return self._checkpoint_interval
 
     def storage_exists(self, skip_size=False):
         """

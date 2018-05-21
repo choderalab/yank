@@ -6,6 +6,12 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.22.1 Online Analysis Default
+------------------------------
+- Online analysis will always run by default now, with no target error, run every checkpoint interval, and with at least 200 iterations
+- Online analysis can now be a set to the checkpoint interval by setting ``online_analysis_interval = "checkpoint"`` in the ``MultiStateSampler``
+- Checkpoint interval increased from default of 10 to 200
+
 0.22.0 RMSD the Casbah
 ----------------------
 

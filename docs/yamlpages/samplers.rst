@@ -136,9 +136,11 @@ Ratio estimate for the free energy is calculated and the error is computed. Some
 speed up future calculations, but this operation will still slow down as more iterations are added. We recommend
 choosing an interval of *at least* 100, if not more.
 
-If set to ``null`` (default), then online analysis is not run.
+If set to ``checkpoint``, then the online analysis is run every :ref:`yaml_options_checkpoint_interval`
 
-Valid Options (``null``): ``null`` or <Int >= 1>
+If set to ``null``, then online analysis is not run.
+
+Valid Options (``checkpoint``): ``checkpoint``, ``null``, or <Int >= 1>
 
 
 .. rst-class:: html-toggle
@@ -163,7 +165,7 @@ is never zero except in very rare cases, so your simulation may never converge i
 
 If :ref:`yaml_samplers_online_analysis_interval` is ``null``, this option does nothing.
 
-Valid Options (0.2): <Float >= 0>
+Valid Options (0.0): <Float >= 0>
 
 
 
@@ -186,13 +188,14 @@ Number of iterations that are skipped at the beginning of the simulation before 
 a speed option since most of the initial iterations will be either equilibration or under sampled. We recommend choosing
 an initial number that is *at least* one or two :ref:`yaml_samplers_online_analysis_interval`'s for speed's sake.
 
-The first iteration at which online analysis is performed is not affected by this number and always tracked as the
-modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100`` and
-``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200 first, not iteration 250.
+This number is only the threshold above when online analysis is run, and the iteration at which first analysis is
+performed is tracked as the modulo of the current iteration.
+E.g. if you have ``online_analysis_interval: 100`` and
+``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200, not iteration 250.
 
 If :ref:`yaml_samplers_online_analysis_interval` is ``null``, this option does nothing.
 
-Valid Options (50): <Int >=1>
+Valid Options (200): <Int >=1>
 
 
 
