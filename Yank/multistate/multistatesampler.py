@@ -82,15 +82,13 @@ class MultiStateSampler(object):
         The number of iterations to perform. Both ``float('inf')`` and
         ``numpy.inf`` are accepted for infinity. If you set this to infinity,
         be sure to set also ``online_analysis_interval``.
-    online_analysis_interval : "checkpoint", None, or Int >= 1, optional, default "checkpoint"
+    online_analysis_interval : = None or Int >= 1, optional, default: 200
         Choose the interval at which to perform online analysis of the free energy.
 
         After every interval, the simulation will be stopped and the free energy estimated.
 
         If the error in the free energy estimate is at or below ``online_analysis_target_error``, then the simulation
         will be considered completed.
-
-        If set to ``"checkpoint"``, then the reporter checkpoint interval is chosen after the ``create`` call
 
         If set to ``None``, then no online analysis is performed
 
@@ -140,7 +138,7 @@ class MultiStateSampler(object):
     # -------------------------------------------------------------------------
 
     def __init__(self, mcmc_moves=None, number_of_iterations=1,
-                 online_analysis_interval="checkpoint", online_analysis_target_error=0.0,
+                 online_analysis_interval=200, online_analysis_target_error=0.0,
                  online_analysis_minimum_iterations=200,
                  locality=None):
         # These will be set on initialization. See function
@@ -261,12 +259,15 @@ class MultiStateSampler(object):
         options = reporter.read_dict('options')
         iteration = reporter.read_last_iteration(last_checkpoint=False)
         # Search for last cached free energies only if online analysis is activated.
+        target_error = None
+        last_err_free_energy = None
         if options['online_analysis_interval'] is not None:
             target_error = options['online_analysis_target_error']
-            last_err_free_energy = cls._read_last_free_energy(reporter, iteration)[1][1]
-        else:
-            target_error = None
-            last_err_free_energy = None
+            try:
+                last_err_free_energy = cls._read_last_free_energy(reporter, iteration)[1][1]
+            except TypeError:
+                # Trap for undefined free energy (has not been run yet)
+                last_err_free_energy = np.inf
         reporter.close()
 
         # Check if the calculation is done.
@@ -399,9 +400,10 @@ class MultiStateSampler(object):
         @staticmethod
         def _oa_interval_validator(_, online_analysis_interval):
             """Check the online_analysis_interval value for consistency"""
-            if online_analysis_interval is not None and online_analysis_interval != "checkpoint" and (
+            if online_analysis_interval is not None and (
                             type(online_analysis_interval) != int or online_analysis_interval < 1):
-                raise ValueError('online_analysis_interval must be an integer 1 or greater, "checkpoint", or None')
+                import pdb; pdb.set_trace()
+                raise ValueError('online_analysis_interval must be an integer >=1 or None')
             return online_analysis_interval
 
         @staticmethod
@@ -409,8 +411,9 @@ class MultiStateSampler(object):
             if instance.online_analysis_interval is not None:
                 if online_analysis_target_error < 0:
                     raise ValueError("online_analysis_target_error must be a float >= 0")
-                elif online_analysis_target_error == 0:
-                    logger.warning("online_analysis_target_error of 0 may never converge.")
+                elif online_analysis_target_error == 0 and instance.number_of_iterations is None:
+                    logger.warning("online_analysis_target_error of 0 and number of iterations undefined "
+                                   "will never converge!")
             return online_analysis_target_error
 
         @staticmethod
@@ -527,8 +530,6 @@ class MultiStateSampler(object):
         self._display_citations()
 
         self._initialize_reporter()
-
-        self._set_online_iteration()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, tolerance=1.0 * unit.kilojoules_per_mole / unit.nanometers,
@@ -725,14 +726,6 @@ class MultiStateSampler(object):
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
-
-    def _set_online_iteration(self):
-        """
-        Internal function to set the checkpoint interval when its a function
-        Right now only affected by reporter checkpoint interval
-        """
-        if self.online_analysis_interval == "checkpoint":
-            self.online_analysis_interval = self._reporter.checkpoint_interval
 
     def _pre_write_create(self,
                           thermodynamic_states,

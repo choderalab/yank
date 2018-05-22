@@ -1948,6 +1948,16 @@ class ExperimentBuilder(object):
         """.format(MCMC_MOVE_IDS=list(self._mcmc_moves.keys()))
         sampler_schema = yaml.load(sampler_schema)
 
+        # Special case for "checkpoint" in online analysis
+        # Handle 1-case where its set by user to something other than checkpoint and exclude it, then process if not it
+        options_description = yaml_content.get('options', {})
+        for sampler_description in sampler_descriptions:
+            if not ("online_analysis_interval" in sampler_descriptions[sampler_description] and
+                    sampler_descriptions[sampler_description]["online_analysis_interval"] != "checkpoint"):
+                sampler_descriptions[sampler_description]["online_analysis_interval"] = \
+                    options_description.get('checkpoint_interval',
+                                            AlchemicalPhaseFactory.DEFAULT_OPTIONS['checkpoint_interval'])
+
         sampler_validator = schema.YANKCerberusValidator(sampler_schema)
         if sampler_validator.validate({'samplers': sampler_descriptions}):
             validated_samplers = sampler_validator.document
@@ -2829,10 +2839,17 @@ class ExperimentBuilder(object):
             constructor_description = copy.deepcopy(self._samplers[sampler_id])
 
         # Overwrite default number of iterations if not specified.
+        experiment_options, phase_options, _, _ = self._determine_experiment_options(experiment_description)
         if 'number_of_iterations' not in constructor_description:
-            experiment_options = self._determine_experiment_options(experiment_description)[0]
             default_number_of_iterations = experiment_options['default_number_of_iterations']
             constructor_description['number_of_iterations'] = default_number_of_iterations
+
+        # Overwrite the online analysis interval if not specified
+        if not ("online_analysis_interval" in constructor_description and
+                constructor_description["online_analysis_interval"] != "checkpoint"):
+            constructor_description["online_analysis_interval"] = \
+                phase_options.get('checkpoint_interval',
+                                  AlchemicalPhaseFactory.DEFAULT_OPTIONS['checkpoint_interval'])
 
         return constructor_description
 

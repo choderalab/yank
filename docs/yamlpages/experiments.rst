@@ -21,6 +21,7 @@ Experiments Syntax
    experiments:
      system: {UserDefinedSystem}
      protocol: {UserDefinedProtocol}
+     sampler: {UserDefinedSampler}
      restraint:
        type: FlatBottom
        {Restraint Parameter}
@@ -33,7 +34,8 @@ Experiments Syntax
 This is the structure of an ``experiment``.
 
 It takes a ``{UserDefinedSystem}`` (see :doc:`systems <systems>`) and a ``{UserDefinedProtocol}`` (see :doc:`protocols <protocols>`)
-to create the experiment and are the only required arguments.
+to create the experiment and are the only required arguments. You can also specify any ``{UserDefinedSampler}`` (see
+:doc:`samplers <samplers>`), however this is optional and will fill in with a default sampler.
 
 The ``restraint`` is an **optional** keyword that applies a restraint to the ligand to keep it close to the receptor.
 The only required keyword is ``type``. Valid types are: ``FlatBottom``/``Harmonic``/``Boresch``/``RMSD``/``PeriodicTorsionBoresch``/``null``. If not
