@@ -905,11 +905,14 @@ class MultiStateSampler(object):
                 reporter.read_mixing_statistics(iteration=check_iteration)
 
             # Search for last cached free energies only if online analysis is activated.
+            internal_last_mbar_f_k, internal_last_err_free_energy = None, None
             if self.online_analysis_interval is not None:
                 online_analysis_info = self._read_last_free_energy(reporter, check_iteration)
-                internal_last_mbar_f_k, (_, internal_last_err_free_energy) = online_analysis_info
-            else:
-                internal_last_mbar_f_k, internal_last_err_free_energy = None, None
+                try:
+                    internal_last_mbar_f_k, (_, internal_last_err_free_energy) = online_analysis_info
+                except TypeError:
+                    # Trap case where online analysis is set but not run yet and (_, ...) = None is not iterable
+                    pass
             return (internal_sampler_states, internal_state_indices, internal_energy_thermodynamic_states,
                     internal_neighborhoods, internal_energy_unsampled_states, internal_n_accepted_matrix,
                     internal_n_proposed_matrix, internal_last_mbar_f_k, internal_last_err_free_energy)
@@ -926,7 +929,7 @@ class MultiStateSampler(object):
             except StopIteration:
                 raise self._throw_restoration_error("Attempting to restore from any checkpoint failed. "
                                                     "Either your data is fully corrupted or something has gone very "
-                                                    "wrong to see this message.\n"
+                                                    "wrong to see this message. "
                                                     "Please open an issue on the GitHub issue tracker if you see this!")
             except:
                 # Trap all other errors caught by the load process
@@ -1406,7 +1409,7 @@ class MultiStateSampler(object):
         # TODO: Currently, this just uses MBAR, which only works for global neighborhoods.
         # TODO: Add Local WHAM support.
 
-        if (self.locality != None):
+        if self.locality is not None:
             raise Exception('Cannot use MBAR with non-global locality.')
 
         # This relative import is down here because having it at the top causes an ImportError.
@@ -1418,7 +1421,12 @@ class MultiStateSampler(object):
 
         # Start the analysis
         bump_error_counter = False
-        analysis = MultiStateSamplerAnalyzer(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
+        # Set up analyzer
+        # Unbias restraints is False because this will quickly accumulate large time to re-read the trajectories
+        # and unbias the restraints every online-analysis. Current model is to use the last_mbar_f_k as a
+        # hot-start to the analysis. Once we store unbias info as part of a CustomCVForce, we can revisit this choice.
+        analysis = MultiStateSamplerAnalyzer(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k},
+                                             unbias_restraint=False)
 
         # Indices for online analysis, "i'th index, j'th index"
         idx, jdx = 0, -1
@@ -1518,13 +1526,13 @@ class MultiStateSampler(object):
         # TODO: Refactor this to always compute fast online analysis, updating with offline analysis infrequently.
 
         # TODO: Simplify this
-        if (self.online_analysis_interval is None):
+        if self.online_analysis_interval is None:
             analysis_to_perform = None
-        elif (self._iteration <= self.online_analysis_minimum_iterations):
+        elif self._iteration <= self.online_analysis_minimum_iterations:
             analysis_to_perform = 'online'
-        elif (self._iteration % self.online_analysis_interval != 0):
+        elif self._iteration % self.online_analysis_interval != 0:
             analysis_to_perform = 'online'
-        elif (self.locality != None):
+        elif self.locality is not None:
             analysis_to_perform = 'online'
         else:
             # All conditions are met for offline analysis

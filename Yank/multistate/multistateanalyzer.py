@@ -480,10 +480,20 @@ class PhaseAnalyzer(ABC):
         For instance, the initial guess of relative free energies to give to MBAR would be something like:
         ``{'initial_f_k':[0,1,2,3]}``
 
+    use_online_data : bool, optional, Default: True
+        Attempt to read online analysis data as a way to hot-start the analysis computation. This will attempt to
+        read the data stored by the MultiStateAnalyzer.
+
+        If this is set to ``False``, the online analysis data is not read.
+
+        If this is set to ``False`` after being initialized, the :class:`CachedProperty` dependencies are all
+        invalidated and properties will be computed from scratch on next observables
+
+        If no online data is found, this setting has no effect
+
     registry : ObservablesRegistry instance
         Instanced ObservablesRegistry with all observables implemented through a ``get_X`` function classified and
         registered. Any cross-phase analysis must use the same instance of an ObservablesRegistry
-
 
     Attributes
     ----------
@@ -497,6 +507,7 @@ class PhaseAnalyzer(ABC):
     kT
     reporter
     registry
+    use_online_data
 
     See Also
     --------
@@ -505,7 +516,8 @@ class PhaseAnalyzer(ABC):
     """
     def __init__(self, reporter, name=None, reference_states=(0, -1),
                  max_n_iterations=None, analysis_kwargs=None,
-                 registry=default_observables_registry):
+                 registry=default_observables_registry,
+                 use_online_data=True):
         """
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
@@ -534,12 +546,17 @@ class PhaseAnalyzer(ABC):
         self._sign = '+'
         self._reference_states = None  # Initialize the cache object.
         self.reference_states = reference_states
-        self._extra_analysis_kwargs = analysis_kwargs
+        self._user_extra_analysis_kwargs = analysis_kwargs  # Store the user-specified (higher priority) keywords
 
         # Initialize cached values that are read or derived from the Reporter.
         self._cache = {}  # This cache should be always set with _update_cache().
         self.clear()
         self.max_n_iterations = max_n_iterations
+
+        # Check the onlie data
+        self._online_data = None  # Init the object
+        self._use_online_data = use_online_data
+        self._read_online_data_if_present()
 
     def clear(self):
         """Reset all cached objects.
@@ -649,6 +666,26 @@ class PhaseAnalyzer(ABC):
         """Make sure users cannot overwrite the reporter."""
         raise ValueError("You cannot re-assign the reporter for this analyzer!")
 
+    @property
+    def use_online_data(self):
+        """Get the online data flag"""
+        return self._use_online_data
+
+    @use_online_data.setter
+    def use_online_data(self, value):
+        """Set the online data boolean"""
+        if type(value) != bool:
+            raise ValueError("use_online_data must be a boolean!")
+        if self._use_online_data is False and value is True:
+            # Re-read the online data
+            self._read_online_data_if_present()
+        elif self._use_online_data is True and value is False:
+            # Invalidate online data
+            self._online_data = None
+            # Re-form dict to prevent variables from referencing the same object
+            self._extra_analysis_kwargs = {**self._user_extra_analysis_kwargs}
+        self._use_online_data = value
+
     # -------------------------------------------------------------------------
     # Cached properties functions/classes.
     # -------------------------------------------------------------------------
@@ -692,7 +729,7 @@ class PhaseAnalyzer(ABC):
         except KeyError:
             invalidate_cache = False
         else:
-            if check_changes and old_value == new_value:
+            if check_changes and self._check_equal(old_value, new_value):
                 invalidate_cache = False
         # Update value and invalidate the cache.
         self._cache[key] = new_value
@@ -720,6 +757,15 @@ class PhaseAnalyzer(ABC):
                 # Remove k.
                 self._cache.pop(k, None)
 
+    @staticmethod
+    def _check_equal(old_value, new_value):
+        """Broader equality check"""
+        try:
+            np.testing.assert_equal(old_value, new_value)
+        except AssertionError:
+            return False
+        return True
+
     # -------------------------------------------------------------------------
     # Cached properties.
     # -------------------------------------------------------------------------
@@ -732,6 +778,8 @@ class PhaseAnalyzer(ABC):
         if new_value is None or new_value > instance.n_iterations:
             new_value = instance.n_iterations
         return new_value
+
+    _extra_analysis_kwargs = CachedProperty('_extra_analysis_kwargs', check_changes=True)
 
     # -------------------------------------------------------------------------
     # Abstract methods.
@@ -947,6 +995,16 @@ class PhaseAnalyzer(ABC):
         self.mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
         logger.info('Done.')
         return self.mbar
+
+    def _read_online_data_if_present(self):
+        """
+        Attempt to read the online analysis data needed to hot-start the output
+        """
+        try:
+            online_f_k = self.reporter.read_online_analysis_data(None, 'f_k')['f_k']
+            self._online_data = {'initial_f_k': online_f_k}
+        except ValueError:
+            self._online_data = None
 
     # -------------------------------------------------------------------------
     # Analysis combination.
@@ -1382,6 +1440,18 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             energy_matrix[[0, -1], :] = self.reformat_energies_for_mbar(unsampled_energy_matrix)
             logger.info("Found expanded cutoff states in the energies!")
             logger.info("Free energies will be reported relative to them instead!")
+        if self.use_online_data and self._online_data is not None:
+            # Do online data only if present and already exists as stored in self._online_data
+            temp_online = copy.deepcopy(self._online_data)
+            f_k_i = np.zeros(n_sampled_states + n_unsampled_states)
+            online_f_k = temp_online['initial_f_k']
+            f_k_i[first_sampled_state:last_sampled_state] = online_f_k
+            temp_online['initial_f_k'] = f_k_i
+            # Re-set the extra analysis_
+            self._extra_analysis_kwargs = {**temp_online, **self._user_extra_analysis_kwargs}
+        else:
+            # Possible reset of the final key if online was true then false to invalidate any online data.
+            self._extra_analysis_kwargs = {**self._user_extra_analysis_kwargs}
 
         # These cached values speed up considerably the computation of the
         # free energy profile along the restraint distance/energy cutoff.
@@ -1958,7 +2028,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     mbar = CachedProperty(
         name='mbar',
-        dependencies=['unbiased_decorrelated_u_ln', 'unbiased_decorrelated_N_l'],
+        dependencies=['unbiased_decorrelated_u_ln', 'unbiased_decorrelated_N_l',
+                      '_extra_analysis_kwargs'],
     )
 
     @mbar.default

@@ -131,6 +131,7 @@ class TestMultiPhaseAnalyzer(object):
     N_STATES = 5
     SAMPLER = MultiStateSampler
     ANALYZER = analyze.YankMultiStateSamplerAnalyzer
+    ONLINE_ANALYSIS = False
 
     # --------------------------------------
     # Optional helper function to overwrite.
@@ -195,6 +196,7 @@ class TestMultiPhaseAnalyzer(object):
             )
 
         # Unsampled states.
+        cls.n_unsampled_states = 2
         nonalchemical_system = copy.deepcopy(hostguest_test.system)
         nonalchemical_system.addForce(copy.deepcopy(restraint_force))
         nonalchemical_state = mmtools.states.ThermodynamicState(nonalchemical_system, 300*unit.kelvin)
@@ -202,7 +204,8 @@ class TestMultiPhaseAnalyzer(object):
             thermodynamic_state=nonalchemical_state,
             composable_states=[RestraintState(lambda_restraints=1.0)]
         )
-        hostguest_unsampled_states = [copy.deepcopy(nonalchemical_compound_state) for _ in range(2)]
+        hostguest_unsampled_states = [copy.deepcopy(nonalchemical_compound_state) for _ in
+                                      range(cls.n_unsampled_states)]
 
         cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states, hostguest_unsampled_states)
 
@@ -224,7 +227,13 @@ class TestMultiPhaseAnalyzer(object):
         cls.tmp_dir = tempfile.mkdtemp()
         storage_path = os.path.join(cls.tmp_dir, 'test_analyze.nc')
         move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-        cls.sampler = cls.SAMPLER(mcmc_moves=move, number_of_iterations=cls.n_steps)
+        if cls.ONLINE_ANALYSIS:
+            online_analysis_interval = cls.n_steps - 1
+        else:
+            online_analysis_interval = None
+        cls.sampler = cls.SAMPLER(mcmc_moves=move, number_of_iterations=cls.n_steps,
+                                  online_analysis_interval=online_analysis_interval,
+                                  online_analysis_minimum_iterations=0)
         cls.reporter = MultiStateReporter(storage_path, checkpoint_interval=cls.checkpoint_interval,
                                           analysis_particle_indices=analysis_atoms)
         cls.call_sampler_create(cls.sampler, cls.reporter, thermodynamic_states, sampler_states, unsampled_states,
@@ -238,8 +247,11 @@ class TestMultiPhaseAnalyzer(object):
         cls.repex_name = "RepexAnalyzer"  # kind of an unused test
 
         # Debugging Messages to sent to Nose with --nocapture enabled
-        output_descr = "Testing Analyzer: {}  -- States: {}  -- Samplers: {}".format(
-            cls.SAMPLER.__name__, cls.N_STATES, cls.N_SAMPLERS)
+        online_flag = " "
+        if cls.ONLINE_ANALYSIS:
+            online_flag += "Online "
+        output_descr = "Testing{}Analyzer: {}  -- States: {}  -- Samplers: {}".format(
+            online_flag, cls.SAMPLER.__name__, cls.N_STATES, cls.N_SAMPLERS)
         len_output = len(output_descr)
         print("#" * len_output)
         print(output_descr)
@@ -560,6 +572,46 @@ class TestMultiPhaseAnalyzer(object):
         # Extracting the trajectory of a state does not incur into errors.
         analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
 
+    def test_online_data_read(self):
+        """Test that online data is read from file when available and correctly invalidates when flag is toggled"""
+        if not self.ONLINE_ANALYSIS:
+            return
+        analyzer = self.ANALYZER(self.reporter, name=self.repex_name, use_online_data=True, unbias_restraint=False)
+        # Ensure online data was read
+        assert analyzer.use_online_data is True
+        assert analyzer._online_data is not None
+        # Spin up mbar
+        _ = analyzer.mbar
+        # Ensure the online data was used
+        assert analyzer._extra_analysis_kwargs != {}
+        # Clear and reset data
+        analyzer.use_online_data = False
+        assert analyzer._extra_analysis_kwargs == {}
+        assert 'mbar' not in analyzer._cache
+
+    def test_online_data_ignored(self):
+        """Test that online data is ignored when set from start or when user overrides"""
+        if not self.ONLINE_ANALYSIS:
+            return
+        analyzer = self.ANALYZER(self.reporter, name=self.repex_name, use_online_data=False, unbias_restraint=False)
+        # Ensure online data is present, but unread
+        assert analyzer.use_online_data is False
+        assert analyzer._online_data is not None
+        _ = analyzer.mbar
+        assert analyzer._extra_analysis_kwargs == {}
+        # Start over
+        del analyzer
+        initial_f_k = [0]*(self.N_STATES + self.n_unsampled_states)
+        analyzer = self.ANALYZER(self.reporter, name=self.repex_name,
+                                 use_online_data=True, analysis_kwargs={'initial_f_k': initial_f_k},
+                                 unbias_restraint=False)
+        assert analyzer.use_online_data is True
+        assert analyzer._online_data is not None
+        _ = analyzer.mbar
+        assert np.all(analyzer._extra_analysis_kwargs['initial_f_k'] == initial_f_k)
+        # Ensure mbar was not invalidated
+        assert 'mbar' in analyzer._cache
+
 
 class TestRepexAnalyzer(TestMultiPhaseAnalyzer):
     """Test suite for YankPhaseAnalyzer class."""
@@ -585,6 +637,10 @@ class TestMultiPhaseAnalyzerReverse(TestMultiPhaseAnalyzer):
     SAMPLER = MultiStateSampler
 
 
+class TestMultiPhaseAnalyzerOnline(TestMultiPhaseAnalyzerReverse):
+    ONLINE_ANALYSIS = True
+
+
 class TestSAMSAnalyzerSingle(TestMultiPhaseAnalyzer):
     """Test suite for YankPhaseAnalyzer class."""
 
@@ -595,6 +651,14 @@ class TestSAMSAnalyzerSingle(TestMultiPhaseAnalyzer):
     N_SAMPLERS = 1
     N_STATES = 5
     SAMPLER = SAMSSampler
+
+
+class TestSAMSAnalyzerSingleOnline(TestSAMSAnalyzerSingle):
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+    ONLINE_ANALYSIS = True
 
 
 class TestSAMSAnalyzerMulti(TestSAMSAnalyzerSingle):

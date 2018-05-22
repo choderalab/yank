@@ -1147,7 +1147,8 @@ class MultiStateReporter(object):
         Parameters
         ----------
         iteration : int or None
-            Iteration to fetch data at
+            Iteration to fetch data at. If ``None``, then assumes static data and will attempt to get the entry with the
+            name written assuming no iteration-specific data.
         keys : str
             Variables to fetch data from
 
