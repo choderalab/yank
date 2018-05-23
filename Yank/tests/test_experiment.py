@@ -407,6 +407,99 @@ def test_paths_properties():
     assert exp_builder._db.setup_dir == os.path.join('output2', 'setup2')
 
 
+def test_online_reads_checkpoint():
+    """Test that online analysis reads the checkpoint correctly in all cases"""
+    current_log_level = logger.level
+    logger.setLevel(logging.ERROR)  # Temporarily suppress some of the logging output
+    raw_template_script = get_template_script()
+    # Pair down the processing
+    popables = []
+    for system in raw_template_script['systems'].keys():
+        if system != 'explicit-system':
+            popables.append(system)
+    for popable in popables:
+        raw_template_script['systems'].pop(popable)
+    allowed_molecules = [raw_template_script['systems']['explicit-system']['receptor'],
+                         raw_template_script['systems']['explicit-system']['ligand']]
+    popables = []
+    for molecule in raw_template_script['molecules'].keys():
+        if molecule not in allowed_molecules:
+            popables.append(molecule)
+    for popable in popables:
+        raw_template_script['molecules'].pop(popable)
+    raw_template_script.pop('samplers')
+    sampler_entry = {'type': 'SAMSSampler'}
+    sampler = {'samplers': {'sams': sampler_entry}}
+    base_template_script = {**raw_template_script, **sampler}
+    base_template_script['experiments']['sampler'] = 'sams'
+
+    def spinup_sampler(script):
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            template_script['options']['output_dir'] = tmp_dir
+            exp_builder = ExperimentBuilder(script)
+            experiment = [ex for ex in exp_builder.build_experiments()][0]
+            sampler = experiment.phases[0].sampler
+        return sampler
+
+    # Test that setting "checkpoint" for online analysis gets the checkpoint interval default
+    template_script = copy.deepcopy(base_template_script)
+    template_script['options'].pop("checkpoint_interval", None)
+    template_script['samplers']['sams']['online_analysis_interval'] = "checkpoint"
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval == AlchemicalPhaseFactory.DEFAULT_OPTIONS['checkpoint_interval']
+
+    # Test that setting "checkpoint" for online analysis gets the checkpoint interval that is set
+    template_script['options']["checkpoint_interval"] = 50
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval == 50
+
+    # Test that not setting online analysis gets the checkpoint interval default
+    template_script = copy.deepcopy(base_template_script)
+    template_script['options'].pop("checkpoint_interval", None)
+    template_script['samplers']['sams'].pop('online_analysis_interval', None)
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval == AlchemicalPhaseFactory.DEFAULT_OPTIONS['checkpoint_interval']
+
+    # Test that not setting online analysis gets the checkpoint interval that is set
+    template_script['options']["checkpoint_interval"] = 100
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval == 100
+
+    # Test that setting online analysis still returns the set value
+    template_script = copy.deepcopy(base_template_script)
+    template_script['options']["checkpoint_interval"] = 70
+    template_script['samplers']['sams']['online_analysis_interval'] = 13
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval == 13
+
+    # Test that setting online analysis to None keeps online analysis None
+    template_script = copy.deepcopy(base_template_script)
+    template_script['options']["checkpoint_interval"] = 80
+    template_script['samplers']['sams']['online_analysis_interval'] = None
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval is None
+
+    # Test that not setting a sampler gets a the checkpoint interval for online analysis
+    template_script = copy.deepcopy(base_template_script)
+    template_script['options']["checkpoint_interval"] = 90
+    template_script.pop('samplers', None)
+    template_script['experiments'].pop('sampler', None)
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval == 90
+
+    # Test that setting the checkpoint_interval in *experiments:options* block correctly sets the checkpoint interval
+    template_script = copy.deepcopy(base_template_script)
+    template_script['options']["checkpoint_interval"] = 110
+    template_script.pop('samplers', None)
+    opts = {'checkpoint_interval': 120}
+    template_script['experiments'].pop('sampler', None)
+    template_script['experiments']['options'] = opts
+    sampler = spinup_sampler(template_script)
+    assert sampler.online_analysis_interval == 120
+
+    logger.setLevel(current_log_level)  # Reset logging to normal
+
+
 def test_processes_per_experiment():
     """Test the determination of processes_per_experiment option."""
     # Create a script with 4 experiments.

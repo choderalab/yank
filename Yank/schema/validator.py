@@ -153,6 +153,14 @@ def to_integer_or_infinity_coercer(value):
     return value
 
 
+def to_none_int_or_checkpoint(value):
+    """Coerce-ish a value that is None, int, or "checkpoint" """
+    if value is None or value == "checkpoint":
+        return value
+    else:
+        return int(value)
+
+
 # ==============================================================================
 # OBJECT CONSTRUCTORS PARSING
 # ==============================================================================
@@ -272,7 +280,8 @@ def call_mcmc_move_constructor(constructor_description):
 
 
 def call_sampler_constructor(constructor_description):
-    special_conversions = {'number_of_iterations': to_integer_or_infinity_coercer}
+    special_conversions = {'number_of_iterations': to_integer_or_infinity_coercer,
+                           'online_analysis_interval': to_none_int_or_checkpoint}
     return call_constructor(multistate.MultiStateSampler, constructor_description,
                             special_conversions=special_conversions)
 
