@@ -82,7 +82,7 @@ class MultiStateSampler(object):
         The number of iterations to perform. Both ``float('inf')`` and
         ``numpy.inf`` are accepted for infinity. If you set this to infinity,
         be sure to set also ``online_analysis_interval``.
-    online_analysis_interval : = None or Int >= 1, optional, default: 200
+    online_analysis_interval : None or Int >= 1, optional, default: 200
         Choose the interval at which to perform online analysis of the free energy.
 
         After every interval, the simulation will be stopped and the free energy estimated.
@@ -402,7 +402,6 @@ class MultiStateSampler(object):
             """Check the online_analysis_interval value for consistency"""
             if online_analysis_interval is not None and (
                             type(online_analysis_interval) != int or online_analysis_interval < 1):
-                import pdb; pdb.set_trace()
                 raise ValueError('online_analysis_interval must be an integer >=1 or None')
             return online_analysis_interval
 
