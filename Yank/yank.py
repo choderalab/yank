@@ -116,7 +116,7 @@ class Topography(object):
         of the atom indices.
 
         """
-        return self._ligand_atoms
+        return copy.deepcopy(self._ligand_atoms)
 
     @ligand_atoms.setter
     def ligand_atoms(self, value):
@@ -169,7 +169,7 @@ class Topography(object):
         built from common solvent residue names.
 
         """
-        return self._solvent_atoms
+        return copy.deepcopy(self._solvent_atoms)
 
     @solvent_atoms.setter
     def solvent_atoms(self, value):
@@ -324,6 +324,7 @@ class Topography(object):
 
         """
 
+        selection = copy.deepcopy(selection)
         # Handle subset. Define a subset topology to manipulate, then define a common call to convert subset atom
         # into absolute atom
         if subset is not None:

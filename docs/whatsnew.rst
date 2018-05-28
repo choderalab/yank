@@ -6,6 +6,10 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.22.2 Topography Property Copy
+------------------------------
+- Critical bug fix for Topology where ions of charged ligands were considered part of the ligand
+
 0.22.1 Online Analysis Default
 ------------------------------
 - Online analysis will always run by default now, with no target error, run every checkpoint interval, and with at least 200 iterations
