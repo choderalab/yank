@@ -582,8 +582,8 @@ class SAMSSampler(MultiStateSampler):
         # Retrieve target probabilities
         log_pi_k = self.log_target_probabilities
         pi_k = np.exp(self.log_target_probabilities)
-        logger.debug('  log target probabilities log_pi_k: %s' % str(log_pi_k))
-        logger.debug('  target probabilities pi_k: %s' % str(pi_k))
+        #logger.debug('  log target probabilities log_pi_k: %s' % str(log_pi_k))
+        #logger.debug('  target probabilities pi_k: %s' % str(pi_k))
 
         # Update which stage we're in, checking histogram flatness
         self._update_stage()
@@ -610,7 +610,7 @@ class SAMSSampler(MultiStateSampler):
             if self.weight_update_method == 'optimal':
                 # Based on Eq. 9 of Ref. [1]
                 logZ_update = gamma * np.exp(-log_pi_k[state_index])
-                logger.debug('  optimal logZ increment: %s' % str(logZ_update))
+                #logger.debug('  optimal logZ increment: %s' % str(logZ_update))
                 self._logZ[state_index] += logZ_update
             elif self.weight_update_method == 'rao-blackwellized':
                 # Based on Eq. 12 of Ref [1]
@@ -618,11 +618,11 @@ class SAMSSampler(MultiStateSampler):
                 # TODO: Can we use masked arrays for this purpose?
                 log_P_k = jump_and_mix_data.replica_log_P_k[replica_index,:]
                 neighborhood = np.where(self._neighborhoods[replica_index,:])[0] # compact list of states defining neighborhood
-                logger.debug('  using neighborhood: %s' % str(neighborhood))
-                logger.debug('  using log_P_k : %s' % str(log_P_k[neighborhood]))
-                logger.debug('  using log_pi_k: %s' % str(log_pi_k[neighborhood]))
+                #logger.debug('  using neighborhood: %s' % str(neighborhood))
+                #logger.debug('  using log_P_k : %s' % str(log_P_k[neighborhood]))
+                #logger.debug('  using log_pi_k: %s' % str(log_pi_k[neighborhood]))
                 logZ_update = gamma * np.exp(log_P_k[neighborhood] - log_pi_k[neighborhood])
-                logger.debug('  Rao-Blackwellized logZ increment: %s' % str(logZ_update))
+                #logger.debug('  Rao-Blackwellized logZ increment: %s' % str(logZ_update))
                 self._logZ[neighborhood] += logZ_update
             else:
                 raise Exception('Programming error: Unreachable code')
