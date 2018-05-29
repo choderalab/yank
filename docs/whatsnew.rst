@@ -9,6 +9,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 0.22.2 Topography Property Copy
 -------------------------------
 - Critical bug fix for Topology where ions of charged ligands were considered part of the ligand
+- Online analysis MBAR failures can no longer halt simulations
 
 0.22.1 Online Analysis Default
 ------------------------------

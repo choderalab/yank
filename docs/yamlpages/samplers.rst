@@ -103,102 +103,6 @@ Valid Options: [``null``]/``int`` > 0
    Later, we want to allow more complex neighborhoods to be specified via lists of lists.
 
 
-
-.. _yaml_samplers_online_analysis_parameters:
-
-.. rst-class:: html-toggle
-
-Online Analysis Parameters
-""""""""""""""""""""""""""
-
-YANK's samplers also supports an online free energy analysis framework which allows running simulations up to some
-target error in the free energy. Note that this will pause the simulation to run this analysis. The longer the
-simulation gets, the slower this process becomes.
-
-
-.. _yaml_samplers_online_analysis_interval:
-
-.. rst-class:: html-toggle
-
-``online_analysis_interval``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. code-block:: yaml
-
-   samplers:
-        {UserDefinedSamplerName}:
-            type: MultiStateSampler
-            mcmc_moves: {MCMCName}
-            number_of_iterations: {NumberOfIterations}
-            online_analysis_interval: 100
-
-Both the toggle and iteration count between online analysis operations. Every interval, the Multistate Bennet Acceptance
-Ratio estimate for the free energy is calculated and the error is computed. Some data is preserved each iteration to
-speed up future calculations, but this operation will still slow down as more iterations are added. We recommend
-choosing an interval of *at least* 100, if not more.
-
-If set to ``checkpoint``, then the online analysis is run every :ref:`yaml_options_checkpoint_interval`
-
-If set to ``null``, then online analysis is not run.
-
-Valid Options (``checkpoint``): ``checkpoint``, ``null``, or <Int >= 1>
-
-
-.. rst-class:: html-toggle
-
-.. _yaml_samplers_online_analysis_target_error:
-
-``online_analysis_target_error``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. code-block:: yaml
-
-   samplers:
-        {UserDefinedSamplerName}:
-            type: MultiStateSampler
-            mcmc_moves: {MCMCName}
-            number_of_iterations: {NumberOfIterations}
-            online_analysis_target_error: 1.0
-
-The target error for the online analysis measured in kT per phase. Once the free energy is at or below this value,
-the phase will be considered complete.
-This value should be a number greater than 0, even though 0 is a valid option. The error free energy estimate between states
-is never zero except in very rare cases, so your simulation may never converge if you set this to 0.
-
-If :ref:`yaml_samplers_online_analysis_interval` is ``null``, this option does nothing.
-
-Valid Options (0.0): <Float >= 0>
-
-
-
-.. _yaml_samplers_online_analysis_minimum_iterations:
-
-.. rst-class:: html-toggle
-
-``online_analysis_minimum_iterations``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. code-block:: yaml
-
-   samplers:
-        {UserDefinedSamplerName}:
-            type: MultiStateSampler
-            mcmc_moves: {MCMCName}
-            number_of_iterations: {NumberOfIterations}
-            online_analysis_minimum_iterations: 50
-
-Number of iterations that are skipped at the beginning of the simulation before online analysis is attempted. This is
-a speed option since most of the initial iterations will be either equilibration or under sampled. We recommend choosing
-an initial number that is *at least* one or two :ref:`yaml_samplers_online_analysis_interval`'s for speed's sake.
-
-This number is only the threshold above when online analysis is run, and the iteration at which first analysis is
-performed is tracked as the modulo of the current iteration.
-E.g. if you have ``online_analysis_interval: 100`` and
-``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200, not iteration 250.
-
-If :ref:`yaml_samplers_online_analysis_interval` is ``null``, this option does nothing.
-
-Valid Options (200): <Int >=1>
-
-
-
 |
 |
 
@@ -372,3 +276,101 @@ By default the log target probabilities are all equal, resulting in SAMS attempt
 sample all thermodynamic states.
 
 Valid Options (0.2): float > 0
+
+|
+|
+
+.. _yaml_samplers_online_analysis_parameters:
+
+.. rst-class:: html-toggle
+
+Online Analysis Parameters
+--------------------------
+
+YANK's samplers also supports an online free energy analysis framework which allows running simulations up to some
+target error in the free energy. Note that this will pause the simulation to run this analysis. The longer the
+simulation gets, the slower this process becomes. This is available for all samplers.
+
+
+.. _yaml_samplers_online_analysis_interval:
+
+.. rst-class:: html-toggle
+
+``online_analysis_interval``
+""""""""""""""""""""""""""""
+.. code-block:: yaml
+
+   samplers:
+        {UserDefinedSamplerName}:
+            type: {SamplerOfChoice}
+            mcmc_moves: {MCMCName}
+            number_of_iterations: {NumberOfIterations}
+            online_analysis_interval: 100
+
+Both the toggle and iteration count between online analysis operations. Every interval, the Multistate Bennet Acceptance
+Ratio estimate for the free energy is calculated and the error is computed. Some data is preserved each iteration to
+speed up future calculations, but this operation will still slow down as more iterations are added. We recommend
+choosing an interval of *at least* 100, if not more.
+
+If set to ``checkpoint``, then the online analysis is run every :ref:`yaml_options_checkpoint_interval`
+
+If set to ``null``, then online analysis is not run.
+
+Valid Options (``checkpoint``): ``checkpoint``, ``null``, or <Int >= 1>
+
+
+.. rst-class:: html-toggle
+
+.. _yaml_samplers_online_analysis_target_error:
+
+``online_analysis_target_error``
+""""""""""""""""""""""""""""""""
+.. code-block:: yaml
+
+   samplers:
+        {UserDefinedSamplerName}:
+            type: {SamplerOfChoice}
+            mcmc_moves: {MCMCName}
+            number_of_iterations: {NumberOfIterations}
+            online_analysis_target_error: 1.0
+
+The target error for the online analysis measured in kT per phase. Once the free energy is at or below this value,
+the phase will be considered complete.
+This value should be a number greater than 0, even though 0 is a valid option. The error free energy estimate between states
+is never zero except in very rare cases, so your simulation may never converge if you set this to 0.
+
+If :ref:`yaml_samplers_online_analysis_interval` is ``null``, this option does nothing.
+
+Valid Options (0.0): <Float >= 0>
+
+
+
+.. _yaml_samplers_online_analysis_minimum_iterations:
+
+.. rst-class:: html-toggle
+
+``online_analysis_minimum_iterations``
+""""""""""""""""""""""""""""""""""""""
+.. code-block:: yaml
+
+   samplers:
+        {UserDefinedSamplerName}:
+            type: {SamplerOfChoice}
+            mcmc_moves: {MCMCName}
+            number_of_iterations: {NumberOfIterations}
+            online_analysis_minimum_iterations: 50
+
+Number of iterations that are skipped at the beginning of the simulation before online analysis is attempted. This is
+a speed option since most of the initial iterations will be either equilibration or under sampled. We recommend choosing
+an initial number that is *at least* one or two :ref:`yaml_samplers_online_analysis_interval`'s for speed's sake.
+
+This number is only the threshold above when online analysis is run, and the iteration at which first analysis is
+performed is tracked as the modulo of the current iteration.
+E.g. if you have ``online_analysis_interval: 100`` and
+``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200, not iteration 250.
+
+If :ref:`yaml_samplers_online_analysis_interval` is ``null``, this option does nothing.
+
+Valid Options (200): <Int >=1>
+
+

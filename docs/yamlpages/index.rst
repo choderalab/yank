@@ -172,11 +172,6 @@ Detailed Options List
     .. note:: All options under here are global to the other samplers
 
     * :ref:`yaml_samplers_locality`
-    * :ref:`yaml_samplers_online_analysis_parameters`
-
-      * :ref:`yaml_samplers_online_analysis_interval`
-      * :ref:`yaml_samplers_online_analysis_target_error`
-      * :ref:`yaml_samplers_online_analysis_minimum_iterations`
 
   * :ref:`yaml_samplers_repexsampler`
 
@@ -187,6 +182,12 @@ Detailed Options List
     * :ref:`yaml_samplers_state_update_scheme`
     * :ref:`yaml_samplers_gamm0`
     * :ref:`yaml_samplers_flatness_threshold`
+
+  * :ref:`yaml_samplers_online_analysis_parameters`
+
+    * :ref:`yaml_samplers_online_analysis_interval`
+    * :ref:`yaml_samplers_online_analysis_target_error`
+    * :ref:`yaml_samplers_online_analysis_minimum_iterations`
 
 * :doc:`protocols <protocols>`
 
