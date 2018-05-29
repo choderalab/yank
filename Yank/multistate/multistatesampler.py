@@ -1433,6 +1433,10 @@ class MultiStateSampler(object):
             # wasn't below the target threshold before, it won't stop MultiStateSampler now.
             bump_error_counter = True
             self._online_error_bank.append(e)
+            if len(self._online_error_bank) > 6:
+                # Cache only the last set
+                self._online_error_bank.pop(0)
+            free_energy = None
         else:
             self._last_mbar_f_k = mbar.f_k
             free_energy = free_energy[idx, jdx]
@@ -1447,12 +1451,13 @@ class MultiStateSampler(object):
         # Raise an exception after 6 times MBAR gave an error.
         if bump_error_counter:
             self._online_error_trap_counter += 1
-            if self._online_error_trap_counter >= 6:
+            # Will never be true, but code left in place in case we change logic to allow again
+            if self._online_error_trap_counter >= np.inf:
                 logger.debug("Thrown MBAR Errors:")
                 for err in self._online_error_bank:
                     logger.debug(str(err))
                 raise RuntimeError("Online Analysis has failed too many times! Please "
-                                   "check the latest logs to see the thrown errors!")
+                                   "check the latest logs to see the latest thrown errors!")
             # Don't write out the free energy in case of error.
             return
 
