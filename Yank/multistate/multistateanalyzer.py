@@ -2034,7 +2034,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     _unbiased_decorrelated_u_ln = CachedProperty(
         name='unbiased_decorrelated_u_ln',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
-                      'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l', 'use_full_trajectory'],
+                      'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l'],
     )
 
     @_unbiased_decorrelated_u_ln.default
@@ -2044,7 +2044,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     _unbiased_decorrelated_N_l = CachedProperty(
         name='unbiased_decorrelated_N_l',
         dependencies=['unbias_restraint', 'restraint_energy_cutoff', 'restraint_distance_cutoff',
-                      'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l', 'use_full_trajectory'],
+                      'decorrelated_state_indices_ln', 'decorrelated_u_ln', 'decorrelated_N_l'],
     )
 
     @_unbiased_decorrelated_N_l.default
@@ -2054,7 +2054,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     mbar = CachedProperty(
         name='mbar',
         dependencies=['unbiased_decorrelated_u_ln', 'unbiased_decorrelated_N_l',
-                      '_extra_analysis_kwargs', 'use_full_trajectory'],
+                      '_extra_analysis_kwargs'],
     )
 
     @mbar.default
@@ -2079,6 +2079,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     @property
     def _decorrelated_iterations(self):
         """list of int: the indices of the decorrelated iterations truncated to max_n_iterations."""
+        if self.use_full_trajectory:
+            return np.arange(self.max_n_iterations + 1, dtype=int)
         equilibrium_iterations = np.array(range(self.n_equilibration_iterations, self.max_n_iterations + 1))
         decorrelated_iterations_indices = timeseries.subsampleCorrelatedData(equilibrium_iterations,
                                                                              self.statistical_inefficiency)
