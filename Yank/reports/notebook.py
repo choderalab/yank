@@ -64,11 +64,15 @@ class HealthReportData(object):
             phases_names.append(phase)
             signs[phase] = sign
             storage_path = os.path.join(store_directory, phase + '.nc')
-            analyzers[phase] = analyze.get_analyzer(storage_path)
+            analyzers[phase] = analyze.get_analyzer(storage_path, **analyzer_kwargs)
         self.phase_names = phases_names
         self.signs = signs
         self.analyzers = analyzers
         self.nphases = len(phases_names)
+        # Additional data
+        self.use_full_trajectory = False
+        if 'use_full_trajectory' in analyzer_kwargs:
+            self.use_full_trajectory = bool(analyzer_kwargs['use_full_trajectory'])
         # Assign flags for other sections along with their global variables
         # General Data
         self._general_run = False
@@ -692,12 +696,14 @@ class HealthReportData(object):
                     i_max = n_effective_i.argmax()
                     number_equilibrated = i_t[i_max]
                     g_t = g_i[i_max]
-                    energy_sub = analyze.multistate.utils.remove_unequilibrated_data(energy_sub,
-                                                                                     number_equilibrated,
-                                                                                     -1)
-                    state_sub = analyze.multistate.utils.remove_unequilibrated_data(state_sub, number_equilibrated, -1)
-                    energy_sub = analyze.multistate.utils.subsample_data_along_axis(energy_sub, g_t, -1)
-                    state_sub = analyze.multistate.utils.subsample_data_along_axis(state_sub, g_t, -1)
+                    if not self.use_full_trajectory:
+                        energy_sub = analyze.multistate.utils.remove_unequilibrated_data(energy_sub,
+                                                                                         number_equilibrated,
+                                                                                         -1)
+                        state_sub = analyze.multistate.utils.remove_unequilibrated_data(state_sub,
+                                                                                        number_equilibrated, -1)
+                        energy_sub = analyze.multistate.utils.subsample_data_along_axis(energy_sub, g_t, -1)
+                        state_sub = analyze.multistate.utils.subsample_data_along_axis(state_sub, g_t, -1)
                     samples_per_state = np.zeros([n_states], dtype=int)
                     unique_sampled_states, counts = np.unique(state_sub, return_counts=True)
                     # Assign those counts to the correct range of states

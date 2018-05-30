@@ -10,6 +10,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 -------------------------------
 - Critical bug fix for Topology where ions of charged ligands were considered part of the ligand
 - Online analysis MBAR failures can no longer halt simulations
+- Added ability for analyze CLI (``--fulltraj``) and API (``use_full_trajectory=True``) to force use the full trajectory
 
 0.22.1 Online Analysis Default
 ------------------------------
