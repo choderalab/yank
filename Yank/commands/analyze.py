@@ -30,8 +30,8 @@ usage = """
 YANK analyze
 
 Usage:
-  yank analyze (-s STORE | --store=STORE) [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose]
-  yank analyze report (-s STORE | --store=STORE) [-e | --serial] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] (-o REPORT | --output=REPORT)
+  yank analyze (-s STORE | --store=STORE) [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
+  yank analyze report (-s STORE | --store=STORE) (-o REPORT | --output=REPORT) [-e | --serial] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [--fulltraj]
   yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
@@ -82,6 +82,10 @@ Extract Trajectory Options:
 
 General Options:
   -v, --verbose                 Print verbose output
+  --fulltraj                    Force ALL analysis run from this command to rely on the full trajectory and not do any 
+                                automatic equilibration detection or decorrelation subsampling. Although the 
+                                equilibration and correlation times will still be computed, no calculation depending on 
+                                them will use this information.
 
 """
 
@@ -118,6 +122,8 @@ def extract_analyzer_kwargs(args, quantities_as_strings=False):
         else:
             distcutoff = float(args['--distcutoff']) * unit.angstroms
         analyzer_kwargs['restraint_distance_cutoff'] = distcutoff
+    if args['--fulltraj']:
+        analyzer_kwargs['use_full_trajectory'] = True
     return analyzer_kwargs
 
 

@@ -491,6 +491,16 @@ class PhaseAnalyzer(ABC):
 
         If no online data is found, this setting has no effect
 
+    use_full_trajectory : bool, optional, Default: False
+        Force the analysis to use the full trajectory when automatically computing equilibration and decorrelation.
+
+        Normal behavior (when this is False) is to discard the initial trajectory due to automatic equilibration
+        detection, and then subsample that data to generate decorelated samples. Setting this to ``True`` ignores
+        this effect, even if the equilibration data is computed.
+
+        This can be changed after the ``PhaseAnalyzer`` has been created to re-compute properties with or without
+        the full trajectory.
+
     registry : ObservablesRegistry instance
         Instanced ObservablesRegistry with all observables implemented through a ``get_X`` function classified and
         registered. Any cross-phase analysis must use the same instance of an ObservablesRegistry
@@ -508,6 +518,7 @@ class PhaseAnalyzer(ABC):
     reporter
     registry
     use_online_data
+    use_full_trajectory
 
     See Also
     --------
@@ -517,7 +528,8 @@ class PhaseAnalyzer(ABC):
     def __init__(self, reporter, name=None, reference_states=(0, -1),
                  max_n_iterations=None, analysis_kwargs=None,
                  registry=default_observables_registry,
-                 use_online_data=True):
+                 use_online_data=True,
+                 use_full_trajectory=False):
         """
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
@@ -553,10 +565,14 @@ class PhaseAnalyzer(ABC):
         self.clear()
         self.max_n_iterations = max_n_iterations
 
-        # Check the onlie data
+        # Use full trajectory store or not
+        self.use_full_trajectory = use_full_trajectory
+
+        # Check the online data
         self._online_data = None  # Init the object
         self._use_online_data = use_online_data
         self._read_online_data_if_present()
+
 
     def clear(self):
         """Reset all cached objects.
@@ -779,6 +795,14 @@ class PhaseAnalyzer(ABC):
             new_value = instance.n_iterations
         return new_value
 
+    use_full_trajectory = CachedProperty('use_full_trajectory', check_changes=True)
+
+    @use_full_trajectory.validator
+    def use_full_trajectory(self, _, new_value):
+        if type(new_value) is not bool:
+            raise ValueError("use_full_trajectory must be a boolean!")
+        return new_value
+
     _extra_analysis_kwargs = CachedProperty('_extra_analysis_kwargs', check_changes=True)
 
     # -------------------------------------------------------------------------
@@ -791,7 +815,7 @@ class PhaseAnalyzer(ABC):
 
         Returns
         -------
-       sampled_energy_matrix : np.ndarray of shape [n_replicas, n_states, n_iterations]
+        sampled_energy_matrix : np.ndarray of shape [n_replicas, n_states, n_iterations]
             Potential energy matrix of the sampled states.
         unsampled_energy_matrix : np.ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
             Potential energy matrix of the unsampled states.
@@ -1410,11 +1434,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         logger.info("Assembling uncorrelated energies...")
 
-        for i, energies in enumerate(energy_data):
-            # Discard equilibration iterations.
-            energies = utils.remove_unequilibrated_data(energies, number_equilibrated, -1)
-            # Subsample along the decorrelation data.
-            energy_data[i] = utils.subsample_data_along_axis(energies, g_t, -1)
+        if not self.use_full_trajectory:
+            for i, energies in enumerate(energy_data):
+                # Discard equilibration iterations.
+                energies = utils.remove_unequilibrated_data(energies, number_equilibrated, -1)
+                # Subsample along the decorrelation data.
+                energy_data[i] = utils.subsample_data_along_axis(energies, g_t, -1)
         sampled_energy_matrix, unsampled_energy_matrix, neighborhood, replicas_state_indices = energy_data
 
         # Initialize the MBAR matrices in ln form.
@@ -1964,7 +1989,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     _decorrelated_state_indices_ln = CachedProperty(
         name='decorrelated_state_indices_ln',
-        dependencies=['equilibration_data'],
+        dependencies=['equilibration_data', 'use_full_trajectory'],
     )
 
     @_decorrelated_state_indices_ln.default
@@ -1990,7 +2015,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     _decorrelated_u_ln = CachedProperty(
         name='decorrelated_u_ln',
-        dependencies=['equilibration_data'],
+        dependencies=['equilibration_data', 'use_full_trajectory'],
     )
 
     @_decorrelated_u_ln.default
@@ -1999,7 +2024,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     _decorrelated_N_l = CachedProperty(
         name='decorrelated_N_l',
-        dependencies=['equilibration_data'],
+        dependencies=['equilibration_data', 'use_full_trajectory'],
     )
 
     @_decorrelated_N_l.default
@@ -2054,6 +2079,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     @property
     def _decorrelated_iterations(self):
         """list of int: the indices of the decorrelated iterations truncated to max_n_iterations."""
+        if self.use_full_trajectory:
+            return np.arange(self.max_n_iterations + 1, dtype=int)
         equilibrium_iterations = np.array(range(self.n_equilibration_iterations, self.max_n_iterations + 1))
         decorrelated_iterations_indices = timeseries.subsampleCorrelatedData(equilibrium_iterations,
                                                                              self.statistical_inefficiency)
