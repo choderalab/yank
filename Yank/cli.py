@@ -34,6 +34,7 @@ Commands:
   selftest                      Run selftests
   platforms                     List available OpenMM platforms.
   script                        Set up and run free energy calculations from a YAML script.
+  kinetics                      Initiate kinetics trajectories from checkpoint snapshots for TRAM analysis
   status                        Get the current status
   analyze                       Analyze data OR extract trajectory from a NetCDF file in a common format.
   cleanup                       Clean up (delete) run files.
@@ -56,7 +57,7 @@ def main(argv=None):
 
     dispatched = False  # Flag set to True if we have correctly dispatched a command.
     # Build the list of commands based on the <command>.py modules in the ./commands folder
-    command_list = [module[0] for module in inspect.getmembers(commands, inspect.ismodule)]         
+    command_list = [module[0] for module in inspect.getmembers(commands, inspect.ismodule)]
 
     # Handle simple arguments.
     if args['--cite']:
@@ -71,7 +72,7 @@ def main(argv=None):
         command_args = docopt(command_usage, version=version.version, argv=argv)
         # Execute Command
         dispatched = getattr(commands, command).dispatch(command_args)
-        
+
     # If unsuccessful, print usage and exit with an error.
     if not dispatched:
         print(usage)
