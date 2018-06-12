@@ -423,7 +423,7 @@ class Topography(object):
                     # The self here is inherited from the outer scope
                     region_output_unmapped = list(self._get_region_set(region_string))
                     region_output = [item for item in region_output_unmapped if item in atom_map]
-                except (SyntaxError, ValueError) as e:
+                except (SyntaxError, ValueError, TypeError) as e:
                     # Make this a local variable
                     region_error = e
                     region_output = None

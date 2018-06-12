@@ -339,6 +339,10 @@ def test_restraint_dsl_selection():
                                  restrained_receptor_atoms="(resname CUC) and (name =~ 'O[0-9]+')",
                                  restrained_ligand_atoms='resname B2')
 
+    restraint_selection_template(topography_ligand_atoms='resname B2',
+                                 restrained_receptor_atoms="(resname CUC) and (name =~ 'O[0-9]+')",
+                                 restrained_ligand_atoms='(mass > 0.5) and (resname B2)')
+
 
 def test_restraint_region_selection():
     """Test that the region atom selection works as expected"""
