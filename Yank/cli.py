@@ -34,7 +34,6 @@ Commands:
   selftest                      Run selftests
   platforms                     List available OpenMM platforms.
   script                        Set up and run free energy calculations from a YAML script.
-  kinetics                      Initiate kinetics trajectories from checkpoint snapshots for TRAM analysis
   status                        Get the current status
   analyze                       Analyze data OR extract trajectory from a NetCDF file in a common format.
   cleanup                       Clean up (delete) run files.
