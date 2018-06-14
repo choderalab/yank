@@ -8,7 +8,7 @@
 Analyze
 =======
 
-YANK Specific anlysis tools for YANK simulations from the :class:`yank.yank.AlchemicalPhase` classes
+YANK Specific analysis tools for YANK simulations from the :class:`yank.yank.AlchemicalPhase` classes
 
 Extends classes from the MultiStateAnalyzer package to include the
 
