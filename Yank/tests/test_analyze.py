@@ -322,13 +322,13 @@ class TestMultiPhaseAnalyzer(object):
         # Test reference states and full work up creation
         iinit, jinit = phase.reference_states
         output = phase.analyze_phase()
-        fe_out, dfe_out = output['DeltaF'], output['dDeltaF']
+        fe_out, dfe_out = output['free_energy_diff'], output['free_energy_diff_error']
         assert fe_out == fe[iinit, jinit]
         assert dfe_out == dfe[iinit, jinit]
         inew, jnew = 1, 2
         phase.reference_states = [inew, jnew]
         new_output = phase.analyze_phase()
-        new_fe_out, new_dfe_out = new_output['DeltaF'], new_output['dDeltaF']
+        new_fe_out, new_dfe_out = new_output['free_energy_diff'], new_output['free_energy_diff_error']
         assert new_fe_out == fe[inew, jnew]
         assert new_dfe_out == dfe[inew, jnew]
 

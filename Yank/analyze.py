@@ -28,7 +28,7 @@ import logging
 import numpy as np
 import simtk.unit as units
 import openmmtools as mmtools
-from pymbar import timeseries, MBAR
+from pymbar import timeseries
 from . import multistate
 from . import version
 from . import utils
@@ -145,11 +145,11 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
         # Accumulate free energy differences
         Deltaf_ij, dDeltaf_ij = self.get_free_energy()
         DeltaH_ij, dDeltaH_ij = self.get_enthalpy()
-        data['DeltaF'] = Deltaf_ij[self.reference_states[0], self.reference_states[1]]
-        data['dDeltaF'] = dDeltaf_ij[self.reference_states[0], self.reference_states[1]]
-        data['DeltaH'] = DeltaH_ij[self.reference_states[0], self.reference_states[1]]
-        data['dDeltaH'] = dDeltaH_ij[self.reference_states[0], self.reference_states[1]]
-        data['DeltaF_standard_state_correction'] = self.get_standard_state_correction()
+        data['free_energy_diff'] = Deltaf_ij[self.reference_states[0], self.reference_states[1]]
+        data['free_energy_diff_error'] = dDeltaf_ij[self.reference_states[0], self.reference_states[1]]
+        data['enthalpy_diff'] = DeltaH_ij[self.reference_states[0], self.reference_states[1]]
+        data['enthalpy_diff_error'] = dDeltaH_ij[self.reference_states[0], self.reference_states[1]]
+        data['free_energy_diff_standard_state_correction'] = self.get_standard_state_correction()
         return data
 
 
@@ -161,9 +161,48 @@ class YankParallelTemperingAnalyzer(multistate.ParallelTemperingAnalyzer, YankMu
     pass
 
 
-class YANKAutoExperimentAnalyzer(object):
+class YankAutoExperimentAnalyzer(object):
     """
-    Class which does "Analyze Directory" but with serialization
+    Semi-automated YANK Experiment analysis data container model.
+
+    This class is designed to replace the older ``analyze_directory`` functions by providing a common analysis data
+    container which other classes and methods can draw on. This is designed to semi-automate the combination of
+    multi-phase data
+
+    Each of the main methods fetches the data from each phase and returns them as a dictionary to the user. The total
+    dump of data to serialized YAML files can also be done.
+
+    Each function documents what its output data structure and entries surrounded by curly braces (``{ }``) indicate
+    variables which change per experiment, often the data.
+
+    Parameters
+    ----------
+    store_directory : string
+        Location where the analysis.yaml file is and where the NetCDF files are
+    **analyzer_kwargs
+        Keyword arguments to pass to the analyzer class. Quantities can be
+        passed as strings.
+
+    Attributes
+    ----------
+    use_full_trajectory : bool. Analyze with subsampled or complete trajectory
+    nphases : int. Number of phases detected
+    phases_names : list of phase names. Used as keys on all attributes below
+    signs : dict of str. Sign assigned to each phase
+    analyzers : dict of YankPhaseAnalyzer
+    iterations : dict of int. Number of maximum iterations in each phase
+    u_ns : dict of np.ndarray. Timeseries of each phase
+    nequils : dict of int. Number of equilibrium iterations in each phase
+    g_ts : dict of int. Subsample rate past nequils in each phase
+    Neff_maxs : dict of int. Number of effective samples in each phase
+
+    Data Structure
+    --------------
+    version: {YANK Version}
+    general: {See :func:`get_general_simulation_data`}
+    equilibration: {See :func:`get_equilibration_data`}
+    mixing: {See :func:`get_mixing_data`}
+
     """
     @staticmethod
     def _copyout(wrap):
@@ -173,17 +212,6 @@ class YANKAutoExperimentAnalyzer(object):
         return make_copy
 
     def __init__(self, store_directory, **analyzer_kwargs):
-        """
-        Initial data read in and object assignment
-
-        Parameters
-        ----------
-        store_directory : string
-            Location where the analysis.yaml file is and where the NetCDF files are
-        **analyzer_kwargs
-            Keyword arguments to pass to the analyzer class. Quantities can be
-            passed as strings.
-        """
         # Convert analyzer string quantities into variables.
         for key, value in analyzer_kwargs.items():
             try:
@@ -240,10 +268,17 @@ class YANKAutoExperimentAnalyzer(object):
         General purpose simulation data on number of iterations, number of states, and number of atoms.
         This just prints out this data in a regular, formatted pattern.
 
+        Data Structure
+        --------------
+        {for phase_name in phase_names}
+            iterations : {int}
+            states : {int}
+            natoms : {int}
+
         Returns
         -------
         general_data : dict
-
+            General simulation data by phase.
         """
         if not self._general_run:
             general_serial = {}
@@ -272,6 +307,22 @@ class YANKAutoExperimentAnalyzer(object):
         """
         Create the equilibration scatter plots showing the trend lines, correlation time,
         and number of effective samples
+
+        Data Structure
+        --------------
+        {for phase_name in phase_names}
+            discarded_from_start : {int}
+            effective_samples : {float}
+            subsample_rate : {float}
+            iterations_considered : {1D np.ndarray of int}
+            subsample_rate_by_iterations_considered : {1D np.ndarray of float}
+            effective_samples_by_iterations_considered : {1D np.ndarray of float}
+            count_total_equilibration_samples : {int}
+            count_decorrelated_samples : {int}
+            count_correlated_samples : {int}
+            percent_total_equilibration_samples : {float}
+            percent_decorrelated_samples : {float}
+            percent_correlated_samples : {float}
 
         Returns
         -------
@@ -329,12 +380,20 @@ class YANKAutoExperimentAnalyzer(object):
     @_copyout
     def get_mixing_data(self):
         """
-        Get and optionally generate the state diffusion mixing arrays
+        Get state diffusion mixing arrays
+
+        Data Structure
+        --------------
+        {for phase_name in phase_names}
+            transitions : {[nstates, nstates] np.ndarray of float}
+            eigenvalues : {[nstates] np.ndarray of float}
+            stat_inefficiency : {float}
 
         Returns
         -------
         mixing_data : dict
             Dictionary of mixing data
+
         """
         if not self._mixing_run:
             mixing_serial = {}
@@ -355,7 +414,34 @@ class YANKAutoExperimentAnalyzer(object):
         return self._serialized_data['mixing']
 
     @_copyout
-    def get_experiment_free_energy(self):
+    def get_experiment_free_energy_data(self):
+        """
+        Get the free Yank Experiment free energy, broken down by phase and total experiment
+
+        Data Structure
+        --------------
+        {for phase_name in phase_names}
+            sign : {str of either '+' or '-'}
+            kT : {units.quantity}
+            free_energy_diff : {float (has units of kT)}
+            free_energy_diff_error : {float (has units of kT)}
+            free_energy_diff_standard_state_correction : {float (has units of kT)}
+            enthalpy_diff : {float (has units of kT)}
+            enthalpy_diff_error : {float (has units of kT)}
+        free_energy_diff : {float (has units of kT)}
+        free_energy_diff_error : {float (has units of kT)}
+        free_energy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+        free_energy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+        enthalpy_diff : {float (has units of kT)}
+        enthalpy_diff_error : {float (has units of kT)}
+        enthalpy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+        enthalpy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+
+        Returns
+        -------
+        free_energy_data : dict
+            Dictionary of free energy data
+        """
         # TODO: Possibly rename this function to not confuse with "experimental" free energy?
         if not self._free_energy_run:
             if not self._equilibration_run:
@@ -379,52 +465,62 @@ class YANKAutoExperimentAnalyzer(object):
             for phase_name in self.phase_names:
                 serial = {}
                 kt = self.analyzers[phase_name].kT
+                serial['kT'] = kt
                 sign = self.signs[phase_name]
                 serial['sign'] = sign
-                phase_delta_f = sign * (data[phase_name]['DeltaF'] +
-                                        data[phase_name]['DeltaF_standard_state_correction'])
-                phase_delta_f_err = data[phase_name]['dDeltaF']
-                serial['delta_f'] = phase_delta_f
-                serial['delta_f_err'] = phase_delta_f_err
-                serial['delta_f_ssc'] = data[phase_name]['DeltaF_standard_state_correction']
-                delta_f -= phase_delta_f
+                phase_delta_f = data[phase_name]['free_energy_diff']
+                phase_delta_f_ssc = data[phase_name]['free_energy_diff_standard_state_correction']
+                phase_delta_f_err = data[phase_name]['free_energy_diff_error']
+                serial['free_energy_diff'] = phase_delta_f
+                serial['free_energy_diff_error'] = phase_delta_f_err
+                serial['free_energy_diff_standard_state_correction'] = data[phase_name][
+                    'free_energy_diff_standard_state_correction'
+                ]
+                phase_exp_delta_f = sign * (phase_delta_f + phase_delta_f_ssc)
+                delta_f -= phase_exp_delta_f
                 delta_f_err += phase_delta_f_err**2
-                delta_f_unit -= phase_delta_f * kt
+                delta_f_unit -= phase_exp_delta_f * kt
                 delta_f_err_unit += (phase_delta_f_err * kt)**2
 
-                phase_delta_h = sign * (data[phase_name]['DeltaH'] +
-                                        data[phase_name]['DeltaF_standard_state_correction'])
-                phase_delta_h_err = data[phase_name]['dDeltaH']
-                serial['delta_h'] = phase_delta_h
-                serial['delta_h_err'] = np.sqrt(phase_delta_h_err)
-                delta_h -= phase_delta_h
+                phase_delta_h = data[phase_name]['enthalpy_diff']
+                phase_delta_h_err = data[phase_name]['enthalpy_diff_error']
+                serial['enthalpy_diff'] = phase_delta_h
+                serial['enthalpy_diff_error'] = np.sqrt(phase_delta_h_err)
+                phase_exp_delta_h = sign * (phase_delta_h + phase_delta_f_ssc)
+                delta_h -= phase_exp_delta_h
                 delta_h_err += phase_delta_h_err ** 2
-                delta_h_unit -= phase_delta_h * kt
+                delta_h_unit -= phase_exp_delta_h * kt
                 delta_h_err_unit += (phase_delta_h_err * kt) ** 2
-                serial['kT'] = kt
                 fe_serial[phase_name] = serial
             delta_f_err = np.sqrt(delta_f_err)
             delta_h_err = np.sqrt(delta_h_err)
             delta_f_err_unit = np.sqrt(delta_f_err_unit)
             delta_h_err_unit = np.sqrt(delta_h_err_unit)
-            fe_serial['delta_f'] = delta_f
-            fe_serial['delta_h'] = delta_h
-            fe_serial['delta_f_err'] = delta_f_err
-            fe_serial['delta_h_err'] = delta_h_err
-            fe_serial['delta_f_unit'] = delta_f_unit
-            fe_serial['delta_h_unit'] = delta_h_unit
-            fe_serial['delta_f_err_unit'] = delta_f_err_unit
-            fe_serial['delta_h_err_unit'] = delta_h_err_unit
+            fe_serial['free_energy_diff'] = delta_f
+            fe_serial['enthalpy_diff'] = delta_h
+            fe_serial['free_energy_diff_error'] = delta_f_err
+            fe_serial['enthalpy_diff_error'] = delta_h_err
+            fe_serial['free_energy_diff_unit'] = delta_f_unit
+            fe_serial['enthalpy_diff_unit'] = delta_h_unit
+            fe_serial['free_energy_diff_error_unit'] = delta_f_err_unit
+            fe_serial['enthalpy_diff_error_unit'] = delta_h_err_unit
             self._serialized_data['free_energy'] = fe_serial
             self._free_energy_run = True
         return self._serialized_data['free_energy']
 
     @_copyout
     def auto_analyze(self):
+        """
+        Run the analysis
+
+        Returns
+        -------
+
+        """
         _ = self.get_general_simulation_data()
         _ = self.get_equilibration_data()
         _ = self.get_mixing_data()
-        _ = self.get_experiment_free_energy
+        _ = self.get_experiment_free_energy_data()
         return self._serialized_data
 
     def dump_serial_data(self, path):
@@ -503,17 +599,17 @@ def analyze_directory(source_directory, **analyzer_kwargs):
         Dictionary containing all the automatic analysis data
 
     """
-    auto_experiment_analyzer = YANKAutoExperimentAnalyzer(source_directory, **analyzer_kwargs)
+    auto_experiment_analyzer = YankAutoExperimentAnalyzer(source_directory, **analyzer_kwargs)
     analysis_data = auto_experiment_analyzer.auto_analyze()
     fe_data = analysis_data['free_energy']
-    delta_f = fe_data['delta_f']
-    delta_h = fe_data['delta_h']
-    delta_f_err = fe_data['delta_f_err']
-    delta_h_err = fe_data['delta_h_err']
-    delta_f_unit = fe_data['delta_f_unit']
-    delta_h_unit = fe_data['delta_h_unit']
-    delta_f_err_unit = fe_data['delta_f_err_unit']
-    delta_h_err_unit = fe_data['delta_h_err_unit']
+    delta_f = fe_data['free_energy_diff']
+    delta_h = fe_data['enthalpy_diff']
+    delta_f_err = fe_data['free_energy_diff_error']
+    delta_h_err = fe_data['enthalpy_diff_error']
+    delta_f_unit = fe_data['free_energy_diff_unit']
+    delta_h_unit = fe_data['enthalpy_diff_unit']
+    delta_f_err_unit = fe_data['free_energy_diff_error_unit']
+    delta_h_err_unit = fe_data['enthalpy_diff_error_unit']
 
     # Attempt to guess type of calculation
     calculation_type = ''
@@ -528,9 +624,9 @@ def analyze_directory(source_directory, **analyzer_kwargs):
         delta_f_err_unit / units.kilocalories_per_mole))
 
     for phase in auto_experiment_analyzer.phase_names:
-        delta_f_phase = fe_data[phase]['delta_f']
-        delta_f_err_phase = fe_data[phase]['delta_f_err']
-        detla_f_ssc_phase = fe_data[phase]['delta_f_ssc']
+        delta_f_phase = fe_data[phase]['free_energy_diff']
+        delta_f_err_phase = fe_data[phase]['free_energy_diff_error']
+        detla_f_ssc_phase = fe_data[phase]['free_energy_diff_standard_state_correction']
         print('DeltaG {:<17}: {:9.3f} +- {:.3f} kT'.format(phase, delta_f_phase,
                                                            delta_f_err_phase))
         if detla_f_ssc_phase != 0.0:

@@ -21,7 +21,7 @@ from simtk import unit as units
 from .. import version
 from .. import analyze
 
-YAEA = analyze.YANKAutoExperimentAnalyzer
+YAEA = analyze.YankAutoExperimentAnalyzer
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
 
@@ -452,15 +452,15 @@ class HealthReportData(YAEA):
         return replica_figure
 
     def generate_free_energy(self):
-        fe_data = self.get_experiment_free_energy()
-        delta_f = fe_data['delta_f']
-        delta_h = fe_data['delta_h']
-        delta_f_err = fe_data['delta_f_err']
-        delta_h_err = fe_data['delta_h_err']
-        delta_f_unit = fe_data['delta_f_unit']
-        delta_h_unit = fe_data['delta_h_unit']
-        delta_f_err_unit = fe_data['delta_f_err_unit']
-        delta_h_err_unit = fe_data['delta_h_err_unit']
+        fe_data = self.get_experiment_free_energy_data()
+        delta_f = fe_data['free_energy_diff']
+        delta_h = fe_data['enthalpy_diff']
+        delta_f_err = fe_data['free_energy_diff_error']
+        delta_h_err = fe_data['enthalpy_diff_error']
+        delta_f_unit = fe_data['free_energy_diff_unit']
+        delta_h_unit = fe_data['enthalpy_diff_unit']
+        delta_f_err_unit = fe_data['free_energy_diff_error_unit']
+        delta_h_err_unit = fe_data['enthalpy_diff_error_unit']
 
         # Attempt to guess type of calculation
         calculation_type = ''
@@ -475,9 +475,9 @@ class HealthReportData(YAEA):
             delta_f_err_unit / units.kilocalories_per_mole))
 
         for phase in self.phase_names:
-            delta_f_phase = fe_data[phase]['delta_f']
-            delta_f_err_phase = fe_data[phase]['delta_f_err']
-            detla_f_ssc_phase = fe_data[phase]['delta_f_ssc']
+            delta_f_phase = fe_data[phase]['free_energy_diff']
+            delta_f_err_phase = fe_data[phase]['free_energy_diff_error']
+            detla_f_ssc_phase = fe_data[phase]['free_energy_diff_standard_state_correction']
             print('DeltaG {:<17}: {:9.3f} +- {:.3f} kT'.format(phase, delta_f_phase,
                                                                delta_f_err_phase))
             if detla_f_ssc_phase != 0.0:
