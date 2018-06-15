@@ -30,7 +30,7 @@ class HealthReportData(YAEA):
     Class which houses the data used for the notebook and the generation of all plots including formatting
     """
 
-    def print_simulation_data(self):
+    def general_simulation_data(self):
         """
         General purpose simulation data on number of iterations, number of states, and number of atoms.
         This just prints out this data in a regular, formatted pattern.
