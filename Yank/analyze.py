@@ -273,8 +273,9 @@ class YankAutoExperimentAnalyzer(object):
         --------------
         {for phase_name in phase_names}
             iterations : {int}
-            states : {int}
             natoms : {int}
+            nreplicas : {int}
+            nstates : {int}
 
         Returns
         -------
@@ -294,8 +295,9 @@ class YankAutoExperimentAnalyzer(object):
                 energies, _, _, = analyzer.reporter.read_energies()
                 iterations, nreplicas, nstates = energies.shape
                 serial['iterations'] = iterations
-                serial['states'] = nstates
+                serial['nstates'] = nstates
                 serial['natoms'] = natoms
+                serial['nreplicas'] = nreplicas
                 general_serial[phase_name] = serial
 
             self.iterations = {phase_name: general_serial[phase_name]['iterations'] for phase_name in self.phase_names}

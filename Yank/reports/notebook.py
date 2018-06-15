@@ -37,11 +37,14 @@ class HealthReportData(YAEA):
         """
         general = self.get_general_simulation_data()
         iterations = {}
+        nreplicas = {}
         nstates = {}
         natoms = {}
-        nreplicas = {}
         for phase_name in self.phase_names:
-            iterations[phase_name], nreplicas[phase_name], nstates[phase_name] = general[phase_name]
+            iterations[phase_name] = general[phase_name]['iterations']
+            nreplicas[phase_name] = general[phase_name]['nrepliacs']
+            nstates[phase_name] = general[phase_name]['nstates']
+            natoms = general[phase_name]['natoms']
 
         leniter = max(len('Iterations'), *[len(str(i)) for i in iterations.values()]) + 2
         lenreplica = max(len('Replicas'), *[len(str(i)) for i in nreplicas.values()]) + 2
