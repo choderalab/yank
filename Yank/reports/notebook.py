@@ -42,7 +42,7 @@ class HealthReportData(YAEA):
         natoms = {}
         for phase_name in self.phase_names:
             iterations[phase_name] = general[phase_name]['iterations']
-            nreplicas[phase_name] = general[phase_name]['nrepliacs']
+            nreplicas[phase_name] = general[phase_name]['nreplicas']
             nstates[phase_name] = general[phase_name]['nstates']
             natoms = general[phase_name]['natoms']
 
