@@ -75,7 +75,7 @@ class MultiStateReporter(object):
 
         If None, the storage file won't be open on construction, and a call to
         :func:`Reporter.open` will be needed before attempting read/write operations.
-    checkpoint_interval : int >= 1, Default: 200
+    checkpoint_interval : int >= 1, Default: 50
         The frequency at which checkpointing information is written relative to analysis information.
 
         This is a multiple
@@ -107,7 +107,7 @@ class MultiStateReporter(object):
 
     """
     def __init__(self, storage, open_mode=None,
-                 checkpoint_interval=200, checkpoint_storage=None,
+                 checkpoint_interval=50, checkpoint_storage=None,
                  analysis_particle_indices=()):
         # Handle checkpointing
         if type(checkpoint_interval) != int:

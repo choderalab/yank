@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.22.3 Balance Checkpoint with IO
+---------------------------------
+- Reduced default checkpoint interval to 50 (was 200) to balance disk IO time with time between checkpoints
+- Fixed bug in DSL selection string from YAML
+
 0.22.2 Topography Property Copy
 -------------------------------
 - Critical bug fix for Topology where ions of charged ligands were considered part of the ligand

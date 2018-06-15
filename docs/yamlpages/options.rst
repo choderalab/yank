@@ -633,11 +633,19 @@ Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
 .. code-block:: yaml
 
    options:
-     checkpoint_interval: 200
+     checkpoint_interval: 50
 
 Specify how frequently checkpoint information should be saved to file relative to iterations. YANK simulations can be
 resumed only from checkpoints, so if something crashes, up to ``checkpoint_interval`` worth of iterations will be lost
 and YANK will resume from the most recent checkpoint.
+
+.. note::
+
+   The checkpoint also impacts disk IO times; Larger intervals consume less disk space, read faster but write slower,
+   as a function of number of replicas. The reverse is also true.
+   For SAMS type samplers, longer checkpoints such as 200 are fine; for replica exchange, especially in serial, lower
+   checkpoint intervals around 10 are better. We have chosen the default of 50 to try and balance the IO and the
+   different schemes.
 
 This option helps control write-to-disk time and file sizes. The fewer times a checkpoint is written, the less of both
 you will get. If you want to write a checkpoint every iteration, set this to ``1``.
