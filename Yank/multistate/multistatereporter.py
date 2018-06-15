@@ -75,7 +75,7 @@ class MultiStateReporter(object):
 
         If None, the storage file won't be open on construction, and a call to
         :func:`Reporter.open` will be needed before attempting read/write operations.
-    checkpoint_interval : int >= 1, Default: 200
+    checkpoint_interval : int >= 1, Default: 50
         The frequency at which checkpointing information is written relative to analysis information.
 
         This is a multiple
@@ -107,7 +107,7 @@ class MultiStateReporter(object):
 
     """
     def __init__(self, storage, open_mode=None,
-                 checkpoint_interval=200, checkpoint_storage=None,
+                 checkpoint_interval=50, checkpoint_storage=None,
                  analysis_particle_indices=()):
         # Handle checkpointing
         if type(checkpoint_interval) != int:
@@ -1545,8 +1545,10 @@ class MultiStateReporter(object):
         storage = self._storage_dict[storage_file]
         # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
         is_periodic = True if (sampler_states[0].box_vectors is not None) else False
-        self._initialize_sampler_variables_on_file(storage, sampler_states[0].n_particles,
-                                                   len(sampler_states), is_periodic,
+        n_particles = sampler_states[0].n_particles
+        n_replicas = len(sampler_states)
+        self._initialize_sampler_variables_on_file(storage, n_particles,
+                                                   n_replicas, is_periodic,
                                                    iteration_chunk=self._storage_chunks[storage_file])
         if obey_checkpoint_interval:
             write_iteration = self._calculate_checkpoint_iteration(iteration)
@@ -1555,18 +1557,26 @@ class MultiStateReporter(object):
         # Write the sampler state if we are on the checkpoint interval OR if told to ignore the interval
         if write_iteration is not None:
             # Store sampler states.
+            # Create a numpy array to avoid making multiple (possibly inefficient) calls to netCDF assignments
+            positions = np.zeros([n_replicas, n_particles, 3])
             for replica_index, sampler_state in enumerate(sampler_states):
-                # Store positions
+                # Store positions in memory first
                 x = sampler_state.positions / unit.nanometers
-                storage.variables['positions'][write_iteration, replica_index, :, :] = x[:, :]
+                positions[replica_index, :, :] = x[:, :]
+            # Store positions
+            storage.variables['positions'][write_iteration, :, :, :] = positions
 
-                if is_periodic:
-                    # Store box vectors and volume.
-                    for i in range(3):
-                        vector_i = sampler_state.box_vectors[i] / unit.nanometers
-                        storage.variables['box_vectors'][write_iteration, replica_index, i, :] = vector_i
-                        storage.variables['volumes'][write_iteration, replica_index] = \
-                            sampler_state.volume / unit.nanometers ** 3
+            if is_periodic:
+                # Store box vectors and volume.
+                # Allocate whole write to memory first
+                box_vectors = np.zeros([n_replicas, 3, 3])
+                volumes = np.zeros([n_replicas])
+                for replica_index, sampler_state in enumerate(sampler_states):
+                    box_vectors[replica_index, :, :] = sampler_state.box_vectors / unit.nanometers
+                    volumes[replica_index] = sampler_state.volume / unit.nanometers ** 3
+                storage.variables['box_vectors'][write_iteration, :, :, :] = box_vectors
+                storage.variables['volumes'][write_iteration, :] = volumes
+
         else:
             logger.debug("Iteration {} not on the Checkpoint Interval of {}. "
                          "Sampler State not written.".format(iteration, self._checkpoint_interval))
