@@ -161,6 +161,13 @@ class YankParallelTemperingAnalyzer(multistate.ParallelTemperingAnalyzer, YankMu
     pass
 
 
+def _copyout(wrap):
+    """Copy output of function. Small helper to avoid ending each function with the copy call"""
+    def make_copy(*args, **kwargs):
+        return copy.deepcopy(wrap(*args, **kwargs))
+    return make_copy
+
+
 class YankAutoExperimentAnalyzer(object):
     """
     Semi-automated YANK Experiment analysis data container model.
@@ -204,12 +211,6 @@ class YankAutoExperimentAnalyzer(object):
     mixing: {See :func:`get_mixing_data`}
 
     """
-    @staticmethod
-    def _copyout(wrap):
-        """Copy output of function. Small helper to avoid ending each function with the copy call"""
-        def make_copy(*args, **kwargs):
-            return copy.deepcopy(wrap(*args, **kwargs))
-        return make_copy
 
     def __init__(self, store_directory, **analyzer_kwargs):
         # Convert analyzer string quantities into variables.
