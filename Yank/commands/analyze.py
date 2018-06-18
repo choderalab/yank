@@ -33,6 +33,7 @@ Usage:
   yank analyze (-s STORE | --store=STORE) [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
   yank analyze report (-s STORE | --store=STORE) (-o REPORT | --output=REPORT) [-e | --serial] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [--fulltraj]
   yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
+  yank analyze cluster --refpdb=REFPDB --complexnetcdf=FILEPATH [--prefix=PREFIX] [--filter=FILTERDIST] [--cutoff=CUTOFFDIST] [--nsnapshots=NSNAPSHOTS] [--threshold=THRESHOLD] [-v | --verbose]
 
 Description:
   Analyze the data to compute Free Energies OR extract the trajectory from the NetCDF file into a common fortmat.
@@ -80,11 +81,20 @@ Extract Trajectory Options:
   --discardequil                Detect and discard equilibration frames
   --imagemol                    Reprocess trajectory to enforce periodic boundary conditions to molecules positions
 
+Cluster Required Arguments:
+  --refpdb=REFPDB               Reference PDB filename for solvated complex
+  --complexnetcdf=FILEPATH      Path to the complex analysis NetCDF file
+  --prefix=PREFIX               Prefix to use for output cluster PDB files and populations (default: cluster)
+  --filter=FILTERDIST           Discard snapshots where the ligand is farther than this minimum heavy atom distance from the protein, in nanometers (default: 0.3)
+  --cutoff=CUTOFFDIST           Heavy-atom RMSD separation between clusters, in nanometers (default: 0.3)
+  --nsnapshots=NUM_SNAPSHOTS    Number of snapshots per cluster to write (default: 5)
+  --cluster_filter_threshold=THRESHOLD    Threshold to use for which clusters to include (default: 0.95)
+
 General Options:
   -v, --verbose                 Print verbose output
-  --fulltraj                    Force ALL analysis run from this command to rely on the full trajectory and not do any 
-                                automatic equilibration detection or decorrelation subsampling. Although the 
-                                equilibration and correlation times will still be computed, no calculation depending on 
+  --fulltraj                    Force ALL analysis run from this command to rely on the full trajectory and not do any
+                                automatic equilibration detection or decorrelation subsampling. Although the
+                                equilibration and correlation times will still be computed, no calculation depending on
                                 them will use this information.
 
 """
@@ -102,6 +112,9 @@ def dispatch(args):
 
     if args['extract-trajectory']:
         return dispatch_extract_trajectory(args)
+
+    if args['cluster']:
+        return dispatch_cluster(args)
 
     # Configure analyzer keyword arguments.
     analyzer_kwargs = extract_analyzer_kwargs(args)
@@ -167,6 +180,26 @@ def dispatch_extract_trajectory(args):
 
     return True
 
+def dispatch_cluster(args):
+    """
+    Cluster ligand conformations and estimate populations in fully-interacting state.
+    """
+    refpdb_filename = args['--refpdb']
+    nc_path = args['--complexnetcdf']
+    prefix = args['--prefix'] if (args['--prefix'] is not None) else 'cluster'
+    filter = args['--filter'] if (args['--filter'] is not None) else (0.3 * unit.nanometers)
+    cutoff = args['--cutoff'] if (args['--cutoff'] is not None) else (0.3 * unit.nanometers)
+    nsnapshots_per_cluster = args['--nsnapshots'] if (args['--nsnapshots'] is not None) else 5
+    cluster_filter_threshold = args['--threshold'] if (args['--threshold'] is not None) else 0.95
+
+    # TODO: Refine this API
+    from yank.analyze import cluster
+    cluster(reference_pdb_filename=refpdb_filename, netcdf_filename=nc_path, output_prefix=prefix,
+            nsnapshots_per_cluster=nsnapshots_per_cluster, cluster_filter_threshold=cluster_filter_threshold,
+            receptor_dsl_selection = 'protein and name CA', ligand_dsl_selection = 'not protein and (mass > 1.5)',
+            fully_interacting_state=0, ligand_rmsd_cutoff=cutoff, ligand_filter_cutoff=filter)
+
+    return True
 
 def dispatch_report(args):
     # Check modules for render

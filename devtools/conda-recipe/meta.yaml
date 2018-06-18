@@ -39,6 +39,7 @@ requirements:
     - jupyter
     - pdbfixer
     - libnetcdf >=4.6.0
+    - msmbuilder
 
 test:
   requires:
