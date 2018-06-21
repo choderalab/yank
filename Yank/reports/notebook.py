@@ -44,7 +44,7 @@ class HealthReportData(YAEA):
             iterations[phase_name] = general[phase_name]['iterations']
             nreplicas[phase_name] = general[phase_name]['nreplicas']
             nstates[phase_name] = general[phase_name]['nstates']
-            natoms = general[phase_name]['natoms']
+            natoms[phase_name] = general[phase_name]['natoms']
 
         leniter = max(len('Iterations'), *[len(str(i)) for i in iterations.values()]) + 2
         lenreplica = max(len('Replicas'), *[len(str(i)) for i in nreplicas.values()]) + 2
@@ -95,6 +95,7 @@ class HealthReportData(YAEA):
         # Add some space between the figures
         equilibration_figure.subplots_adjust(hspace=0.4)
         for i, phase_name in enumerate(self.phase_names):
+            phase_data = serial_data[phase_name]
             sub_grid = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=plot_grid[i])
 
             # FIRST SUBPLOT: energy scatter
@@ -144,9 +145,9 @@ class HealthReportData(YAEA):
                    )
 
             # SECOND SUBPLOT: g_t trace
-            i_t = serial_data['iterations_considered']
-            g_i = serial_data['subsample_rate_by_iterations_considered']
-            n_effective_i = serial_data['effective_samples_by_iterations_considered']
+            i_t = phase_data['iterations_considered']
+            g_i = phase_data['subsample_rate_by_iterations_considered']
+            n_effective_i = phase_data['effective_samples_by_iterations_considered']
             x = i_t
             g = equilibration_figure.add_subplot(sub_grid[1])
             g.plot(x, g_i)
