@@ -32,6 +32,8 @@ from pymbar import timeseries
 from . import multistate
 from . import version
 from . import utils
+from . import mpi
+from .experiment import ExperimentBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +263,7 @@ class YankAutoExperimentAnalyzer(object):
         # Replica mixing
         self._replica_mixing_run = False
         self._free_energy_run = False
-        self._serialized_data = {'yank_version': version.version}
+        self._serialized_data = {'yank_version': version.version, 'phase_names': self.phase_names}
 
     @_copyout
     def get_general_simulation_data(self):
@@ -458,16 +460,25 @@ class YankAutoExperimentAnalyzer(object):
 
             # Compute free energy and enthalpy
             delta_f = 0.0
-            delta_f_unit = 0.0
             delta_f_err = 0.0
-            delta_f_err_unit = 0.0
             delta_h = 0.0
-            delta_h_unit = 0.0
             delta_h_err = 0.0
+            # Not assigning units to be more general to whatever kt is later
+            delta_f_unit = 0.0
+            delta_f_err_unit = 0.0
+            delta_h_unit = 0.0
             delta_h_err_unit = 0.0
             for phase_name in self.phase_names:
                 serial = {}
                 kt = self.analyzers[phase_name].kT
+                serial['kT'] = kt
+                if not isinstance(delta_f_unit, units.Quantity):
+                    # Assign units to the float if not assigned
+                    held_unit = kt.unit
+                    delta_f_unit *= held_unit
+                    delta_f_err_unit *= held_unit ** 2  # Errors are held in square until the end
+                    delta_h_unit *= held_unit
+                    delta_h_err_unit *= held_unit ** 2
                 serial['kT'] = kt
                 sign = self.signs[phase_name]
                 serial['sign'] = sign
@@ -495,10 +506,11 @@ class YankAutoExperimentAnalyzer(object):
                 delta_h_unit -= phase_exp_delta_h * kt
                 delta_h_err_unit += (phase_delta_h_err * kt) ** 2
                 fe_serial[phase_name] = serial
-            delta_f_err = np.sqrt(delta_f_err)
+            delta_f_err = np.sqrt(delta_f_err)  # np.sqrt is fine here since these dont have units
             delta_h_err = np.sqrt(delta_h_err)
-            delta_f_err_unit = np.sqrt(delta_f_err_unit)
-            delta_h_err_unit = np.sqrt(delta_h_err_unit)
+            # Use ** 0.5 instead of np.sqrt since the function strips units, see github issue pandegroup/openmm#2106
+            delta_f_err_unit = delta_f_err_unit ** 0.5
+            delta_h_err_unit = delta_h_err_unit ** 0.5
             fe_serial['free_energy_diff'] = delta_f
             fe_serial['enthalpy_diff'] = delta_h
             fe_serial['free_energy_diff_error'] = delta_f_err
@@ -604,6 +616,11 @@ def analyze_directory(source_directory, **analyzer_kwargs):
     """
     auto_experiment_analyzer = YankAutoExperimentAnalyzer(source_directory, **analyzer_kwargs)
     analysis_data = auto_experiment_analyzer.auto_analyze()
+    print_analysis_data(analysis_data)
+    return analysis_data
+
+
+def print_analysis_data(analysis_data):
     fe_data = analysis_data['free_energy']
     delta_f = fe_data['free_energy_diff']
     delta_h = fe_data['enthalpy_diff']
@@ -616,7 +633,7 @@ def analyze_directory(source_directory, **analyzer_kwargs):
 
     # Attempt to guess type of calculation
     calculation_type = ''
-    for phase in auto_experiment_analyzer.phase_names:
+    for phase in analysis_data['phase_names']:
         if 'complex' in phase:
             calculation_type = ' of binding'
         elif 'solvent1' in phase:
@@ -626,7 +643,7 @@ def analyze_directory(source_directory, **analyzer_kwargs):
         calculation_type, delta_f, delta_f_err, delta_f_unit / units.kilocalories_per_mole,
         delta_f_err_unit / units.kilocalories_per_mole))
 
-    for phase in auto_experiment_analyzer.phase_names:
+    for phase in analysis_data['phase_names']:
         delta_f_phase = fe_data[phase]['free_energy_diff']
         delta_f_err_phase = fe_data[phase]['free_energy_diff_error']
         detla_f_ssc_phase = fe_data[phase]['free_energy_diff_standard_state_correction']
@@ -638,8 +655,42 @@ def analyze_directory(source_directory, **analyzer_kwargs):
     print('Enthalpy{:<16}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
         calculation_type, delta_h, delta_h_err, delta_h_unit / units.kilocalories_per_mole,
         delta_h_err_unit / units.kilocalories_per_mole))
-    return analysis_data
 
+
+# TODO: Add doc
+class MultiExperimentAnalyzer(object):
+    def __init__(self, script, **builder_kwargs):
+        self.script = script
+        self.builder = ExperimentBuilder(script=script, **builder_kwargs)
+        self.paths = self.builder.get_experiment_directories()
+
+    def run_all_analysis(self, serialize_data=True, serial_data_path=None, **analyzer_kwargs):
+        if serial_data_path is None:
+            script_base, _ = os.path.splitext(self.script)
+            serial_data_path = script_base + '_analysis.yaml'
+        analysis_serials = mpi.distribute(self._run_analysis,
+                                          self.paths,
+                                          **analyzer_kwargs)
+        output = {}
+        for path, analysis in zip(self.paths, analysis_serials):
+            name = os.path.split(path)[-1]  # Get the name of the experiment
+            # Check to ensure the output is stable
+            output[name] = analysis if not isinstance(analysis, Exception) else str(analysis)
+        if serialize_data:
+            with open(serial_data_path, 'w') as f:
+                f.write(yaml.dump(output))
+        return output
+
+    def _run_analysis(self, path, **analyzer_kwargs):
+        try:
+            return self._run_specific_analysis(path, **analyzer_kwargs)
+        except Exception as e:
+            # Trap any error in a non-crashing way
+            return e
+
+    @staticmethod
+    def _run_specific_analysis(path, **analyzer_kwargs):
+        return YankAutoExperimentAnalyzer(path, **analyzer_kwargs).auto_analyze()
 
 # ==========================================
 # HELPER FUNCTIONS FOR TRAJECTORY EXTRACTION
