@@ -30,12 +30,9 @@ from .. import utils, analyze
 usage = """
 YANK analyze
 
-Usage:
-  yank analyze ((-s STORE | --store=STORE) | (-y STORE | --yaml=STORE)) [(-e | --serial) (-o OUTPUT | --output=OUTPUT)] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
-  yank analyze report ((-s STORE | --store=STORE) | (-y STORE | --yaml=STORE)) (-o OUTPUT | --output=OUTPUT) [-e | --serial] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [--fulltraj]
-  
-  yank analyze ((-s STORE | --store=STORE) | (-y YAML | --yaml=YAML)) [report (-o OUTPUT | --output=OUTPUT) [--format=FORMAT]] [-e SERIAL | --serial=SERIAL] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
-  
+Usage: 
+  yank analyze ((-s STORE | --store=STORE) | (-y YAML | --yaml=YAML)) [-e SERIAL | --serial=SERIAL] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
+  yank analyze report ((-s STORE | --store=STORE) | (-y YAML | --yaml=YAML)) (-o OUTPUT | --output=OUTPUT) [--format=FORMAT] [-e SERIAL | --serial=SERIAL] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
   yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
