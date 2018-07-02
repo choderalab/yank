@@ -6,6 +6,16 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.22.4 Multi-Analysis
+---------------------
+- Added new ``YankAutoExperimentAnalyzer`` class as API call for ``auto_analyze`` like functions. Supports serialized output to Pickle
+- Added new ``MultiExperimentAnalyzer`` class to analyze all experiments found in a YAML input file with the ``YankAutoExperimentAnalyzer``. Supported by MPI for parallel action
+- Unified all ``auto_analyze`` like objects to go through the ``YankAutoExperimentAnalyzer``, such as the API and Jupyter Notebook calls
+- Existing API calls should remain unchanged and serve as pass-throughs to the new classes
+- Major changes to the CLI behavior of ``yank analyze`` and ``yank analyze report`` to support the new features. These should not affect existing code, only support new features.
+- Fixed bug in ``yank selftest`` with the OpenEye tests. Also silenced the OpenEye internal tests due to time. Dependency checks are still active
+- Update API docs
+
 0.22.3 Balance Checkpoint with IO
 ---------------------------------
 - Reduced default checkpoint interval to 50 (was 200) to balance disk IO time with time between checkpoints

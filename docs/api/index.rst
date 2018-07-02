@@ -10,6 +10,7 @@ YAML input files, please see the command line interface and the YAML options.
 .. toctree::
    :maxdepth: 2
 
+   analysis_api
    experiment_api
    mpi_api
    multistate_api/index
