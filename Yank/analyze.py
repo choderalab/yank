@@ -24,6 +24,7 @@ import abc
 import copy
 import yaml
 import mdtraj
+import pickle
 import logging
 import numpy as np
 import simtk.unit as units
@@ -677,9 +678,13 @@ class MultiExperimentAnalyzer(object):
             # Check to ensure the output is stable
             output[name] = analysis if not isinstance(analysis, Exception) else str(analysis)
         if serialize_data:
-            with open(serial_data_path, 'w') as f:
-                f.write(yaml.dump(output))
+            self._serialize(serial_data_path, output)
         return output
+
+    @staticmethod
+    def _serialize(serial_path, payload):
+        with open(serial_path, 'wb') as f:
+            pickle.dump(payload, f)
 
     def _run_analysis(self, path, **analyzer_kwargs):
         try:
@@ -691,6 +696,7 @@ class MultiExperimentAnalyzer(object):
     @staticmethod
     def _run_specific_analysis(path, **analyzer_kwargs):
         return YankAutoExperimentAnalyzer(path, **analyzer_kwargs).auto_analyze()
+
 
 # ==========================================
 # HELPER FUNCTIONS FOR TRAJECTORY EXTRACTION
@@ -737,7 +743,7 @@ def extract_u_n(ncfile):
     u_kln = np.zeros([nstates, nstates, niterations], np.float64)
     for iteration in range(niterations):
         state_indices = ncfile.variables['states'][iteration, :]
-        u_kln[state_indices,:,iteration] = energies[iteration, :, :]
+        u_kln[state_indices, :, iteration] = energies[iteration, :, :]
     logger.info("Done.")
 
     # Compute total negative log probability over all iterations.

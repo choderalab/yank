@@ -42,11 +42,15 @@ Description:
 Free Energy Required Arguments:
   -s STORE, --store=STORE       Storage directory for NetCDF data files. 
                                 EXCLUSIVE with -y and --yaml
-  -y YAML,  --yaml=YAML         Target YAML file which setup and ran the experiment(s) being analyzed. 
+  -y YAML, --yaml=YAML          Target YAML file which setup and ran the experiment(s) being analyzed. 
                                 This slightly changes the optional -o|--output flag.
                                 EXCLUSIVE with -s and --store
   
 YANK Analysis Output Arguments:
+  -e SERIAL, --serial=SERIAL    Save data in YAML serialized output. This behaves differently in report mode. 
+                                In normal mode, this is a SINGULAR output file in Pickle format
+                                In report mode, this is the base name of the individual serial files. If not provided, 
+                                then the name is inferred from the storage or the yaml file
   report                        Toggles output to be of the Jupyter Notebook analysis as a rendered notebook or as 
                                 a static file. Can use a path + name as well. File format is set by the --format flag
                                 
@@ -59,7 +63,6 @@ YANK Analysis Output Arguments:
   --format=FORMAT               File format of the notebook. If the filename ends in .pdf or .html, the notebook is run 
                                 and converted to a static PDF or HTML file respectively. If --format is NOT set, it 
                                 defaults to '.ipynb'                                
-  -e SERIAL, --serial=SERIAL    Save data in YAML serialized output, this is a collective, singular output file. 
 
 Free Energy Optional Arguments:
   --skipunbiasing               Skip the radially-symmetric restraint unbiasing. This can be an expensive step.
@@ -111,15 +114,15 @@ def dispatch(args):
     if args['report']:
         if not args['--format']:
             args['--format'] = 'ipynb'
-        if args['--yaml']:
+        if args['--yaml'] is not None and args['--output']:
             # Ensure the last output is treated as a directory in all cases
-            base, last_item = os.path.split(args['--yaml'])
+            base, last_item = os.path.split(args['--output'])
             if last_item != '':
-                args['--yaml'] = os.path.join(base, last_item, '')
+                args['--output'] = os.path.join(base, last_item, '')
+        if not os.path.isdir(args['--output']):
+            raise ValueError("{} is not a directory, which is required when specifying a YAML file as a source for "
+                             "analysis".format(args['--output']))
         return dispatch_report(args)
-
-    if args['extract-trajectory']:
-        return dispatch_extract_trajectory(args)
 
     # Configure analyzer keyword arguments.
     analyzer_kwargs = extract_analyzer_kwargs(args)
@@ -137,7 +140,7 @@ def dispatch(args):
         if do_serialize:
             with open(args['--serial'], 'w') as f:
                 f.write(yaml.dump(output))
-            print("Results have been serialized to ")
+            print("Results have been serialized to {}".format(args['--serial']))
     return True
 
 
@@ -278,9 +281,12 @@ def dispatch_report(args):
             single_output_file = os.path.join(output, exp_name + args['--format'])
             single_serial_file = os.path.splitext(single_output_file)[0] + '_serial.yaml'
             run_notebook(path, single_output_file, single_serial_file, **analyzer_kwargs)
-            with open(single_serial_file, 'r') as f:
-                result = yaml.load(f)
-            return result
+            return
+
+        @staticmethod
+        def _serialize(serial_path, payload):
+            """The notebooks do not have a general serial dump"""
+            pass
 
     if yaml_input is not None:
         multi_notebook = NotebookMultiExperimentAnalyzer(yaml_input)
