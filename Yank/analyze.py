@@ -621,7 +621,10 @@ def analyze_directory(source_directory, **analyzer_kwargs):
     return analysis_data
 
 
-def print_analysis_data(analysis_data):
+@mpi.on_single_node(0)
+def print_analysis_data(analysis_data, header=None):
+    if header is not None:
+        print(header)
     fe_data = analysis_data['free_energy']
     delta_f = fe_data['free_energy_diff']
     delta_h = fe_data['enthalpy_diff']

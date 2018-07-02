@@ -58,7 +58,7 @@ YANK Analysis Output Arguments:
                                 If the filename ends in .pdf or .html, the notebook is auto run and converted to a
                                 static PDF or HTML file respectively
                                 PDF requires xelatex binary in OS path, often provided by LaTeX packages
-                                MODIFIED BY -y|--yaml: This becomes the PATH ONLY of the output. The names are inferred 
+                                MODIFIED BY -y|--yaml: This becomes the DIRECTORY of the output. The names are inferred 
                                 from the input YAML file
   --format=FORMAT               File format of the notebook. If the filename ends in .pdf or .html, the notebook is run 
                                 and converted to a static PDF or HTML file respectively. If --format is NOT set, it 
@@ -113,15 +113,18 @@ def dispatch(args):
 
     if args['report']:
         if not args['--format']:
-            args['--format'] = 'ipynb'
+            args['--format'] = '.ipynb'
+        elif args['--format'][0] != '.':
+            # Ensure format is not double dotted
+            args['--format'] = '.' + args['--format']
         if args['--yaml'] is not None and args['--output']:
             # Ensure the last output is treated as a directory in all cases
+            if not os.path.isdir(args['--output']):
+                raise ValueError("{} is not a directory, which is required when specifying a YAML file as a source for "
+                                 "analysis".format(args['--output']))
             base, last_item = os.path.split(args['--output'])
             if last_item != '':
                 args['--output'] = os.path.join(base, last_item, '')
-        if not os.path.isdir(args['--output']):
-            raise ValueError("{} is not a directory, which is required when specifying a YAML file as a source for "
-                             "analysis".format(args['--output']))
         return dispatch_report(args)
 
     # Configure analyzer keyword arguments.
@@ -132,8 +135,7 @@ def dispatch(args):
         output = multi_analyzer.run_all_analysis(serial_data_path=args['--serial'], serialize_data=do_serialize,
                                                  **analyzer_kwargs)
         for exp_name, data in output.items():
-            print("######## EXPERIMENT: {} ########".format(exp_name))
-            analyze.print_analysis_data(data)
+            analyze.print_analysis_data(data, header="######## EXPERIMENT: {} ########".format(exp_name))
 
     else:
         output = analyze.analyze_directory(args['--store'], **analyzer_kwargs)
@@ -271,15 +273,21 @@ def dispatch_report(args):
             exported_notebook, _ = nbconvert.exporters.export(exporter, processed_notebook, resources=resources)
             notebook.write(exported_notebook)
 
+    def cast_notebook_serial_path(relative_notebook_path):
+        if args['--serial'] is None:
+            serial_file = None
+        else:
+            serial_file = os.path.splitext(relative_notebook_path)[0] + '_' + args['--serial']
+        return serial_file
+
     class NotebookMultiExperimentAnalyzer(analyze.MultiExperimentAnalyzer):
         """Custom Multi Experiment Analyzer for notebooks"""
 
         @staticmethod
         def _run_specific_analysis(path, **analyzer_kwargs):
-            dir_folders, _ = os.path.split(path)
-            exp_name, _ = os.path.split(dir_folders)
+            _, exp_name = os.path.split(path)
             single_output_file = os.path.join(output, exp_name + args['--format'])
-            single_serial_file = os.path.splitext(single_output_file)[0] + '_serial.yaml'
+            single_serial_file = cast_notebook_serial_path(single_output_file)
             run_notebook(path, single_output_file, single_serial_file, **analyzer_kwargs)
             return
 
@@ -294,6 +302,7 @@ def dispatch_report(args):
                                             serial_data_path=args['--serial'],
                                             **analyzer_kwargs)
     else:
-        run_notebook(store, output, args['--serial'], **analyzer_kwargs)
+        notebook_serial_file = cast_notebook_serial_path(output)
+        run_notebook(store, output, notebook_serial_file, **analyzer_kwargs)
 
     return True
