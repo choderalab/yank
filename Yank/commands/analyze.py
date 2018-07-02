@@ -16,12 +16,12 @@ Analyze YANK output file.
 import io
 import re
 import os
-import yaml
+import pickle
 
 from simtk import unit
 
 import pkg_resources
-from .. import utils, analyze
+from .. import utils, analyze, mpi
 
 # =============================================================================================
 # COMMAND-LINE INTERFACE
@@ -47,10 +47,10 @@ Free Energy Required Arguments:
                                 EXCLUSIVE with -s and --store
   
 YANK Analysis Output Arguments:
-  -e SERIAL, --serial=SERIAL    Save data in YAML serialized output. This behaves differently in report mode. 
+  -e SERIAL, --serial=SERIAL    Save data in Pickle serialized output. This behaves differently in report mode. 
                                 In normal mode, this is a SINGULAR output file in Pickle format
                                 In report mode, this is the base name of the individual serial files. If not provided, 
-                                then the name is inferred from the storage or the yaml file
+                                then the name is inferred from the storage (-s) or the yaml (-y) file
   report                        Toggles output to be of the Jupyter Notebook analysis as a rendered notebook or as 
                                 a static file. Can use a path + name as well. File format is set by the --format flag
                                 
@@ -138,11 +138,15 @@ def dispatch(args):
             analyze.print_analysis_data(data, header="######## EXPERIMENT: {} ########".format(exp_name))
 
     else:
-        output = analyze.analyze_directory(args['--store'], **analyzer_kwargs)
-        if do_serialize:
-            with open(args['--serial'], 'w') as f:
-                f.write(yaml.dump(output))
-            print("Results have been serialized to {}".format(args['--serial']))
+        @mpi.on_single_node(0)
+        def single_run():
+            # Helper to ensure case someone does MPI on a single diretory
+            output = analyze.analyze_directory(args['--store'], **analyzer_kwargs)
+            if do_serialize:
+                with open(args['--serial'], 'wb') as f:
+                    pickle.dump(output, f)
+                print("Results have been serialized to {}".format(args['--serial']))
+        single_run()
     return True
 
 
