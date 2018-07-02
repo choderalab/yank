@@ -441,6 +441,10 @@ def test_online_reads_checkpoint():
             sampler = experiment.phases[0].sampler
         return sampler
 
+    # Testing Note: All the test numbers for the checkpoint_interval below are different from the default and each
+    # other to ensure making changes actually has the intended effect odd settings get carried over between tests
+    # respectively.
+
     # Test that setting "checkpoint" for online analysis gets the checkpoint interval default
     template_script = copy.deepcopy(base_template_script)
     template_script['options'].pop("checkpoint_interval", None)
@@ -449,9 +453,9 @@ def test_online_reads_checkpoint():
     assert sampler.online_analysis_interval == AlchemicalPhaseFactory.DEFAULT_OPTIONS['checkpoint_interval']
 
     # Test that setting "checkpoint" for online analysis gets the checkpoint interval that is set
-    template_script['options']["checkpoint_interval"] = 50
+    template_script['options']["checkpoint_interval"] = 10
     sampler = spinup_sampler(template_script)
-    assert sampler.online_analysis_interval == 50
+    assert sampler.online_analysis_interval == 10
 
     # Test that not setting online analysis gets the checkpoint interval default
     template_script = copy.deepcopy(base_template_script)
