@@ -2767,35 +2767,49 @@ def solvation_stock(tmp_dir, overwrite_options=None):
     yaml_script = get_template_script(tmp_dir)
     yaml_script['experiments']['system'] = 'hydration-system'
     yaml_script['experiments']['protocol'] = 'hydration-protocol'
+    # Pop out all non-hydration system items for setup speed
+    molecule_poppers = []
+    for molecule in yaml_script['molecules'].keys():
+        if molecule not in yaml_script['systems']['hydration-system'].values():
+            molecule_poppers.append(molecule)
+    for molecule in molecule_poppers:
+        yaml_script['molecules'].pop(molecule, None)
+    system_poppers = []
+    for system in yaml_script['systems'].keys():
+        if system != 'hydration-system':
+            system_poppers.append(system)
+    for system in system_poppers:
+        yaml_script['systems'].pop(system, None)
+
     if overwrite_options is not None:
         yaml_script = utils.update_nested_dict(yaml_script, overwrite_options)
 
     exp_builder = ExperimentBuilder(yaml_script)
     exp_builder._check_resume()  # check_resume should not raise exceptions
     exp_builder.run_experiments()
-
-    # The experiments folders are correctly named and positioned
-    output_dir = exp_builder._get_experiment_dir('')
-
-    assert os.path.isdir(output_dir)
-    for solvent in ['solvent1.nc', 'solvent2.nc']:
-        solvent_path = os.path.join(output_dir, solvent)
-        reporter = multistate.MultiStateReporter(solvent_path, open_mode=None)
-        assert reporter.storage_exists()
-        del reporter
-    assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
-    assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
-
-    # Analysis script is correct
-    analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
-    with open(analysis_script_path, 'r') as f:
-        assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
+    return yaml_script, exp_builder
 
 
 def test_run_solvation_experiment():
     """Test solvation free energy experiment run."""
     with mmtools.utils.temporary_directory() as tmp_dir:
-        solvation_stock(tmp_dir)
+        _, exp_builder = solvation_stock(tmp_dir)
+        # The experiments folders are correctly named and positioned
+        output_dir = exp_builder._get_experiment_dir('')
+
+        assert os.path.isdir(output_dir)
+        for solvent in ['solvent1.nc', 'solvent2.nc']:
+            solvent_path = os.path.join(output_dir, solvent)
+            reporter = multistate.MultiStateReporter(solvent_path, open_mode=None)
+            assert reporter.storage_exists()
+            del reporter
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+        # Analysis script is correct
+        analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'r') as f:
+            assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
 
 
 def test_automatic_alchemical_path():

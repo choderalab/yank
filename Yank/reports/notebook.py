@@ -18,7 +18,6 @@ from pymbar import MBAR
 import seaborn as sns
 from simtk import unit as units
 
-from .. import version
 from .. import analyze
 
 YAEA = analyze.YankAutoExperimentAnalyzer

@@ -346,6 +346,15 @@ class YankAutoExperimentAnalyzer(object):
                 # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
                 # This throws off all of the equilibrium data
                 self._n_discarded = discard_from_start
+                series = analyzer.get_effective_energy_timeseries()
+                if series.size <= discard_from_start:
+                    # Trap case where user has dropped their whole set.
+                    # Rare, but happens, often with debugging
+                    discard_from_start = 0
+                    logger.warning("Alert: analyzed timeseries has the same or fewer number of values as "
+                                   "discard_from_start! The whole series has been preserved to ensure there is "
+                                   "*something* to analyze.")
+                    self._n_discarded = 0
                 self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[discard_from_start:]
                 # Timeseries statistics
                 i_t, g_i, n_effective_i = multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
@@ -531,6 +540,62 @@ class YankAutoExperimentAnalyzer(object):
 
         Returns
         -------
+        serialized_data : dict
+            Dictionary of all the auto-analysis calls organized by section headers.
+            See each of the functions to see each of the sub-dictionary structures
+
+        See Also
+        --------
+        get_general_simulation_data
+        get_equilibration_data
+        get_mixing_data
+        get_experiment_free_energy_data
+
+        Data Structure
+        --------------
+        general:
+            {for phase_name in phase_names}
+                iterations : {int}
+                natoms : {int}
+                nreplicas : {int}
+                nstates : {int}
+        equilibration:
+            {for phase_name in phase_names}
+                discarded_from_start : {int}
+                effective_samples : {float}
+                subsample_rate : {float}
+                iterations_considered : {1D np.ndarray of int}
+                subsample_rate_by_iterations_considered : {1D np.ndarray of float}
+                effective_samples_by_iterations_considered : {1D np.ndarray of float}
+                count_total_equilibration_samples : {int}
+                count_decorrelated_samples : {int}
+                count_correlated_samples : {int}
+                percent_total_equilibration_samples : {float}
+                percent_decorrelated_samples : {float}
+                percent_correlated_samples : {float}
+        mixing:
+            {for phase_name in phase_names}
+                transitions : {[nstates, nstates] np.ndarray of float}
+                eigenvalues : {[nstates] np.ndarray of float}
+                stat_inefficiency : {float}
+        free_energy:
+            {for phase_name in phase_names}
+                sign : {str of either '+' or '-'}
+                kT : {units.quantity}
+                free_energy_diff : {float (has units of kT)}
+                free_energy_diff_error : {float (has units of kT)}
+                free_energy_diff_standard_state_correction : {float (has units of kT)}
+                enthalpy_diff : {float (has units of kT)}
+                enthalpy_diff_error : {float (has units of kT)}
+            free_energy_diff : {float (has units of kT)}
+            free_energy_diff_error : {float (has units of kT)}
+            free_energy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+            free_energy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+            enthalpy_diff : {float (has units of kT)}
+            enthalpy_diff_error : {float (has units of kT)}
+            enthalpy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+            enthalpy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+
 
         """
         _ = self.get_general_simulation_data()
@@ -623,6 +688,18 @@ def analyze_directory(source_directory, **analyzer_kwargs):
 
 @mpi.on_single_node(0)
 def print_analysis_data(analysis_data, header=None):
+    """
+    Helper function of printing the analysis data payload from a :func:`YankAutoExperimentAnalyzer.auto_analyze` call
+
+    Parameters
+    ----------
+    analysis_data : dict
+        Output from :func:`YankAutoExperimentAnalyzer.auto_analyze`
+    header : str, Optional
+        Optional header string to print before the formatted helper, useful if you plan to make this call multiple
+        times but want to divide the outputs.
+    """
+
     if header is not None:
         print(header)
     fe_data = analysis_data['free_energy']
@@ -661,23 +738,82 @@ def print_analysis_data(analysis_data, header=None):
         delta_h_err_unit / units.kilocalories_per_mole))
 
 
-# TODO: Add doc
 class MultiExperimentAnalyzer(object):
+    """
+    Automatic Analysis tool for Multiple YANK Experiments from YAML file
+
+    This class takes in a YAML file, infers the experiments from expansion of all combinatorial options,
+    then does the automatic analysis run from :func:`YankAutoExperimentAnalyzer.auto_analyze` yielding a final
+    dictionary output.
+
+    Parameters
+    ----------
+    script : str or dict
+        Full path to the YAML file which made the YANK experiments.
+        OR
+        The loaded yaml content of said script.
+    builder_kwargs
+        Additional keyword arguments which normally are passed to the :class:`ExperimentBuilder` constructor.
+        The experiments are not setup or built, only the output structure is referenced.
+
+    See Also
+    --------
+    YankAutoExperimentAnalyzer.auto_analyze
+
+    """
     def __init__(self, script, **builder_kwargs):
         self.script = script
         self.builder = ExperimentBuilder(script=script, **builder_kwargs)
         self.paths = self.builder.get_experiment_directories()
 
     def run_all_analysis(self, serialize_data=True, serial_data_path=None, **analyzer_kwargs):
+        """
+        Run all the automatic analysis through the :func:`YankAutoExperimentAnalyzer.auto_analyze`
+
+        Parameters
+        ----------
+        serialize_data : bool, Default: True
+            Choose whether or not to serialize the data
+        serial_data_path: str, Optional
+            Name of the serial data file. If not specified, name will be {YAML file name}_analysis.pkl`
+        analyzer_kwargs
+            Additional keywords which will be fed into the :class:`YankMultiStateSamplerAnalyzer` for each phase of
+            each experiment.
+
+        Returns
+        -------
+        serial_output : dict
+            Dictionary of each experiment's output of format
+            {exp_name: YankAutoExperimentAnalyzer.auto_analyze() for exp_name in ExperimentBuilder's Experiments}
+            The sub-dictionary of each key can be seen in :func:`YankAutoExperimentAnalyzer.auto_analyze()` docstring
+
+        See Also
+        --------
+        YankAutoExperimentAnalyzer.auto_analyze
+
+        """
         if serial_data_path is None:
-            script_base, _ = os.path.splitext(self.script)
-            serial_data_path = script_base + '_analysis.yaml'
+            serial_ending = 'analysis.pkl'
+            try:
+                if not os.path.isfile(self.script):
+                    # Not a file, string like input
+                    raise TypeError
+                script_base, _ = os.path.splitext(self.script)
+                serial_data_path = script_base + '_' + serial_ending
+            except TypeError:
+                # Traps both YAML content as string, and YAML content as dict
+                serial_data_path = os.path.join('.', serial_ending)
+
         analysis_serials = mpi.distribute(self._run_analysis,
                                           self.paths,
                                           **analyzer_kwargs)
         output = {}
         for path, analysis in zip(self.paths, analysis_serials):
             name = os.path.split(path)[-1]  # Get the name of the experiment
+            # Corner case where user has specified a singular experiment and name is just an empty directory
+            # Impossible with any type of combinatorial action
+            if name == '':
+                name = 'experiment'
             # Check to ensure the output is stable
             output[name] = analysis if not isinstance(analysis, Exception) else str(analysis)
         if serialize_data:
@@ -686,11 +822,40 @@ class MultiExperimentAnalyzer(object):
 
     @staticmethod
     def _serialize(serial_path, payload):
+        """
+        Helper function to serialize data which can be subclassed
+
+        Parameters
+        ----------
+        serial_path : str
+            Path of serial file
+        payload : object
+            Object to serialize (pickle)
+        """
         with open(serial_path, 'wb') as f:
             pickle.dump(payload, f)
 
     def _run_analysis(self, path, **analyzer_kwargs):
+        """
+        Helper function to allow parallel through MPI analysis of the experiments
+
+        Parameters
+        ----------
+        path : str
+            Location of YANK experiment output data.
+        analyzer_kwargs
+            Additional keywords which will be fed into the :class:`YankMultiStateSamplerAnalyzer` for each phase of
+            each experiment.
+
+        Returns
+        -------
+        payload : dict or Exception
+            Results from automatic analysis output or the exception that was thrown.
+            Having the exception trapped but thrown later allows for one experiment to fail but not stop the others
+            from analyzing.
+        """
         try:
+            # Allow the _run_specific_analysis to be subclassable without requiring the error trap to be re-written.
             return self._run_specific_analysis(path, **analyzer_kwargs)
         except Exception as e:
             # Trap any error in a non-crashing way
@@ -698,6 +863,7 @@ class MultiExperimentAnalyzer(object):
 
     @staticmethod
     def _run_specific_analysis(path, **analyzer_kwargs):
+        """ Helper function to run an individual auto analysis which can be subclassed"""
         return YankAutoExperimentAnalyzer(path, **analyzer_kwargs).auto_analyze()
 
 

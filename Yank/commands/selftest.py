@@ -94,7 +94,7 @@ def dispatch(args):
             import openeye
             import openeye.examples.openeye_tests as OETests
             print("OpenEye version {} Found! Checking install...".format(openeye.__version__))
-            OETests.run_test_suite()
+            # OETests.run_test_suite([])  # Disabled for now as its slow
             # Check that the required tools work
             from ..utils import is_openeye_installed
             complete_tool_set = set('oechem', 'oequacpac', 'oeiupac', 'oeomega')

@@ -13,6 +13,7 @@ import copy
 import shutil
 import os
 import tempfile
+import logging
 
 import numpy as np
 from nose.tools import assert_raises, assert_equal
@@ -25,6 +26,7 @@ from yank.yank import Topography
 from yank.restraints import RestraintState
 from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, SAMSSampler, utils
 import yank.analyze as analyze
+from .test_experiment import solvation_stock
 
 # ==============================================================================
 # MODULE CONSTANTS
@@ -114,6 +116,30 @@ def test_timeseries():
     # MBAR output
     m_equilibration_data = timeseries.detectEquilibration(full_series, fast=True)
     assert np.allclose(m_equilibration_data, a_equilibration_data)
+
+
+def test_auto_analyze():
+    """Test that the auto analysis and multi-exp analysis code works"""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        # Make the logger less noisy
+        logging.disable(21)  # Raise threshold to just above INFO logging
+        # Ensure 1 iteration runs to allow analysis
+        run_one = {'options': {'default_number_of_iterations': 1}}
+        script, builder = solvation_stock(tmp_dir, overwrite_options=run_one)
+        output_dir = builder._get_experiment_dir('')
+        assert os.path.isdir(output_dir)
+        single_auto = analyze.YankAutoExperimentAnalyzer(output_dir)
+        exp_directories = builder.get_experiment_directories()
+        multi_auto = analyze.MultiExperimentAnalyzer(script)
+        assert sorted(exp_directories) == sorted(multi_auto.paths)
+        payload = multi_auto.run_all_analysis(serial_data_path=os.path.join(tmp_dir, '_analysis.pkl'))
+        _, exp_name = os.path.split(output_dir)
+        # Check like in the code
+        if exp_name == '':
+            exp_name = 'experiment'
+        np.testing.assert_equal(payload[exp_name], single_auto.auto_analyze())
+        # Restore logger
+        logging.disable(logging.NOTSET)
 
 
 # ==============================================================================
