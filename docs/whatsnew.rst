@@ -8,9 +8,9 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 0.22.4 Multi-Analysis
 ---------------------
-- Added new ``YankAutoExperimentAnalyzer`` class as API call for ``auto_analyze`` like functions. Supports serialized output to Pickle
-- Added new ``MultiExperimentAnalyzer`` class to analyze all experiments found in a YAML input file with the ``YankAutoExperimentAnalyzer``. Supported by MPI for parallel action
-- Unified all ``auto_analyze`` like objects to go through the ``YankAutoExperimentAnalyzer``, such as the API and Jupyter Notebook calls
+- Added new ``ExperimentAnalyzer`` class as API call for ``auto_analyze`` like functions. Supports serialized output to Pickle
+- Added new ``MultiExperimentAnalyzer`` class to analyze all experiments found in a YAML input file with the ``ExperimentAnalyzer``. Supported by MPI for parallel action
+- Unified all ``auto_analyze`` like objects to go through the ``ExperimentAnalyzer``, such as the API and Jupyter Notebook calls
 - Existing API calls should remain unchanged and serve as pass-throughs to the new classes
 - Major changes to the CLI behavior of ``yank analyze`` and ``yank analyze report`` to support the new features. These should not affect existing code, only support new features.
 - Fixed bug in ``yank selftest`` with the OpenEye tests. Also silenced the OpenEye internal tests due to time. Dependency checks are still active

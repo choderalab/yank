@@ -128,7 +128,7 @@ def test_auto_analyze():
         script, builder = solvation_stock(tmp_dir, overwrite_options=run_one)
         output_dir = builder._get_experiment_dir('')
         assert os.path.isdir(output_dir)
-        single_auto = analyze.YankAutoExperimentAnalyzer(output_dir)
+        single_auto = analyze.ExperimentAnalyzer(output_dir)
         exp_directories = builder.get_experiment_directories()
         multi_auto = analyze.MultiExperimentAnalyzer(script)
         assert sorted(exp_directories) == sorted(multi_auto.paths)

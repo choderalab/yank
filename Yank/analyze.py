@@ -26,6 +26,7 @@ import yaml
 import mdtraj
 import pickle
 import logging
+from functools import wraps
 import numpy as np
 import simtk.unit as units
 import openmmtools as mmtools
@@ -166,17 +167,18 @@ class YankParallelTemperingAnalyzer(multistate.ParallelTemperingAnalyzer, YankMu
 
 def _copyout(wrap):
     """Copy output of function. Small helper to avoid ending each function with the copy call"""
+    @wraps(wrap)
     def make_copy(*args, **kwargs):
         return copy.deepcopy(wrap(*args, **kwargs))
     return make_copy
 
 
-class YankAutoExperimentAnalyzer(object):
+class ExperimentAnalyzer(object):
     """
-    Semi-automated YANK Experiment analysis data container model.
+    Semi-automated YANK Experiment analysis with serializable data.
 
     This class is designed to replace the older ``analyze_directory`` functions by providing a common analysis data
-    container which other classes and methods can draw on. This is designed to semi-automate the combination of
+    interface which other classes and methods can draw on. This is designed to semi-automate the combination of
     multi-phase data
 
     Each of the main methods fetches the data from each phase and returns them as a dictionary to the user. The total
@@ -184,6 +186,16 @@ class YankAutoExperimentAnalyzer(object):
 
     Each function documents what its output data structure and entries surrounded by curly braces (``{ }``) indicate
     variables which change per experiment, often the data.
+
+    Output dictionary is of the form:
+
+    .. code-block:: python
+
+        yank_version: {YANK Version}
+        phase_names: {Name of each phase, depends on simulation type}
+        general: {See :func:`get_general_simulation_data`}
+        equilibration: {See :func:`get_equilibration_data`}
+        mixing: {See :func:`get_mixing_data`}
 
     Parameters
     ----------
@@ -206,12 +218,63 @@ class YankAutoExperimentAnalyzer(object):
     g_ts : dict of int. Subsample rate past nequils in each phase
     Neff_maxs : dict of int. Number of effective samples in each phase
 
-    Data Structure
-    --------------
-    version: {YANK Version}
-    general: {See :func:`get_general_simulation_data`}
-    equilibration: {See :func:`get_equilibration_data`}
-    mixing: {See :func:`get_mixing_data`}
+    Examples
+    --------
+    Start with an experiment (Running from the :class:`yank.experiment.ExperimentBuilder` example)
+
+    >>> import textwrap
+    >>> import openmmtools as mmtools
+    >>> import yank.utils
+    >>> import yank.experiment.ExperimentBuilder as ExperimentBuilder
+    >>> setup_dir = yank.utils.get_data_filename(os.path.join('..', 'examples',
+    ...                                          'p-xylene-implicit', 'input'))
+    >>> pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
+    >>> lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
+    >>> with mmtools.utils.temporary_directory() as tmp_dir:
+    ...     yaml_content = '''
+    ...     ---
+    ...     options:
+    ...       default_number_of_iterations: 1
+    ...       output_dir: {}
+    ...     molecules:
+    ...       T4lysozyme:
+    ...         filepath: {}
+    ...       p-xylene:
+    ...         filepath: {}
+    ...         antechamber:
+    ...           charge_method: bcc
+    ...     solvents:
+    ...       vacuum:
+    ...         nonbonded_method: NoCutoff
+    ...     systems:
+    ...         my_system:
+    ...             receptor: T4lysozyme
+    ...             ligand: p-xylene
+    ...             solvent: vacuum
+    ...             leap:
+    ...               parameters: [leaprc.gaff, leaprc.ff14SB]
+    ...     protocols:
+    ...       absolute-binding:
+    ...         complex:
+    ...           alchemical_path:
+    ...             lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...             lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...         solvent:
+    ...           alchemical_path:
+    ...             lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    ...             lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    ...     experiments:
+    ...       system: my_system
+    ...       protocol: absolute-binding
+    ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
+    >>> yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
+    >>> yaml_builder.run_experiments()
+
+    Now analyze the experiment
+
+    >>> import os
+    >>> exp_analyzer = ExperimentAnalyzer(os.path.join(tmp_dir, 'experiment'))
+    >>> analysis_data = exp_analyzer.auto_analyze()
 
     """
 
@@ -272,13 +335,15 @@ class YankAutoExperimentAnalyzer(object):
         General purpose simulation data on number of iterations, number of states, and number of atoms.
         This just prints out this data in a regular, formatted pattern.
 
-        Data Structure
-        --------------
-        {for phase_name in phase_names}
-            iterations : {int}
-            natoms : {int}
-            nreplicas : {int}
-            nstates : {int}
+        Output is of the form:
+
+        .. code-block:: python
+
+            {for phase_name in phase_names}
+                iterations : {int}
+                natoms : {int}
+                nreplicas : {int}
+                nstates : {int}
 
         Returns
         -------
@@ -314,21 +379,23 @@ class YankAutoExperimentAnalyzer(object):
         Create the equilibration scatter plots showing the trend lines, correlation time,
         and number of effective samples
 
-        Data Structure
-        --------------
-        {for phase_name in phase_names}
-            discarded_from_start : {int}
-            effective_samples : {float}
-            subsample_rate : {float}
-            iterations_considered : {1D np.ndarray of int}
-            subsample_rate_by_iterations_considered : {1D np.ndarray of float}
-            effective_samples_by_iterations_considered : {1D np.ndarray of float}
-            count_total_equilibration_samples : {int}
-            count_decorrelated_samples : {int}
-            count_correlated_samples : {int}
-            percent_total_equilibration_samples : {float}
-            percent_decorrelated_samples : {float}
-            percent_correlated_samples : {float}
+        Output is of the form:
+
+        .. code-block:: python
+
+            {for phase_name in phase_names}
+                discarded_from_start : {int}
+                effective_samples : {float}
+                subsample_rate : {float}
+                iterations_considered : {1D np.ndarray of int}
+                subsample_rate_by_iterations_considered : {1D np.ndarray of float}
+                effective_samples_by_iterations_considered : {1D np.ndarray of float}
+                count_total_equilibration_samples : {int}
+                count_decorrelated_samples : {int}
+                count_correlated_samples : {int}
+                percent_total_equilibration_samples : {float}
+                percent_decorrelated_samples : {float}
+                percent_correlated_samples : {float}
 
         Returns
         -------
@@ -397,12 +464,14 @@ class YankAutoExperimentAnalyzer(object):
         """
         Get state diffusion mixing arrays
 
-        Data Structure
-        --------------
-        {for phase_name in phase_names}
-            transitions : {[nstates, nstates] np.ndarray of float}
-            eigenvalues : {[nstates] np.ndarray of float}
-            stat_inefficiency : {float}
+        Output is of the form:
+
+        .. code-block:: python
+
+            {for phase_name in phase_names}
+                transitions : {[nstates, nstates] np.ndarray of float}
+                eigenvalues : {[nstates] np.ndarray of float}
+                stat_inefficiency : {float}
 
         Returns
         -------
@@ -433,24 +502,26 @@ class YankAutoExperimentAnalyzer(object):
         """
         Get the free Yank Experiment free energy, broken down by phase and total experiment
 
-        Data Structure
-        --------------
-        {for phase_name in phase_names}
-            sign : {str of either '+' or '-'}
-            kT : {units.quantity}
+        Output is of the form:
+
+        .. code-block:: python
+
+            {for phase_name in phase_names}
+                sign : {str of either '+' or '-'}
+                kT : {units.quantity}
+                free_energy_diff : {float (has units of kT)}
+                free_energy_diff_error : {float (has units of kT)}
+                free_energy_diff_standard_state_correction : {float (has units of kT)}
+                enthalpy_diff : {float (has units of kT)}
+                enthalpy_diff_error : {float (has units of kT)}
             free_energy_diff : {float (has units of kT)}
             free_energy_diff_error : {float (has units of kT)}
-            free_energy_diff_standard_state_correction : {float (has units of kT)}
+            free_energy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+            free_energy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
             enthalpy_diff : {float (has units of kT)}
             enthalpy_diff_error : {float (has units of kT)}
-        free_energy_diff : {float (has units of kT)}
-        free_energy_diff_error : {float (has units of kT)}
-        free_energy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
-        free_energy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
-        enthalpy_diff : {float (has units of kT)}
-        enthalpy_diff_error : {float (has units of kT)}
-        enthalpy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
-        enthalpy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+            enthalpy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+            enthalpy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
 
         Returns
         -------
@@ -538,6 +609,55 @@ class YankAutoExperimentAnalyzer(object):
         """
         Run the analysis
 
+        Output is of the form:
+
+        .. code-block:: python
+
+            yank_version: {YANK Version}
+            phase_names: {Name of each phase, depends on simulation type}
+            general:
+                {for phase_name in phase_names}
+                    iterations : {int}
+                    natoms : {int}
+                    nreplicas : {int}
+                    nstates : {int}
+            equilibration:
+                {for phase_name in phase_names}
+                    discarded_from_start : {int}
+                    effective_samples : {float}
+                    subsample_rate : {float}
+                    iterations_considered : {1D np.ndarray of int}
+                    subsample_rate_by_iterations_considered : {1D np.ndarray of float}
+                    effective_samples_by_iterations_considered : {1D np.ndarray of float}
+                    count_total_equilibration_samples : {int}
+                    count_decorrelated_samples : {int}
+                    count_correlated_samples : {int}
+                    percent_total_equilibration_samples : {float}
+                    percent_decorrelated_samples : {float}
+                    percent_correlated_samples : {float}
+            mixing:
+                {for phase_name in phase_names}
+                    transitions : {[nstates, nstates] np.ndarray of float}
+                    eigenvalues : {[nstates] np.ndarray of float}
+                    stat_inefficiency : {float}
+            free_energy:
+                {for phase_name in phase_names}
+                    sign : {str of either '+' or '-'}
+                    kT : {units.quantity}
+                    free_energy_diff : {float (has units of kT)}
+                    free_energy_diff_error : {float (has units of kT)}
+                    free_energy_diff_standard_state_correction : {float (has units of kT)}
+                    enthalpy_diff : {float (has units of kT)}
+                    enthalpy_diff_error : {float (has units of kT)}
+                free_energy_diff : {float (has units of kT)}
+                free_energy_diff_error : {float (has units of kT)}
+                free_energy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+                free_energy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+                enthalpy_diff : {float (has units of kT)}
+                enthalpy_diff_error : {float (has units of kT)}
+                enthalpy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+                enthalpy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
+
         Returns
         -------
         serialized_data : dict
@@ -551,50 +671,6 @@ class YankAutoExperimentAnalyzer(object):
         get_mixing_data
         get_experiment_free_energy_data
 
-        Data Structure
-        --------------
-        general:
-            {for phase_name in phase_names}
-                iterations : {int}
-                natoms : {int}
-                nreplicas : {int}
-                nstates : {int}
-        equilibration:
-            {for phase_name in phase_names}
-                discarded_from_start : {int}
-                effective_samples : {float}
-                subsample_rate : {float}
-                iterations_considered : {1D np.ndarray of int}
-                subsample_rate_by_iterations_considered : {1D np.ndarray of float}
-                effective_samples_by_iterations_considered : {1D np.ndarray of float}
-                count_total_equilibration_samples : {int}
-                count_decorrelated_samples : {int}
-                count_correlated_samples : {int}
-                percent_total_equilibration_samples : {float}
-                percent_decorrelated_samples : {float}
-                percent_correlated_samples : {float}
-        mixing:
-            {for phase_name in phase_names}
-                transitions : {[nstates, nstates] np.ndarray of float}
-                eigenvalues : {[nstates] np.ndarray of float}
-                stat_inefficiency : {float}
-        free_energy:
-            {for phase_name in phase_names}
-                sign : {str of either '+' or '-'}
-                kT : {units.quantity}
-                free_energy_diff : {float (has units of kT)}
-                free_energy_diff_error : {float (has units of kT)}
-                free_energy_diff_standard_state_correction : {float (has units of kT)}
-                enthalpy_diff : {float (has units of kT)}
-                enthalpy_diff_error : {float (has units of kT)}
-            free_energy_diff : {float (has units of kT)}
-            free_energy_diff_error : {float (has units of kT)}
-            free_energy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
-            free_energy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
-            enthalpy_diff : {float (has units of kT)}
-            enthalpy_diff_error : {float (has units of kT)}
-            enthalpy_diff_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
-            enthalpy_diff_error_unit : {units.quantity compatible with energy/mole. Corrected for different phase kT}
 
 
         """
@@ -605,7 +681,14 @@ class YankAutoExperimentAnalyzer(object):
         return self._serialized_data
 
     def dump_serial_data(self, path):
-        """Dump the serialized data to YAML file"""
+        """
+        Dump the serialized data to YAML file
+
+        Parameters
+        ----------
+        path : str
+            File name to dump the data to
+        """
         true_path, ext = os.path.splitext(path)
         if not ext:  # empty string check
             ext = '.yaml'
@@ -680,7 +763,7 @@ def analyze_directory(source_directory, **analyzer_kwargs):
         Dictionary containing all the automatic analysis data
 
     """
-    auto_experiment_analyzer = YankAutoExperimentAnalyzer(source_directory, **analyzer_kwargs)
+    auto_experiment_analyzer = ExperimentAnalyzer(source_directory, **analyzer_kwargs)
     analysis_data = auto_experiment_analyzer.auto_analyze()
     print_analysis_data(analysis_data)
     return analysis_data
@@ -689,12 +772,12 @@ def analyze_directory(source_directory, **analyzer_kwargs):
 @mpi.on_single_node(0)
 def print_analysis_data(analysis_data, header=None):
     """
-    Helper function of printing the analysis data payload from a :func:`YankAutoExperimentAnalyzer.auto_analyze` call
+    Helper function of printing the analysis data payload from a :func:`ExperimentAnalyzer.auto_analyze` call
 
     Parameters
     ----------
     analysis_data : dict
-        Output from :func:`YankAutoExperimentAnalyzer.auto_analyze`
+        Output from :func:`ExperimentAnalyzer.auto_analyze`
     header : str, Optional
         Optional header string to print before the formatted helper, useful if you plan to make this call multiple
         times but want to divide the outputs.
@@ -743,7 +826,7 @@ class MultiExperimentAnalyzer(object):
     Automatic Analysis tool for Multiple YANK Experiments from YAML file
 
     This class takes in a YAML file, infers the experiments from expansion of all combinatorial options,
-    then does the automatic analysis run from :func:`YankAutoExperimentAnalyzer.auto_analyze` yielding a final
+    then does the automatic analysis run from :func:`ExperimentAnalyzer.auto_analyze` yielding a final
     dictionary output.
 
     Parameters
@@ -758,7 +841,7 @@ class MultiExperimentAnalyzer(object):
 
     See Also
     --------
-    YankAutoExperimentAnalyzer.auto_analyze
+    ExperimentAnalyzer.auto_analyze
 
     """
     def __init__(self, script, **builder_kwargs):
@@ -768,7 +851,7 @@ class MultiExperimentAnalyzer(object):
 
     def run_all_analysis(self, serialize_data=True, serial_data_path=None, **analyzer_kwargs):
         """
-        Run all the automatic analysis through the :func:`YankAutoExperimentAnalyzer.auto_analyze`
+        Run all the automatic analysis through the :func:`ExperimentAnalyzer.auto_analyze`
 
         Parameters
         ----------
@@ -784,12 +867,12 @@ class MultiExperimentAnalyzer(object):
         -------
         serial_output : dict
             Dictionary of each experiment's output of format
-            {exp_name: YankAutoExperimentAnalyzer.auto_analyze() for exp_name in ExperimentBuilder's Experiments}
-            The sub-dictionary of each key can be seen in :func:`YankAutoExperimentAnalyzer.auto_analyze()` docstring
+            {exp_name: ExperimentAnalyzer.auto_analyze() for exp_name in ExperimentBuilder's Experiments}
+            The sub-dictionary of each key can be seen in :func:`ExperimentAnalyzer.auto_analyze()` docstring
 
         See Also
         --------
-        YankAutoExperimentAnalyzer.auto_analyze
+        ExperimentAnalyzer.auto_analyze
 
         """
         if serial_data_path is None:
@@ -864,7 +947,7 @@ class MultiExperimentAnalyzer(object):
     @staticmethod
     def _run_specific_analysis(path, **analyzer_kwargs):
         """ Helper function to run an individual auto analysis which can be subclassed"""
-        return YankAutoExperimentAnalyzer(path, **analyzer_kwargs).auto_analyze()
+        return ExperimentAnalyzer(path, **analyzer_kwargs).auto_analyze()
 
 
 # ==========================================

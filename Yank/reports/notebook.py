@@ -20,11 +20,10 @@ from simtk import unit as units
 
 from .. import analyze
 
-YAEA = analyze.YankAutoExperimentAnalyzer
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
 
-class HealthReportData(YAEA):
+class HealthReportData(analyze.ExperimentAnalyzer):
     """
     Class which houses the data used for the notebook and the generation of all plots including formatting
     """
