@@ -196,6 +196,7 @@ class ExperimentAnalyzer(object):
         general: {See :func:`get_general_simulation_data`}
         equilibration: {See :func:`get_equilibration_data`}
         mixing: {See :func:`get_mixing_data`}
+        free_energy: {See :func:`get_experiment_free_energy_data`}
 
     Parameters
     ----------

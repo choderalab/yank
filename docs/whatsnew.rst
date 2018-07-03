@@ -6,7 +6,7 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.22.4 Multi-Analysis
+0.23.0 Multi-Analysis
 ---------------------
 - Added new ``ExperimentAnalyzer`` class as API call for ``auto_analyze`` like functions. Supports serialized output to Pickle
 - Added new ``MultiExperimentAnalyzer`` class to analyze all experiments found in a YAML input file with the ``ExperimentAnalyzer``. Supported by MPI for parallel action
