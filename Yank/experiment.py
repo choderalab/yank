@@ -1120,7 +1120,7 @@ class ExperimentBuilder(object):
 
         """
         # We need to distribute experiments among jobs, but different
-        # experiments sectiona may have a different number of combinations,
+        # experiments sections may have a different number of combinations,
         # so we need to count them.
         experiment_id = 0
 
@@ -2081,6 +2081,20 @@ class ExperimentBuilder(object):
         """
         return os.path.join(self._options['output_dir'], self._options['experiments_dir'],
                             experiment_path)
+
+    def get_experiment_directories(self):
+        """
+        Helper function to return the experiment directory for each experiment in the yaml file
+
+        Returns
+        -------
+        directories : tuple of str
+            Tuple of strings providing the relative paths to each experiment from this location
+        """
+        directories = []
+        for exp_name, _ in self._expand_experiments():
+            directories.append(self._get_experiment_dir(exp_name))
+        return tuple(directories)
 
     def _get_nc_file_paths(self, experiment_path, experiment):
         """Return the paths to the two output .nc files of the experiment.

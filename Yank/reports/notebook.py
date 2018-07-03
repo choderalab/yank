@@ -18,102 +18,31 @@ from pymbar import MBAR
 import seaborn as sns
 from simtk import unit as units
 
-from .. import version
-from .. import analyze, utils
-
+from .. import analyze
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
 
-class HealthReportData(object):
+class HealthReportData(analyze.ExperimentAnalyzer):
     """
     Class which houses the data used for the notebook and the generation of all plots including formatting
     """
-    def __init__(self, store_directory, **analyzer_kwargs):
-        """
-        Initial data read in and object assignment
-
-        Parameters
-        ----------
-        store_directory : string
-            Location where the analysis.yaml file is and where the NetCDF files are
-        **analyzer_kwargs
-            Keyword arguments to pass to the analyzer class. Quantities can be
-            passed as strings.
-        """
-        # Convert analyzer string quantities into variables.
-        for key, value in analyzer_kwargs.items():
-            try:
-                quantity = utils.quantity_from_string(value)
-            except:
-                pass
-            else:
-                analyzer_kwargs[key] = quantity
-
-        # Read in data
-        analysis_script_path = os.path.join(store_directory, 'analysis.yaml')
-        if not os.path.isfile(analysis_script_path):
-            err_msg = 'Cannot find analysis.yaml script in {}'.format(store_directory)
-            raise RuntimeError(err_msg)
-        with open(analysis_script_path, 'r') as f:
-            analysis = yaml.load(f)
-        phases_names = []
-        signs = {}
-        analyzers = {}
-        for phase, sign in analysis:
-            phases_names.append(phase)
-            signs[phase] = sign
-            storage_path = os.path.join(store_directory, phase + '.nc')
-            analyzers[phase] = analyze.get_analyzer(storage_path, **analyzer_kwargs)
-        self.phase_names = phases_names
-        self.signs = signs
-        self.analyzers = analyzers
-        self.nphases = len(phases_names)
-        # Additional data
-        self.use_full_trajectory = False
-        if 'use_full_trajectory' in analyzer_kwargs:
-            self.use_full_trajectory = bool(analyzer_kwargs['use_full_trajectory'])
-        # Assign flags for other sections along with their global variables
-        # General Data
-        self._general_run = False
-        self.iterations = {}
-        # Equilibration
-        self._equilibration_run = False
-        self.u_ns = {}
-        self.nequils = {}
-        self.g_ts = {}
-        self.Neff_maxs = {}
-        self._n_discarded = 0
-        # Decorrelation break-down
-        self._decorrelation_run = False
-        # Mixing Run (state)
-        self._mixing_run = False
-        # Replica mixing
-        self._replica_mixing_run = False
-        self._free_energy_run = False
-        self._serialized_data = {}
 
     def general_simulation_data(self):
         """
         General purpose simulation data on number of iterations, number of states, and number of atoms.
         This just prints out this data in a regular, formatted pattern.
         """
+        general = self.get_general_simulation_data()
         iterations = {}
+        nreplicas = {}
         nstates = {}
         natoms = {}
-        nreplicas = {}
         for phase_name in self.phase_names:
-            if phase_name not in self._serialized_data:
-                self._serialized_data[phase_name] = {}
-            self._serialized_data[phase_name]['general'] = {}
-            analyzer = self.analyzers[phase_name]
-            try:
-                positions = analyzer.reporter.read_sampler_states(0)[0].positions
-                natoms[phase_name], _ = positions.shape
-            except AttributeError:  # Trap unloaded checkpoint file
-                natoms[phase_name] = 'No Cpt.'
-            energies, _, _, = analyzer.reporter.read_energies()
-            iterations[phase_name], nreplicas[phase_name], nstates[phase_name] = energies.shape
+            iterations[phase_name] = general[phase_name]['iterations']
+            nreplicas[phase_name] = general[phase_name]['nreplicas']
+            nstates[phase_name] = general[phase_name]['nstates']
+            natoms[phase_name] = general[phase_name]['natoms']
 
         leniter = max(len('Iterations'), *[len(str(i)) for i in iterations.values()]) + 2
         lenreplica = max(len('Replicas'), *[len(str(i)) for i in nreplicas.values()]) + 2
@@ -134,16 +63,9 @@ class HealthReportData(object):
         lines.append(topdiv)
         for phase in self.phase_names:
             phasestring = ''
-            serial = self._serialized_data[phase]['general']
             phasestring += ('{:^' + '{}'.format(lenleftcol) + '}').format(phase) + '|'
-            phase_iter = iterations[phase]
-            serial['iterations'] = phase_iter
             phasestring += ('{:^' + '{}'.format(leniter) + '}').format(iterations[phase]) + '|'
-            phase_states = nstates[phase]
-            serial['states'] = phase_states
             phasestring += ('{:^' + '{}'.format(lenreplica) + '}').format(nreplicas[phase]) + '|'
-            phase_atoms = natoms[phase]
-            serial['natoms'] = phase_atoms
             phasestring += ('{:^' + '{}'.format(lenstates) + '}').format(nstates[phase]) + '|'
             phasestring += ('{:^' + '{}'.format(lennatoms) + '}').format(natoms[phase])
             lines.append(phasestring)
@@ -151,8 +73,6 @@ class HealthReportData(object):
 
         for line in lines:
             print(line)
-        self.iterations = iterations
-        self._general_run = True
 
     def generate_equilibration_plots(self, discard_from_start=1):
         """
@@ -165,6 +85,7 @@ class HealthReportData(object):
             Figure showing the equilibration between both phases
 
         """
+        serial_data = self.get_equilibration_data(discard_from_start=discard_from_start)
         # Adjust figure size
         plt.rcParams['figure.figsize'] = 20, 6 * self.nphases * 2
         plot_grid = gridspec.GridSpec(self.nphases, 1)  # Vertical distribution
@@ -172,31 +93,8 @@ class HealthReportData(object):
         # Add some space between the figures
         equilibration_figure.subplots_adjust(hspace=0.4)
         for i, phase_name in enumerate(self.phase_names):
-            if phase_name not in self._serialized_data:
-                self._serialized_data[phase_name] = {}
-            self._serialized_data[phase_name]['equilibration'] = {}
-            serial = self._serialized_data[phase_name]['equilibration']
+            phase_data = serial_data[phase_name]
             sub_grid = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=plot_grid[i])
-            analyzer = self.analyzers[phase_name]
-            # Data crunching to get timeseries
-            # TODO: Figure out how not to discard the first sample
-            # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
-            # This throws off all of the equilibrium data
-            self._n_discarded = discard_from_start
-            self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[discard_from_start:]
-            # Timeseries statistics
-            i_t, g_i, n_effective_i = analyze.multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
-            n_effective_max = n_effective_i.max()
-            i_max = n_effective_i.argmax()
-            n_equilibration = i_t[i_max]
-            g_t = g_i[i_max]
-            self.Neff_maxs[phase_name] = n_effective_max
-            self.nequils[phase_name] = n_equilibration
-            self.g_ts[phase_name] = g_t
-            serial['discarded_from_start'] = int(discard_from_start)
-            serial['effective_samples'] = float(self.Neff_maxs[phase_name])
-            serial['equilibration_samples'] = int(self.nequils[phase_name])
-            serial['subsample_rate'] = float(self.g_ts[phase_name])
 
             # FIRST SUBPLOT: energy scatter
             # Attach subplot to figure
@@ -245,6 +143,9 @@ class HealthReportData(object):
                    )
 
             # SECOND SUBPLOT: g_t trace
+            i_t = phase_data['iterations_considered']
+            g_i = phase_data['subsample_rate_by_iterations_considered']
+            n_effective_i = phase_data['effective_samples_by_iterations_considered']
             x = i_t
             g = equilibration_figure.add_subplot(sub_grid[1])
             g.plot(x, g_i)
@@ -264,9 +165,6 @@ class HealthReportData(object):
             ne.set_ylabel(r'Neff samples', fontsize=20)
             ne.set_xlabel(r'Iteration', fontsize=20)
 
-        # Set class variables to be used elsewhere
-        # Set flag
-        self._equilibration_run = True
         return equilibration_figure
 
     def compute_rmsds(self):
@@ -334,31 +232,25 @@ class HealthReportData(object):
         if not self._general_run or not self._equilibration_run:
             raise RuntimeError("Cannot generate decorrelation data without general simulation data and equilibration "
                                "data first! Please run the corresponding functions/cells.")
+        # This will exist because of _equilibration_run
+        eq_data = self.get_equilibration_data(discard_from_start=self._n_discarded)
         # Readjust figure output
         plt.rcParams['figure.figsize'] = 20, 8
         decorrelation_figure = plt.figure()
         decorrelation_figure.subplots_adjust(wspace=0.2)
-        plotkeys = [100 + (10 * self.nphases) + (i + 1) for i in range(self.nphases)]  # Horizonal distribution
+        plotkeys = [100 + (10 * self.nphases) + (i + 1) for i in range(self.nphases)]  # Horizontal distribution
         for phase_name, plotid in zip(self.phase_names, plotkeys):
-            serial = self._serialized_data[phase_name]['equilibration']  # This will exist because of _equilibration_run
+            serial = eq_data[phase_name]
             # Create subplot
             p = decorrelation_figure.add_subplot(plotid)
-            # Determine toal number of iterations
-            N = self.iterations[phase_name]
             labels = ['Decorrelated', 'Correlated', 'Equilibration']
             colors = ['#2c7bb6', '#abd0e0', '#fdae61']  # blue, light blue, and orange
             explode = [0, 0, 0.0]
-            # Determine the wedges
-            eq = self.nequils[phase_name] + self._n_discarded  # Make sure we include the discarded
-            decor = int(np.floor(self.Neff_maxs[phase_name]))
-            cor = N - eq - decor
-            dat = np.array([decor, cor, eq]) / float(N)
-            serial['count_total_equilibration_samples'] = int(eq)
-            serial['count_decorrelated_samples'] = int(decor)
-            serial['count_correlated_samples'] = int(cor)
-            serial['percent_total_equilibration_samples'] = float(dat[2])
-            serial['percent_decorrelated_samples'] = float(dat[0])
-            serial['percent_correlated_samples'] = float(dat[1])
+            n_iter = self.iterations[phase_name]
+            decor = serial['count_decorrelated_samples']
+            eq = serial['count_total_equilibration_samples']
+            cor = serial['count_correlated_samples']
+            dat = np.array([decor, cor, eq]) / float(n_iter)
             if dat[0] <= decorrelation_threshold:
                 colors[0] = '#d7191c'  # Red for warning
             patch, txt, autotxt = p.pie(
@@ -388,8 +280,6 @@ class HealthReportData(object):
                     color='red',
                     bbox={'alpha': 1.0, 'facecolor': 'white', 'lw': 0, 'pad': 0}
                 )
-        # Set globals
-        self._decorrelation_run = True
         return decorrelation_figure
 
     def generate_mixing_plot(self, mixing_cutoff=0.05, mixing_warning_threshold=0.90, cmap_override=None):
@@ -415,6 +305,7 @@ class HealthReportData(object):
         mixing_figure : matplotlib.figure
             Figure showing the state mixing as a color diffusion map instead of grid of numbers
         """
+        mixing_serial = self.get_mixing_data()
         # Set up image
         mixing_figure, subplots = plt.subplots(1, 2)
         # Create custom cmap goes from white to pure blue, goes red if the threshold is reached
@@ -449,18 +340,10 @@ class HealthReportData(object):
 
         # Plot a diffusing mixing map for each phase.
         for phase_name, subplot in zip(self.phase_names, subplots):
-            if phase_name not in self._serialized_data:
-                self._serialized_data[phase_name] = {}
-            self._serialized_data[phase_name]['mixing'] = {}
-            serial = self._serialized_data[phase_name]['mixing']
-            # Generate mixing statistics.
-            analyzer = self.analyzers[phase_name]
-            mixing_statistics = analyzer.generate_mixing_statistics(
-                number_equilibrated=self.nequils[phase_name])
-            transition_matrix, eigenvalues, statistical_inefficiency = mixing_statistics
-            serial['transitions'] = transition_matrix.tolist()
-            serial['eigenvalues'] = eigenvalues.tolist()
-            serial['stat_inefficiency'] = float(statistical_inefficiency)
+            serial = mixing_serial[phase_name]
+            transition_matrix = serial['transitions']
+            eigenvalues = serial['eigenvalues']
+            statistical_inefficiency = serial['stat_inefficiency']
 
             # Without vmin/vmax, the image normalizes the values to mixing_data.max
             # which screws up the warning colormap.
@@ -510,7 +393,6 @@ class HealthReportData(object):
                     color='red',
                     bbox={'alpha': 1.0, 'facecolor': 'white', 'lw': 0, 'pad': 0}
                 )
-        self._mixing_run = True
         return mixing_figure
 
     def generate_replica_mixing_plot(self, phase_stacked_replica_plots=False):
@@ -534,8 +416,7 @@ class HealthReportData(object):
         for i, phase_name in enumerate(self.phase_names):
             # Gather state NK
             analyzer = self.analyzers[phase_name]
-            sampled_energies, _, _, state_kn = analyzer.read_energies()
-            n_replicas, n_states, n_iterations = sampled_energies.shape
+            n_replicas = analyzer.reporter.n_replicas
             max_n_replicas = max(n_replicas, max_n_replicas)
 
         # Create Parent Gridspec
@@ -559,7 +440,7 @@ class HealthReportData(object):
                 # Add plot
                 plot = replica_figure.add_subplot(sub_grid[replica_index])
                 # Actually plot
-                plot.plot(state_kn[replica_index,:], 'k.')
+                plot.plot(state_kn[replica_index, :], 'k.')
                 # Format plot
                 plot.set_yticks([])
                 plot.set_xlim([0, n_iterations])
@@ -573,28 +454,15 @@ class HealthReportData(object):
         return replica_figure
 
     def generate_free_energy(self):
-        if not self._equilibration_run:
-            raise RuntimeError("Cannot run free energy without first running the equilibration. Please run the "
-                               "corresponding function/cell first!")
-        data = dict()
-        for phase_name in self.phase_names:
-            analyzer = self.analyzers[phase_name]
-            data[phase_name] = analyzer.analyze_phase()
-            kT = analyzer.kT
-
-        # Compute free energy and enthalpy
-        DeltaF = 0.0
-        dDeltaF = 0.0
-        DeltaH = 0.0
-        dDeltaH = 0.0
-        for phase_name in self.phase_names:
-            sign = self.signs[phase_name]
-            DeltaF -= sign * (data[phase_name]['DeltaF'] + data[phase_name]['DeltaF_standard_state_correction'])
-            dDeltaF += data[phase_name]['dDeltaF'] ** 2
-            DeltaH -= sign * (data[phase_name]['DeltaH'] + data[phase_name]['DeltaF_standard_state_correction'])
-            dDeltaH += data[phase_name]['dDeltaH'] ** 2
-        dDeltaF = np.sqrt(dDeltaF)
-        dDeltaH = np.sqrt(dDeltaH)
+        fe_data = self.get_experiment_free_energy_data()
+        delta_f = fe_data['free_energy_diff']
+        delta_h = fe_data['enthalpy_diff']
+        delta_f_err = fe_data['free_energy_diff_error']
+        delta_h_err = fe_data['enthalpy_diff_error']
+        delta_f_unit = fe_data['free_energy_diff_unit']
+        delta_h_unit = fe_data['enthalpy_diff_unit']
+        delta_f_err_unit = fe_data['free_energy_diff_error_unit']
+        delta_h_err_unit = fe_data['enthalpy_diff_error_unit']
 
         # Attempt to guess type of calculation
         calculation_type = ''
@@ -605,20 +473,22 @@ class HealthReportData(object):
                 calculation_type = ' of solvation'
 
         print('Free energy{:<13}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
-            calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
-                                               dDeltaF * kT / units.kilocalories_per_mole))
+            calculation_type, delta_f, delta_f_err, delta_f_unit / units.kilocalories_per_mole,
+            delta_f_err_unit / units.kilocalories_per_mole))
 
         for phase in self.phase_names:
-            print('DeltaG {:<17}: {:9.3f} +- {:.3f} kT'.format(phase, data[phase]['DeltaF'],
-                                                               data[phase]['dDeltaF']))
-            if data[phase]['DeltaF_standard_state_correction'] != 0.0:
-                print('DeltaG {:<17}: {:18.3f} kT'.format('standard state correction',
-                                                          data[phase]['DeltaF_standard_state_correction']))
+            delta_f_phase = fe_data[phase]['free_energy_diff']
+            delta_f_err_phase = fe_data[phase]['free_energy_diff_error']
+            detla_f_ssc_phase = fe_data[phase]['free_energy_diff_standard_state_correction']
+            print('DeltaG {:<17}: {:9.3f} +- {:.3f} kT'.format(phase, delta_f_phase,
+                                                               delta_f_err_phase))
+            if detla_f_ssc_phase != 0.0:
+                print('DeltaG {:<17}: {:18.3f} kT'.format('standard state correction', detla_f_ssc_phase))
         print('')
         print('Enthalpy{:<16}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
-            calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
-                                               dDeltaH * kT / units.kilocalories_per_mole))
-        self._free_energy_run = True
+            calculation_type, delta_h, delta_h_err, delta_h_unit / units.kilocalories_per_mole,
+            delta_h_err_unit / units.kilocalories_per_mole)
+        )
 
     def free_energy_trace(self, discard_from_start=1, n_trace=10):
         """
@@ -789,8 +659,7 @@ class HealthReportData(object):
         return figure
 
     def report_version(self):
-        current_version = version.version
-        self._serialized_data['yank_version'] = current_version
+        current_version = self._serialized_data['yank_version']
         print("Rendered with YANK Version {}".format(current_version))
 
     def dump_serial_data(self, path):
@@ -801,7 +670,3 @@ class HealthReportData(object):
         true_path += ext
         with open(true_path, 'w') as f:
             f.write(yaml.dump(self._serialized_data))
-
-    @staticmethod
-    def report_version():
-        print("Rendered with YANK Version {}".format(version.version))

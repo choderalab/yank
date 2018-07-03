@@ -120,7 +120,7 @@ def dispatch(args):
                 # Take the value of the environment variable
                 n_jobs = int(os.environ[n_jobs])
             else:
-                raise ValueError("--njobs '%s' unknown" % njobs)
+                raise ValueError("--njobs '%s' unknown" % n_jobs)
     else:
         n_jobs = None
 

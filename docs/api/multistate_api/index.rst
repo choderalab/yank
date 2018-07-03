@@ -29,3 +29,7 @@ This is the API for the Multi State sub-module and its classes.
 .. automodule:: yank.multistate.paralleltempering
    :members:
    :inherited-members:
+
+.. automodule:: yank.multistate.sams
+   :members:
+   :inherited-members:

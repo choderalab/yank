@@ -109,8 +109,35 @@ running.
 
   $ yank analyze --store={experiments}
 
-Replace ``{experiments}`` with the output directory for your simulation. The output is printed to standard terminal
-output.
+Replace ``{experiments}`` with the output directory for your simulation. This minimal form of the command has a few
+limitations which can be corrected with more complex flags: it only outputs to terminal, it can only target single
+directories. Both of these can be corrected with more complex invocation of the command:
+
+.. code-block:: bash
+
+  $ yank analyze --yaml={Some YAML file which ran with ``yank script``}
+
+This form with the ``-y YAML`` or ``--yaml=YAML`` flag tells the analysis to look inside of a YAML file which was read
+to run the experiment(s) you want to analyze. In this form, the experiment paths and names are determined from the YAML
+file and can analyze any number of :ref:`combinatorial experiments <yaml_combinatorial_head>` found within the file.
+The ``-y`` flag is exclusive from ``-s``. This will still output to terminal though, so we need another flag to
+save the data to disk.
+
+.. code-block:: bash
+
+  $ yank analyze -y YAML -e {serial Pickle file}
+
+The ``-e SERIAL`` (alternately ``--serial=SERIAL``) flag tells YANK analyze to save the analysis data to the ``SERIAL``
+file in Pickle format. This saves not only the final free energy, but also all intermediate values in between. See the
+docs for the :ref:`ExperimentAnalyzer class <API_analysis>` for how the output data is formatted and what values
+you can extract. The ``-e`` option can be set with either the ``-s`` or the ``-y`` flags.
+
+.. note::
+
+    We know Pickle has problems when importing across Python versions and are working on a solution to carry the
+    data in a more universal way. The data are composed of simple numbers, NumPy arrays, and SimTK Quantities for
+    unit handling, so we are exploring options to represent them in a transferable way which does not require intamate
+    knowledge of what unit system YANK outputs in.
 
 
 .. _visual_analyze:
