@@ -848,7 +848,9 @@ class MultiExperimentAnalyzer(object):
     def __init__(self, script, **builder_kwargs):
         self.script = script
         self.builder = ExperimentBuilder(script=script, **builder_kwargs)
-        self.paths = self.builder.get_experiment_directories()
+        # Trap bug where paths ending in the separator cause errors later, ensure they don't end in it.
+        self.paths = tuple(path[:-1] if path[-1] == os.sep else path
+                           for path in self.builder.get_experiment_directories())
 
     def run_all_analysis(self, serialize_data=True, serial_data_path=None, **analyzer_kwargs):
         """
