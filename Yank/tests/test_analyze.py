@@ -135,7 +135,6 @@ def test_auto_analyze():
         payload = multi_auto.run_all_analysis(serial_data_path=os.path.join(tmp_dir, '_analysis.pkl'))
         _, exp_name = os.path.split(output_dir)
         # Check like in the code
-        import pdb; pdb.set_trace()
         if exp_name == '':
             exp_name = 'experiment'
         np.testing.assert_equal(payload[exp_name], single_auto.auto_analyze())
