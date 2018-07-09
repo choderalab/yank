@@ -6,6 +6,10 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.23.1 Multi-Experiment Path Bug
+--------------------------------
+- Fixed bug in ``MultiExperimentAnalyzer`` where a path ending in the folder separator (e.g. `/`) caused all files to write to the same place.
+
 0.23.0 Multi-Analysis
 ---------------------
 - Added new ``ExperimentAnalyzer`` class as API call for ``auto_analyze`` like functions. Supports serialized output to Pickle

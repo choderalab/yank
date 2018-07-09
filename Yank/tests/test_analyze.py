@@ -126,7 +126,7 @@ def test_auto_analyze():
         # Ensure 1 iteration runs to allow analysis
         run_one = {'options': {'default_number_of_iterations': 1}}
         script, builder = solvation_stock(tmp_dir, overwrite_options=run_one)
-        output_dir = builder._get_experiment_dir('')
+        output_dir = os.path.normpath(builder._get_experiment_dir(''))
         assert os.path.isdir(output_dir)
         single_auto = analyze.ExperimentAnalyzer(output_dir)
         exp_directories = builder.get_experiment_directories()
