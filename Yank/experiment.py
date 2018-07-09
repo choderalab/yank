@@ -2093,7 +2093,8 @@ class ExperimentBuilder(object):
         """
         directories = []
         for exp_name, _ in self._expand_experiments():
-            directories.append(self._get_experiment_dir(exp_name))
+            # Normalize the path here to be consistent
+            directories.append(os.path.normpath(self._get_experiment_dir(exp_name)))
         return tuple(directories)
 
     def _get_nc_file_paths(self, experiment_path, experiment):

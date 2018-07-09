@@ -126,7 +126,7 @@ def test_auto_analyze():
         # Ensure 1 iteration runs to allow analysis
         run_one = {'options': {'default_number_of_iterations': 1}}
         script, builder = solvation_stock(tmp_dir, overwrite_options=run_one)
-        output_dir = builder._get_experiment_dir('')
+        output_dir = os.path.normpath(builder._get_experiment_dir(''))
         assert os.path.isdir(output_dir)
         single_auto = analyze.ExperimentAnalyzer(output_dir)
         exp_directories = builder.get_experiment_directories()
@@ -135,6 +135,7 @@ def test_auto_analyze():
         payload = multi_auto.run_all_analysis(serial_data_path=os.path.join(tmp_dir, '_analysis.pkl'))
         _, exp_name = os.path.split(output_dir)
         # Check like in the code
+        import pdb; pdb.set_trace()
         if exp_name == '':
             exp_name = 'experiment'
         np.testing.assert_equal(payload[exp_name], single_auto.auto_analyze())
