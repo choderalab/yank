@@ -261,7 +261,8 @@ class MultiStateSampler(object):
         # Search for last cached free energies only if online analysis is activated.
         target_error = None
         last_err_free_energy = None
-        if options['online_analysis_interval'] is not None:
+        # Check if online analysis is set AND that the target error is a stopping condition (> 0)
+        if options['online_analysis_interval'] is not None and options['online_analysis_target_error'] != 0.0:
             target_error = options['online_analysis_target_error']
             try:
                 last_err_free_energy = cls._read_last_free_energy(reporter, iteration)[1][1]

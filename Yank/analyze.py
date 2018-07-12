@@ -786,15 +786,21 @@ def print_analysis_data(analysis_data, header=None):
 
     if header is not None:
         print(header)
-    fe_data = analysis_data['free_energy']
-    delta_f = fe_data['free_energy_diff']
-    delta_h = fe_data['enthalpy_diff']
-    delta_f_err = fe_data['free_energy_diff_error']
-    delta_h_err = fe_data['enthalpy_diff_error']
-    delta_f_unit = fe_data['free_energy_diff_unit']
-    delta_h_unit = fe_data['enthalpy_diff_unit']
-    delta_f_err_unit = fe_data['free_energy_diff_error_unit']
-    delta_h_err_unit = fe_data['enthalpy_diff_error_unit']
+    try:
+        fe_data = analysis_data['free_energy']
+        delta_f = fe_data['free_energy_diff']
+        delta_h = fe_data['enthalpy_diff']
+        delta_f_err = fe_data['free_energy_diff_error']
+        delta_h_err = fe_data['enthalpy_diff_error']
+        delta_f_unit = fe_data['free_energy_diff_unit']
+        delta_h_unit = fe_data['enthalpy_diff_unit']
+        delta_f_err_unit = fe_data['free_energy_diff_error_unit']
+        delta_h_err_unit = fe_data['enthalpy_diff_error_unit']
+    except (KeyError, TypeError):
+        # Trap error in formatted data
+        print("Error in reading analysis data! It may be the analysis threw an error, please see below for what "
+              "was received instead:\n\n{}\n\n".format(analysis_data))
+        return
 
     # Attempt to guess type of calculation
     calculation_type = ''

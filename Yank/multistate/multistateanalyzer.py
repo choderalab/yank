@@ -1581,6 +1581,14 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Copy old values.
         N_l_new[1:-1] = N_l
         u_ln_new[1:-1, :] = u_ln
+        # Expand the f_k_i if need be
+        try:
+            f_k_i_new = np.zeros(n_states_new, N_l.dtype)
+            f_k_i_new[1:-1] = self._extra_analysis_kwargs['initial_f_k']  # This triggers the KeyError Trap
+            self._extra_analysis_kwargs['initial_f_k'] = f_k_i_new  # This triggers the ValueError trap
+        except (KeyError, ValueError):
+            # Not there, move on, or already set nothing to do
+            pass
 
         # Cache new values.
         self._unbiased_decorrelated_u_ln = u_ln_new
