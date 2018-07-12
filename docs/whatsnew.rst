@@ -6,9 +6,13 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.23.1 Multi-Experiment Path Bug
---------------------------------
-- Fixed bug in ``MultiExperimentAnalyzer`` where a path ending in the folder separator (e.g. `/`) caused all files to write to the same place.
+0.23.1 Multi-Experiment and Online Bug
+--------------------------------------
+- Fixed bug in ``MultiExperimentAnalyzer`` where a path ending in the folder separator (e.g. ``/``) caused all files to write to the same place.
+- Fixed bug where increasing number of iterations did not continue experiment if online analysis was turned on and previously hit the max number of iterations
+- Fixed bug where online analysis and harmonic unbiasing caused MBAR to not form due to misformed ``initial_f_k``
+- ``MultiExperimentAnalyzer`` now gracefully traps an error caught by one experiment without crashing others
+- Fixed bug in ``MultiStateReporter`` when there were unsampled thermodynamic states as end-states but they referenced sampled thermodynamic states for their standard system
 
 0.23.0 Multi-Analysis
 ---------------------

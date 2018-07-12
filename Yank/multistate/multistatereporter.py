@@ -417,26 +417,53 @@ class MultiStateReporter(object):
         # Read thermodynamic end states
         states_serializations = dict()
         n_states = len(self._storage_analysis.groups[state_type].variables)
-        for state_id in [0, n_states-1]:
-            serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id))
 
-            # Find the thermodynamic state representation.
-            serialized_thermodynamic_state = serialized_state
-            while 'thermodynamic_state' in serialized_thermodynamic_state:
-                # The while loop is necessary for nested CompoundThermodynamicStates.
-                serialized_thermodynamic_state = serialized_thermodynamic_state['thermodynamic_state']
+        def extract_serialized_state(inner_type, inner_id):
+            """Inner function to help extract the correct serialized state while minimizing number of disk reads
 
+            Parameters
+            ----------
+            inner_type : str, 'unsampled_states' or 'thermodynamic_states'
+                Where to read the data from, inherited from parent function's property or on the recursive loop
+            inner_id : int
+                Which state to pull data from
+            """
+            inner_serialized_state = self.read_dict('{}/state{}'.format(inner_type, inner_id))
+
+            def isolate_thermodynamic_state(isolating_serialized_state):
+                """Helper function to find true bottom level thermodynamic state from any level of nesting, reduce code
+                """
+                isolating_serial_thermodynamic_state = isolating_serialized_state
+                while 'thermodynamic_state' in isolating_serial_thermodynamic_state:
+                    # The while loop is necessary for nested CompoundThermodynamicStates.
+                    isolating_serial_thermodynamic_state = isolating_serial_thermodynamic_state['thermodynamic_state']
+                return isolating_serial_thermodynamic_state
+
+            serialized_thermodynamic_state = isolate_thermodynamic_state(inner_serialized_state)
             # Check if the standard state is in a previous state.
             try:
                 standard_system_name = serialized_thermodynamic_state.pop('_Reporter__compatible_state')
             except KeyError:
                 # Cache the standard system serialization for future usage.
-                standard_system_name = '{}/{}'.format(state_type, state_id)
+                standard_system_name = '{}/{}'.format(inner_type, inner_id)
                 states_serializations[standard_system_name] = serialized_thermodynamic_state['standard_system']
             else:
                 # The system serialization can be retrieved from another state.
-                serialized_standard_system = states_serializations[standard_system_name]
+                # Because the unsampled states rely on the thermodynamic states for their deserialization, we have
+                # to try a secondary/recursive loop to get the thermodynamic states
+                # However, this loop happens less often as the states_serializations dict fills up.
+                try:
+                    serialized_standard_system = states_serializations[standard_system_name]
+                except KeyError:
+                    loop_type, loop_id = standard_system_name.split('/')
+                    looped_standard_state = extract_serialized_state(loop_type, loop_id)
+                    looped_serial_thermodynamic_state = isolate_thermodynamic_state(looped_standard_state)
+                    serialized_standard_system = looped_serial_thermodynamic_state['standard_system']
                 serialized_thermodynamic_state['standard_system'] = serialized_standard_system
+            return inner_serialized_state
+
+        for state_id in [0, n_states-1]:
+            serialized_state = extract_serialized_state(state_type, state_id)
 
             # Create ThermodynamicState object.
             end_thermodynamic_states.append(mmtools.utils.deserialize(serialized_state))
