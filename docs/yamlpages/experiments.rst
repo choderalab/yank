@@ -26,6 +26,8 @@ Experiments Syntax
        type: FlatBottom
        {Restraint Parameter}
        ...
+     restraint: {UserDefinedRestraint}
+     restraint: [{List}, {of}, {UserDefinedRestraints}]
      options:
        {Any Valid Option}
        {Any Valid Option}
@@ -38,17 +40,15 @@ to create the experiment and are the only required arguments. You can also speci
 :doc:`samplers <samplers>`), however this is optional and will fill in with a default sampler.
 
 The ``restraint`` is an **optional** keyword that applies a restraint to the ligand to keep it close to the receptor.
-The only required keyword is ``type``. Valid types are: ``FlatBottom``/``Harmonic``/``Boresch``/``RMSD``/``PeriodicTorsionBoresch``/``null``. If not
-specified, assumes ``null``. Every restraint has his own set of optional parameters that are passed directly to the
-Python constructor of the restraint. See the API documentation in ``yank.restraints`` for the available parameters; you
-can use the links below to jump to each of individual restraint types, the keyword arguments for each restraint type
-are accepted as arguments in the YAML file:
+There are multiple ways to invoke this key word,
 
-* :class:`FlatBottom Radially-Symmetric Restraints <FlatBottom>`
-* :class:`Harmonic Radially-Symmetric Restraints <Harmonic>`
-* :class:`Boresch Orientational Restraints <Boresch>`
-* :class:`Periodic torsion restrained Boresch-like restraint <PeriodicTorsionBoresch>`
-* :class:`RMSD Protein-Ligand Restraints <RMSD>`
+* Define a singular whole restraint here
+* Specify a single restraint defined in the :doc:`restraints <restraints>` block
+* Specify a list of restraints, each one an entry in the :doc:`restraints <restraints>` block
+
+In the example block above, you have to choose one of the formats, not all of them. To see how to define a restraint
+either here in the ``experiment`` block or as a reference to the ``restraint`` block, please see the
+:doc:`restraints page <restraints>`.
 
 The ``options`` directive lets you overwrite :doc:`any global setting <options>` specified in the header ``options`` for
 this specific experiment.
@@ -57,10 +57,6 @@ One option is to select restrained atoms through :class:`Topgraphical Regions <y
 :ref:`molecule's regions <yaml_molecules_regions>`. You can also select atoms through a
 :func:`compound region <yank.Topography.select>` where regions are combined through set operators
 ``and``/``or``.
-
-**Note:** The Boresch-like and RMSD restraints require that the ligand and receptor are close to each other to make sure
-the standard state correction computation is stable. We recommend only using the ``Boresch``,
-``PeriodicTorsionBoresch``, or ``RMSD``, options if you know the binding mode of your system already!
 
 .. _yaml_experiments_multiple:
 

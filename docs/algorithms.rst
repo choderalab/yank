@@ -265,7 +265,7 @@ Restraints between receptor and ligand are used for two purposes:
   On the other hand, if multiple orientations are relevant but cannot be sampled during the imposition of additional restraints, this can cause the resulting free energy estimate to be heavily biased.
 
 In principle, both types of restraints would be used in tandem: One restraint would define the bound complex, while another restraint would be turned to reduce the amount of sampling required to evaluate alchemical free energy differences.
-In the current version of YANK, only one restraint can be used at a time.
+Multiple restraints can be used at once, and they can all be controlled independently or by the same variables.
 More guidance is given for each restraint type below.
 
 .. _standard_state_algorithm:
@@ -340,8 +340,8 @@ Orientational restraints are used to confine the ligand to a single binding pose
 
 .. _algorithm_boresch:
 
-Boresch-like restraints (``Boresch``)
-"""""""""""""""""""""""""""""""""""""
+Boresch-like restraints (``Boresch`` and ``PeriodicTorsionBoresch``)
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 A common type of **orientational restraints** between receptor and ligand :cite:`Boresch2003`.
 These restrain a distance, two angles, and three torsions in an attempt to keep the ligand in a specific relative binding pose.
@@ -365,8 +365,8 @@ Note that the analytical standard state correction described in Eq. 32 of :cite:
 Due to numerical instabilities and the generalization of the Boresch restraints, the analytical free energy
 contribution is no longer supported.
 
-There are a couple variants of the Boresch restraints. The first is the standard one "Boresch," and the second is a
-variant where the torsions are restrained by a periodic restraint instead of harmonic.
+There are a couple variants of the Boresch restraints. The first is the standard one ``Boresch``, and the second is a
+variant where the torsions are restrained by a periodic restraint instead of harmonic "``PeriodicTorsionBoresch``".
 
 
 .. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref :cite:`Boresch2003` and :cite:`Mobley2006:orientational-restraints` for more information on correcting for ligand symmetry.

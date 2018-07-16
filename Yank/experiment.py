@@ -629,6 +629,9 @@ class ExperimentBuilder(object):
         self._raw_yaml = {}  # Unconverted input YAML script, helpful for
         self._expanded_raw_yaml = {}  # Raw YAML with selective keys chosen and blank dictionaries for missing keys
         self._protocols = {}  # Alchemical protocols description
+        self._samplers = {}  # Samplers to simulate with
+        self._mcmc_moves = {}  # MCMC moves list
+        self._restraints = {}  # Restraints block
         self._experiments = {}  # Experiments description
 
         # Parse YAML script
@@ -748,10 +751,11 @@ class ExperimentBuilder(object):
         self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
         self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
 
-        # Validate protocols
+        # Validate other blocks
         self._mcmc_moves = self._validate_mcmc_moves(yaml_content)
         self._samplers = self._validate_samplers(yaml_content)
         self._protocols = self._validate_protocols(yaml_content.get('protocols', {}))
+        self._restraints = self._validate_restraints(yaml_content)
 
         # Validate experiments
         self._parse_experiments(yaml_content)
@@ -1966,6 +1970,34 @@ class ExperimentBuilder(object):
             raise YamlParseError(error.format(yaml.dump(sampler_validator.errors)))
         return validated_samplers['samplers']
 
+    def _validate_restraints(self, yaml_content):
+        """Validate that restraints block is configured correctly"""
+        restraints_descriptions = yaml_content.get('restraints', None)
+        if restraints_descriptions is None:
+            return {}
+
+        restraints_schema = """
+        restraints:
+            type: dict
+            keyschema:
+                type: string
+            valueschema:
+                type: dict
+                validator: is_restraint_constructor
+                keyschema:
+                    type: string
+            required: no
+        """
+        restraints_schema = yaml.load(restraints_schema)
+        restraints_validator = schema.YANKCerberusValidator(restraints_schema)
+        # 'name' filed set to default in the is_restraint_constructor validation
+        if restraints_validator.validate({'restraints': restraints_descriptions}):
+            validated_restraints = restraints_validator.document
+        else:
+            error = "Restraints validation failed with:\n{}"
+            raise YamlParseError(error.format(yaml.dump(restraints_validator.errors)))
+        return validated_restraints['restraints']
+
     def _parse_experiments(self, yaml_content):
         """Validate experiments.
 
@@ -2043,10 +2075,15 @@ class ExperimentBuilder(object):
             coerce: coerce_and_validate_options_here_against_existing
         restraint:
             required: no
-            type: dict
-            validator: is_restraint_constructor
-            keyschema:
-                type: string
+            oneof:
+                - type: dict
+                  validator: is_restraint_constructor
+                  keyschema:
+                      type: string
+                - type: string
+                  allowed: RESTRAINT_IDS_POPULATED_AT_RUNTIME
+                - type: list
+                  allowed: RESTRAINT_IDS_POPULATED_AT_RUNTIME
         """
 
         experiment_schema = yaml.load(experiment_schema_yaml)
@@ -2054,6 +2091,9 @@ class ExperimentBuilder(object):
         experiment_schema['system']['allowed'] = [str(key) for key in self._db.systems.keys()]
         experiment_schema['protocol']['allowed'] = [str(key) for key in self._protocols.keys()]
         experiment_schema['sampler']['allowed'] = [str(key) for key in self._samplers.keys()]
+        for replace_index in [1, 2]:  # Replace the populated at runtime keys
+            experiment_schema['restraint']['oneof'][replace_index]['allowed'] = \
+                [str(key) for key in self._restraints.keys()]
         # Options validator
         experiment_schema['options']['coerce'] = coerce_and_validate_options_here_against_existing
 

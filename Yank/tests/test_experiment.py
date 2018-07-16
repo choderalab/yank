@@ -1013,6 +1013,43 @@ def test_validation_wrong_protocols():
         yield assert_raises, YamlParseError, ExperimentBuilder._validate_protocols, modified_protocol
 
 
+def get_valid_restraints():
+    harmonic = {'type': 'Harmonic'}
+    detailed_harmonic = {'type': 'Harmonic', 'spring_constant': '8*kilojoule_per_mole/nanometers**2',
+                         'name':'super_harmonic'}
+    flat_bottom = {'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atoms': 1644}
+    bor = {'type': 'Boresch', 'restrained_receptor_atoms': [1335, 1339, 1397],
+           'restrained_ligand_atoms': [2609, 2607, 2606], 'r_aA0': '0.35*nanometer',
+           'K_r': '20.0*kilocalories_per_mole/angstrom**2'}
+    period_tor_bor = {**bor, 'type': 'PeriodicTorsionBoresch', 'name': 'some_name_you_can_set'}
+    list_of_restraints = [harmonic, detailed_harmonic, flat_bottom, bor, period_tor_bor]
+    return list_of_restraints
+
+
+def test_validation_correct_restraints():
+    """Correct restraints validation"""
+    list_of_restraints = get_valid_restraints()
+    exp_builder = ExperimentBuilder(get_template_script())
+    for restraint in list_of_restraints:
+        script = {'restraints': {'a_restraint': restraint}}
+        yield exp_builder._validate_restraints, script
+
+
+def test_validation_wrong_restraints():
+    """Wrong restraints throw errors"""
+    exp_builder = ExperimentBuilder(get_template_script())
+    empty_key = {}
+    missing_type = {'name': 'something'}
+    missing_type2 = {'spring_constant': '8*kilojoule_per_mole/nanometers**2'}
+    unknown_type = {'type': 'Shenanigans'}
+    bad_key = {'type': 'Harmonic', 'doesnt_exist': '3*meter'}
+    bad_key_with_name = {'type': 'Harmonic', 'doesnt_exist': '3*meter', 'name': 'something'}
+    list_of_restraints = [empty_key, missing_type, missing_type2, unknown_type, bad_key, bad_key_with_name]
+    for restraint in list_of_restraints:
+        script = {'restraints': {'a_restraint': restraint}}
+        yield assert_raises, YamlParseError, exp_builder._validate_restraints, script
+
+
 def test_validation_correct_experiments():
     """Correct experimentYAML validation."""
     exp_builder = ExperimentBuilder()
@@ -1028,27 +1065,23 @@ def test_validation_correct_experiments():
     protocols:{}
     """.format(examples_paths()['lysozyme'], standard_protocol)
     basic_script = yank_load(basic_script)
+    possible_restraints = get_valid_restraints()
+    all_restraints = {'restraints': {'a_restraint{}'.format(index): restraint for
+                                     index, restraint in enumerate(possible_restraints)}}
 
-    bor = {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
-            'type': 'Boresch', 'restrained_receptor_atoms': [1335, 1339, 1397],
-            'restrained_ligand_atoms': [2609, 2607, 2606], 'r_aA0': '0.35*nanometer',
-            'K_r': '20.0*kilocalories_per_mole/angstrom**2'}}
-    period_tor_bor = {**bor}
-    period_tor_bor['restraint']['type'] = 'PeriodicTorsionBoresch'
-
+    base_exp = {'system': 'sys', 'protocol': 'absolute-binding'}
     experiments = [
-        {'system': 'sys', 'protocol': 'absolute-binding'},
-        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': 'Harmonic'}},
-        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
-            'type': 'Harmonic', 'spring_constant': '8*kilojoule_per_mole/nanometers**2'}},
-        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
-            'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atoms': 1644}},
-        bor,
-        period_tor_bor
+        base_exp,  # Base experiment, no restraint required
+        {**base_exp, **{'restraint': possible_restraints[0]}},  # Simple Restraint
+        {**base_exp, **{'restraint': possible_restraints[-1]}},  # Much more complex restraint
+        {**base_exp, **{'restraint': [str(name) for name in
+                                      all_restraints['restraints'].keys()][0]}},  # Single restraint
+        {**base_exp, **{'restraint': [str(name) for name in
+                                      all_restraints['restraints'].keys()]}},  # List of restraints
     ]
     for experiment in experiments:
-        modified_script = basic_script.copy()
-        modified_script['experiments'] = experiment
+        # Augment with all restraints and current experiment
+        modified_script = {**basic_script.copy(), **all_restraints, **{'experiments': experiment}}
         yield exp_builder.parse, modified_script
 
 
@@ -1067,6 +1100,10 @@ def test_validation_wrong_experiments():
     protocols:{}
     """.format(examples_paths()['lysozyme'], standard_protocol)
     basic_script = yank_load(basic_script)
+    possible_restraints = get_valid_restraints()
+    all_restraints = {'restraints': {'a_restraint{}'.format(index): restraint for
+                                     index, restraint in enumerate(possible_restraints)}}
+
 
     experiments = [
         {'system': 'unknownsys', 'protocol': 'absolute-binding'},
@@ -1081,10 +1118,16 @@ def test_validation_wrong_experiments():
         # Restraint has unknown constructor parameter.
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
             'type': 'Harmonic', 'unknown': '3*meters'}},
+
+        # Restraint not in list of restraints
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': 'not_a_restraint'},
+
+        # One restraint not valid but others are
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': ['a_restraint0', 'not_a_restraint']},
     ]
     for experiment in experiments:
-        modified_script = basic_script.copy()
-        modified_script['experiments'] = experiment
+        # Create final script augmented from basic and all restraints=
+        modified_script = {**basic_script.copy(), **all_restraints, **{'experiments': experiment}}
         yield assert_raises, YamlParseError, exp_builder.parse, modified_script
 
 
@@ -2257,16 +2300,17 @@ class TestExperimentBuilding(object):
 
     def test_restraint_building(self):
         """Test that experiment restraints are built correctly."""
-        with mmtools.utils.temporary_directory() as tmp_dir:
-            template_script = self.get_implicit_template_script(tmp_dir)
-
-            # Restraint options.
-            template_script['experiments']['restraint'] = {
+        restraint_template = {
                 'type': 'Harmonic',
                 'restrained_receptor_atoms': [10, 11, 12],
                 'restrained_ligand_atoms': 'resname MOL',
                 'spring_constant': '8*kilojoule_per_mole/nanometers**2'
             }
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            template_script = self.get_implicit_template_script(tmp_dir)
+
+            # Restraint options.
+            template_script['experiments']['restraint'] = restraint_template
 
             # Test that options are passed to the restraint correctly.
             constructor_description = template_script['experiments']['restraint']
