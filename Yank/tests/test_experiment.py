@@ -2826,6 +2826,8 @@ def test_automatic_alchemical_path():
         yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = 'auto'
         yaml_script['experiments']['system'] = 'hydration-system'
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
+        yaml_script['options']['resume_setup'] = False
+        yaml_script['options']['resume_simulation'] = False
 
         exp_builder = ExperimentBuilder(yaml_script)
 
