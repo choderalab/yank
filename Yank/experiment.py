@@ -580,8 +580,8 @@ class ExperimentBuilder(object):
     # These are options that can be specified only in the main "options" section.
     GENERAL_DEFAULT_OPTIONS = {
         'verbose': False,
-        'resume_setup': False,
-        'resume_simulation': False,
+        'resume_setup': True,
+        'resume_simulation': True,
         'output_dir': 'output',
         'setup_dir': 'setup',
         'experiments_dir': 'experiments',
