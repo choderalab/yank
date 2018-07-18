@@ -53,12 +53,12 @@ Valid Options: [no]/yes
 .. code-block:: yaml
 
    options:
-     resume_setup: no
+     resume_setup: yes
 
-Choose to resume a setup procedure. YANK will raise an error when it detects that it will overwrite an existing file in
-the directory specified by :ref:`setup_dir <yaml_options_setup_dir>`.
+Choose to resume a setup procedure. If ``no``, YANK will raise an error when it detects that it will overwrite an
+existing file in the directory specified by :ref:`setup_dir <yaml_options_setup_dir>`.
 
-Valid Options: [no]/yes
+Valid Options: [yes]/no
 
 
 
@@ -72,12 +72,12 @@ Valid Options: [no]/yes
 .. code-block:: yaml
 
    options:
-     resume_simulation: no
+     resume_simulation: yes
 
-Choose to resume simulations. YANK will raise an error when it detects that it will overwrite an existing file in the
-directory specified by :ref:`experiments_dir <yaml_options_experiments_dir>`.
+Choose to resume simulations. If ``no``, YANK will raise an error when it detects that it will overwrite an existing
+file in the directory specified by :ref:`experiments_dir <yaml_options_experiments_dir>`.
 
-Valid Options: [no]/yes
+Valid Options: [yes]/no
 
 
 
