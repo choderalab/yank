@@ -2709,6 +2709,7 @@ def test_run_experiment():
 
         # We setup a molecule and with resume_setup: now we can't do the experiment
         err_msg = ''
+        exp_builder._options['resume_setup'] = False
         exp_builder._db._setup_molecules('p-xylene')
         try:
             exp_builder.run_experiments()
@@ -2755,6 +2756,7 @@ def test_run_experiment():
                 assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
 
         # Now we can't run the experiment again with resume_simulation: no
+        exp_builder._options['resume_simulation'] = False
         try:
             exp_builder.run_experiments()
         except YamlParseError as e:
@@ -2824,6 +2826,8 @@ def test_automatic_alchemical_path():
         yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = 'auto'
         yaml_script['experiments']['system'] = 'hydration-system'
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
+        yaml_script['options']['resume_setup'] = False
+        yaml_script['options']['resume_simulation'] = False
 
         exp_builder = ExperimentBuilder(yaml_script)
 
