@@ -25,6 +25,7 @@ There are a few things to keep in mind with these recipes:
 
 
 
+Dont worry about this area down here, I'm keeping it for notes purposes, it will all get deleted in final draft
 
 * :doc:`options <options>`
 
