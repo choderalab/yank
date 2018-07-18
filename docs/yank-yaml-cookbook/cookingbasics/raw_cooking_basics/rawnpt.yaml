@@ -1,0 +1,16 @@
+options:
+  verbose: yes
+  resume_setup: yes
+  resume_simulation: yes
+  pressure: 1*atmosphere
+  temperature: 300*kelvin
+
+solvents:
+  explicit_water:  # This can be called whatever you want
+    nonbonded_method: PME
+    switch_distance: 11*angstroms
+    nonbonded_cutoff: 12*angstroms
+    ewald_error_tolerance: 1.0e-4
+    clearance: 9*angstroms
+    positive_ion: Na+
+    negative_ion: Cl-

@@ -1,0 +1,6 @@
+# A much more common recipe
+options:
+  resume_setup: yes
+  resume_experiment: yes
+  # Sets output directory to this folder name relative to this script
+  output_dir: kinase_sims

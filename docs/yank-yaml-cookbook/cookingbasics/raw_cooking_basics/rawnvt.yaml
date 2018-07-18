@@ -1,0 +1,11 @@
+options:
+  verbose: no
+  resume_setup: yes
+  resume_simulation: yes
+  pressure: null  # Null indicates no pressure control.
+  temperature: 300*kelvin
+
+solvents:
+  GBSA:  # This can be called whatever you want
+    nonbonded_method: NoCutoff
+    implicit_solvent: OBC2 # Onufriev-Bashford-Case GBSA model, name is related to Implicit solvents in OpenMM

@@ -40,6 +40,9 @@ Turn on/off verbose output.
 
 Valid Options: [no]/yes
 
+Recommended Recipes:
+
+* :ref:`yaml_cookbook_basics_npt`
 
 
 
@@ -60,7 +63,9 @@ existing file in the directory specified by :ref:`setup_dir <yaml_options_setup_
 
 Valid Options: [yes]/no
 
+Recommended Recipes:
 
+* :ref:`yaml_cookbook_basics_paths`
 
 
 .. _yaml_options_resume_simulation:
@@ -79,7 +84,9 @@ file in the directory specified by :ref:`experiments_dir <yaml_options_experimen
 
 Valid Options: [yes]/no
 
+Recommended Recipes:
 
+* :ref:`yaml_cookbook_basics_paths`
 
 
 
@@ -98,7 +105,9 @@ The main output folder of YANK simulations. A folder will be created if none exi
 
 Valid Options (output): <Path String>
 
+Recommended Recipes:
 
+* :ref:`yaml_cookbook_basics_paths`
 
 
 .. _yaml_options_setup_dir:
@@ -117,7 +126,9 @@ Path is relative to the :ref:`output_dir <yaml_options_output_dir>` folder.
 
 Valid Options (setup): <Path String>
 
+Recommended Recipes:
 
+* :ref:`yaml_cookbook_basics_paths`
 
 
 .. _yaml_options_experiments_dir:
@@ -136,7 +147,9 @@ relative to to the :ref:`output_dir <yaml_options_output_dir>` folder.
 
 Valid Options (experiments): <Path String>
 
+Recommended Recipes:
 
+* :ref:`yaml_cookbook_basics_paths`
 
 
 .. _yaml_options_platform:
