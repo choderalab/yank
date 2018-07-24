@@ -127,6 +127,9 @@ def dispatch(args):
                 args['--output'] = os.path.join(base, last_item, '')
         return dispatch_report(args)
 
+    if args['extract-trajectory']:
+        return dispatch_extract_trajectory(args)
+
     # Configure analyzer keyword arguments.
     analyzer_kwargs = extract_analyzer_kwargs(args)
     do_serialize = True if args['--serial'] is not None else False

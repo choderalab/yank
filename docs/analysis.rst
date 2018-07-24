@@ -159,15 +159,44 @@ To generate the notebook, use the following command:
 
 .. code-block:: bash
 
-   $ yank analyze report --store={experiments} --output={mynotebook.ipynb}
+   $ yank analyze report --store={experiments} --output={mynotebook.ipynb} {--format ipynb}
 
 Replace ``{experiments}`` with the output directory for your simulation and ``{mynotebook.ipynb}`` a filename to save
-the notebook as. This only generates the notebook, you will have to open and run the notebook yourself.
+the notebook as. This extension no longer infers what the file type is, so you will optionally need to set the extension
+through the ``--format`` flag. This will default to ``ipynb`` (Jupyter Notebook), you can also specify PDF and HTML.
 
-If you want to generate static, auto-rendered notebooks, change the extension on your ``--output`` flag to either
-``.pdf`` or ``.html``. This will generate, render, and export the notebook to the corresponding file type. Note that
-additional packages or external programs may be required to use this feature (e.g. ``.pdf`` requires a ``xelatex``
-binary to be on the current system path).
+Setting the file format of the report is controlled through the ``--format`` flag, which is optional. The valid options
+are ``ipynb`` (Jupyter Notebooks, default), ``pdf``, or ``html``. This will generate, render, and export the notebook to
+the corresponding file type. Note that additional packages or external programs may be required to use this feature
+(e.g. ``.pdf`` requires a ``xelatex`` binary to be on the current system path).
+
+The visual notebook system also supports the multi-experiment analysis, but changes the format of the ``--output | -o``
+flags. This is done by replacing the target ``-s`` or ``--store`` flag as with ``-y`` or ``--yaml``. Here is an example:
+
+.. code-block:: bash
+
+   $ yank analyze report -y {a_file.yaml} -o {a_directory} {--format ipynb}
+
+``-y {target}`` and ``--yaml={target}`` are the same, just as is ``-o {target}`` and ``--ouput={target}``. Note that
+the the ``-o`` flag now targets `a directory`, because multiple output files are generated. This is the main reason
+for the addition of the ``--format`` flag. If ``{a_directory}`` is not a directory, an error is thrown.
+
+
+.. _parallel_analyze:
+
+Parallel Analysis
+^^^^^^^^^^^^^^^^^
+
+Each of the invocations of the command line analysis now support parallel analysis through MPI. Much in the same way
+that you can run parallel simulations, you can run parallel analysis. This is most helpful with the ``--yaml`` flag
+where multiple experiments are being analyzed. The parallelization is naive, so each experiment runs over on parallel
+thread, the individual experiments themselves are not parallelized.
+
+One only needs to wrap the analysis command around an MPI call like such:
+
+.. code-block:: bash
+
+    $ mpiexec yank analyze -y a_file.yaml -e output.pkl
 
 
 .. _programmatic_analyze:
