@@ -172,7 +172,6 @@ def extract_analyzer_kwargs(args, quantities_as_strings=False):
 
 
 def dispatch_extract_trajectory(args):
-    import pdb; pdb.set_trace()
     # Paths
     output_path = args['--trajectory']
     nc_path = args['--netcdf']
