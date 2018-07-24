@@ -6,6 +6,12 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.23.2 More Multi-Experiment Cleanup
+------------------------------------
+- ``resume_setup`` and ``resume_experiment`` are ``True`` by default
+- Fixed bug where ``yank analyze extract-trajectory`` could not be executed
+- Further updated multi-analysis docs to reflect multi-experiment changes
+
 0.23.1 Multi-Experiment and Online Bug
 --------------------------------------
 - Fixed bug in ``MultiExperimentAnalyzer`` where a path ending in the folder separator (e.g. ``/``) caused all files to write to the same place.

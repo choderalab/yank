@@ -127,6 +127,9 @@ def dispatch(args):
                 args['--output'] = os.path.join(base, last_item, '')
         return dispatch_report(args)
 
+    if args['extract-trajectory']:
+        return dispatch_extract_trajectory(args)
+
     # Configure analyzer keyword arguments.
     analyzer_kwargs = extract_analyzer_kwargs(args)
     do_serialize = True if args['--serial'] is not None else False
@@ -169,6 +172,7 @@ def extract_analyzer_kwargs(args, quantities_as_strings=False):
 
 
 def dispatch_extract_trajectory(args):
+    import pdb; pdb.set_trace()
     # Paths
     output_path = args['--trajectory']
     nc_path = args['--netcdf']
