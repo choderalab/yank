@@ -87,3 +87,73 @@ Here is an example
      restraint:
        type: Boresch
    experiments: [{UserDefinedExperiment}, {ASecondUserDefinedExperiment}]
+
+
+Example YAML File
+=================
+
+.. code-block:: yaml
+
+    options:
+      minimize: yes
+      verbose: yes
+      number_of_iterations: 3000
+      nsteps_per_iteration: 500
+      temperature: 300*kelvin
+      pressure: 1*atmosphere
+      timestep: 2.0*femtoseconds
+      output_dir: explicit
+      resume_setup: yes
+      resume_simulation: yes
+
+    molecules:
+      Abl:
+        filepath: input/2HYY-pdbfixer.pdb
+      STI:
+        filepath: input/STI02.mol2
+        epik:
+          select: !Combinatorial [0, 1, 2]
+          ph: 7.4
+          ph_tolerance: 7.0
+          tautomerize: no
+        openeye:
+          quacpac: am1-bcc
+        antechamber:
+          charge_method: null
+
+    solvents:
+      pme:
+        nonbonded_method: PME
+        switch_distance: 11*angstroms
+        nonbonded_cutoff: 12*angstroms
+        ewald_error_tolerance: 1.0e-4
+        clearance: 9*angstroms
+        positive_ion: Na+
+        negative_ion: Cl-
+
+    systems:
+      Abl-STI:
+        receptor: Abl
+        ligand: STI
+        solvent: pme
+        leap:
+          parameters: [leaprc.protein.ff14SB, leaprc.gaff, leaprc.water.tip4pew]
+
+    restraints:
+        RigidBoresch:
+            type: Boresch
+            rigidify: 15*degrees
+        BasicHarmonic:
+            type: Harmonic
+
+    protocols:
+      absolute-binding:
+        complex:
+          alchemical_path: auto
+        solvent:
+          alchemical_path: auto
+
+    experiments:
+      system: Abl-STI
+      protocol: absolute-binding
+      restraint: [RigidBoresch, BasicHarmonic]
