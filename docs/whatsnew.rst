@@ -6,6 +6,10 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.24.0 Multi-Restraint
+----------------------
+- Work in progress
+
 0.23.1 Multi-Experiment and Online Bug
 --------------------------------------
 - Fixed bug in ``MultiExperimentAnalyzer`` where a path ending in the folder separator (e.g. ``/``) caused all files to write to the same place.

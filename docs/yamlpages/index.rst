@@ -23,6 +23,7 @@ All Pages
    systems <systems>
    mcmc <mcmc>
    samplers <samplers>
+   restraints <restraints>
    protocols <protocols>
    experiments <experiments>
    Combinatorial Options <combinatorial>
@@ -188,6 +189,12 @@ Detailed Options List
     * :ref:`yaml_samplers_online_analysis_interval`
     * :ref:`yaml_samplers_online_analysis_target_error`
     * :ref:`yaml_samplers_online_analysis_minimum_iterations`
+
+* :doc:`restraints <restraints>`
+
+  * :ref:`type <yaml_restraints_type>`
+  * :ref:`name <yaml_restraints_name>`
+  * :ref:`Restraint-type dependent options <yaml_restraints_other>`
 
 * :doc:`protocols <protocols>`
 
