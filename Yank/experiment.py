@@ -2745,7 +2745,6 @@ class ExperimentBuilder(object):
                 yaml_content += yaml.dump({block_id: block}, **dump_options)
 
         # Export YAML into a file
-        import pdb; pdb.set_trace()
         with open(file_path, 'w') as f:
             f.write(yaml_content)
 
