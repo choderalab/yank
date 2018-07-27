@@ -1,0 +1,9 @@
+# An uncommon recipe
+options:
+  resume_setup: yes  # Because we are using some common repository of molecules/systems
+  resume_experiment: no  # Do NOT try to use any existing experiment folder (not recommended)
+  output_dir: /data/mygroup/me/yank_simulations/kinase_sims
+  # Absolute path, no relativity
+  setup_dir: /data/mygroup/me/yank_simulations/molecule_repository  # This assumes some common setup (very uncommon)
+  # Relative to the output_dir
+  experiments_dir: experiments  # This is the default so setting this with "experiments" is the same as omitting this key

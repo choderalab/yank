@@ -3,3 +3,8 @@
 {% set script_files = script_files + ['_static/toggle_sections.js'] %}
 
 {% set css_files = css_files + ["_static/custom.css"] %}
+
+{# replace below block hashes with % to activate #}
+{% if 'cook' in pagename %}
+{% set logo = 'cookingyank2.png' %}
+{% endif %}

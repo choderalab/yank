@@ -50,6 +50,7 @@ Getting YANK Up and Running
    installation
    running
    yamlpages/index
+   yank-yaml-cookbook/index
    whatsnew
    examples/index
    faq
