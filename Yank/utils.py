@@ -1782,6 +1782,7 @@ def generate_development_feature(feature_dict):
         def __init__(self, *args, **kwargs):
             if not self.dev_validate:
                 raise RuntimeError(self.DEV_ERROR)
+            super().__init__(*args, **kwargs)
 
         @classmethod
         def dev_validation(cls, wrapped_function):

@@ -1011,7 +1011,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 # Harmonic protein-ligand restraint.
 # ==============================================================================
 
-class Harmonic(RadiallySymmetricRestraint):
+class Harmonic(OpenMM73, RadiallySymmetricRestraint):
     """Impose a single harmonic restraint between ligand and protein.
 
     This can be used to prevent the ligand from drifting too far from the
@@ -1635,12 +1635,53 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         for name, value in self._parameters.items():
             energy_function += '%s = %f; ' % (name, value.value_in_unit_system(unit.md_unit_system))
 
-        # Create the force
-        n_particles = 6  # number of particles involved in restraint: p1 ... p6
-        restraint_force = openmm.CustomCompoundBondForce(n_particles, energy_function)
+        # Create the CV force components
+        force_components = []
+        distance_force = openmm.CustomBondForce('r')
+        distance_force.addBond(self.restrained_receptor_atoms[-1], self.restrained_ligand_atoms[0], [])
+        force_components.append(['Distance', distance_force])
+        angle_a_force = openmm.CustomAngleForce('theta')
+        angle_a_force.addAngle(self.restrained_receptor_atoms[1],
+                               self.restrained_receptor_atoms[2],
+                               self.restrained_ligand_atoms[0],
+                               [])
+        force_components.append(['AngleA', angle_a_force])
+        angle_b_force = openmm.CustomAngleForce('theta')
+        angle_b_force.addAngle(self.restrained_receptor_atoms[2],
+                               self.restrained_ligand_atoms[0],
+                               self.restrained_ligand_atoms[1],
+                               [])
+        force_components.append(['AngleB', angle_b_force])
+        torsion_a_force = openmm.CustomTorsionForce('theta')
+        torsion_a_force.addTorsion(self.restrained_receptor_atoms[0],
+                                   self.restrained_receptor_atoms[1],
+                                   self.restrained_receptor_atoms[2],
+                                   self.restrained_ligand_atoms[0],
+                                   [])
+        force_components.append(['TorsionA', torsion_a_force])
+        torsion_b_force = openmm.CustomTorsionForce('theta')
+        torsion_b_force.addTorsion(self.restrained_receptor_atoms[1],
+                                   self.restrained_receptor_atoms[2],
+                                   self.restrained_ligand_atoms[0],
+                                   self.restrained_ligand_atoms[1],
+                                   [])
+        force_components.append(['TorsionB', torsion_b_force])
+        torsion_c_force = openmm.CustomTorsionForce('theta')
+        torsion_c_force.addTorsion(self.restrained_receptor_atoms[2],
+                                   self.restrained_ligand_atoms[0],
+                                   self.restrained_ligand_atoms[1],
+                                   self.restrained_ligand_atoms[2],
+                                   [])
+        force_components.append(['TorsionC', torsion_c_force])
+
+        # Construct CustomCVForce
+        restraint_force = openmm.CustomCVForce(energy_function)
         restraint_force.addGlobalParameter('lambda_restraints', 1.0)
-        restraint_force.addBond(self.restrained_receptor_atoms + self.restrained_ligand_atoms, [])
-        restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
+        for cv, force in force_components:
+            force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
+            restraint_force.addCollectiveVariable(cv, force)
+
+
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system
@@ -1759,13 +1800,13 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
 
         Variables should also be used:
 
-          * lambda_restraints    : Alchemical variable, should be scalar on whole energy
-          * distance(p3,p4)      : Restrained distance
-          * angle(p2,p3,p4)      : Restrained angle "A"
-          * angle(p3,p4,p5)      : Restrained angle "B"
-          * dihedral(p1,p2,p3,p4): Restrained torsion "A"
-          * dihedral(p2,p3,p4,p5): Restrained torsion "B"
-          * dihedral(p3,p4,p5,p6): Restrained torsion "C"
+          * lambda_restraints : Alchemical variable, should be scalar on whole energy
+          * Distance          : Restrained distance
+          * AngleA            : Restrained angle "A"
+          * AngleB            : Restrained angle "B"
+          * TorsionA          : Restrained torsion "A"
+          * TorsionB          : Restrained torsion "B"
+          * TorsionC          : Restrained torsion "C"
 
         Returns
         -------
@@ -2261,6 +2302,14 @@ class Boresch(BoreschLike):
         Get the energy function string which defines the full restraint compatible with OpenMM Custom*Force
         expressions.
 
+          * lambda_restraints : Alchemical variable, should be scalar on whole energy
+          * Distance          : Restrained distance
+          * AngleA            : Restrained angle "A"
+          * AngleB            : Restrained angle "B"
+          * TorsionA          : Restrained torsion "A"
+          * TorsionB          : Restrained torsion "B"
+          * TorsionC          : Restrained torsion "C"
+
         Returns
         -------
         energy_function : string
@@ -2268,12 +2317,12 @@ class Boresch(BoreschLike):
         """
         energy_function = """
             lambda_restraints * E;
-            E = (K_r/2)*(distance(p3,p4) - r_aA0)^2
-            + (K_thetaA/2)*(angle(p2,p3,p4)-theta_A0)^2 + (K_thetaB/2)*(angle(p3,p4,p5)-theta_B0)^2
+            E = (K_r/2)*(Distance - r_aA0)^2
+            + (K_thetaA/2)*(AngleA-theta_A0)^2 + (K_thetaB/2)*(AngleB-theta_B0)^2
             + (K_phiA/2)*dphi_A^2 + (K_phiB/2)*dphi_B^2 + (K_phiC/2)*dphi_C^2;
-            dphi_A = dA - floor(dA/(2*pi)+0.5)*(2*pi); dA = dihedral(p1,p2,p3,p4) - phi_A0;
-            dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = dihedral(p2,p3,p4,p5) - phi_B0;
-            dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = dihedral(p3,p4,p5,p6) - phi_C0;
+            dphi_A = dA - floor(dA/(2*pi)+0.5)*(2*pi); dA = TorsionA - phi_A0;
+            dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = TorsionB - phi_B0;
+            dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = TorsionC - phi_C0;
             pi = %f;
             """ % np.pi
         return energy_function
@@ -2502,12 +2551,12 @@ class PeriodicTorsionBoresch(Boresch):
         """
         energy_function = """
             lambda_restraints * E;
-            E = (K_r/2)*(distance(p3,p4) - r_aA0)^2
-            + (K_thetaA/2)*(angle(p2,p3,p4)-theta_A0)^2 + (K_thetaB/2)*(angle(p3,p4,p5)-theta_B0)^2
+            E = (K_r/2)*(Distance - r_aA0)^2
+            + (K_thetaA/2)*(AngleA-theta_A0)^2 + (K_thetaB/2)*(AngleB-theta_B0)^2
             + (K_phiA/2)*uphi_A + (K_phiB/2)*uphi_B + (K_phiC/2)*uphi_C;
-            uphi_A = (1-cos(dA)); dA = dihedral(p1,p2,p3,p4) - phi_A0;
-            uphi_B = (1-cos(dB)); dB = dihedral(p2,p3,p4,p5) - phi_B0;
-            uphi_C = (1-cos(dC)); dC = dihedral(p3,p4,p5,p6) - phi_C0;
+            uphi_A = (1-cos(dA)); dA = TorsionA - phi_A0;
+            uphi_B = (1-cos(dB)); dB = TorsionB - phi_B0;
+            uphi_C = (1-cos(dC)); dC = TorsionC - phi_C0;
             pi = %f;
             """ % np.pi
         return energy_function
