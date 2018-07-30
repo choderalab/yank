@@ -119,9 +119,7 @@ def dispatch(args):
             args['--format'] = '.' + args['--format']
         if args['--yaml'] is not None and args['--output']:
             # Ensure the last output is treated as a directory in all cases
-            if not os.path.isdir(args['--output']):
-                raise ValueError("{} is not a directory, which is required when specifying a YAML file as a source for "
-                                 "analysis".format(args['--output']))
+            os.makedirs(args['--output'], exist_ok=True)
             base, last_item = os.path.split(args['--output'])
             if last_item != '':
                 args['--output'] = os.path.join(base, last_item, '')
