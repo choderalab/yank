@@ -803,7 +803,7 @@ def generate_pdbfixer_mutation_code(original_residue_name, residue_index, mutate
     return '{0:s}-{1:d}-{2:s}'.format(original_residue_name, residue_index, mutated_residue_name)
 
 
-def process_tool_directive(option, dispatch, allowed_values, yields_value=False):
+def process_tool_directive(directives, option, dispatch, allowed_values, yields_value=False):
     """Process a directive.
 
     Parameters
@@ -932,11 +932,11 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         directives['add_missing_atoms'] = 'heavy'
 
     # Dispatch directives
-    process_tool_directive('add_missing_residues', add_missing_residues, [True, False])
-    process_tool_directive('apply_mutations', apply_mutations, None)
-    process_tool_directive('replace_nonstandard_residues', replace_nonstandard_residues, [True, False])
-    process_tool_directive('remove_heterogens', remove_heterogens, ['all', 'water', 'none'])
-    process_tool_directive('add_missing_atoms', add_missing_atoms, ['all', 'heavy', 'hydrogens', 'none'])
+    process_tool_directive(directives, 'add_missing_residues', add_missing_residues, [True, False])
+    process_tool_directive(directives, 'apply_mutations', apply_mutations, None)
+    process_tool_directive(directives, 'replace_nonstandard_residues', replace_nonstandard_residues, [True, False])
+    process_tool_directive(directives, 'remove_heterogens', remove_heterogens, ['all', 'water', 'none'])
+    process_tool_directive(directives, 'add_missing_atoms', add_missing_atoms, ['all', 'heavy', 'hydrogens', 'none'])
 
     # Check that there were no extra options
     if len(directives) > 0:
@@ -1014,7 +1014,7 @@ def apply_modeller(input_file_path, output_file_path, directives):
         else:
             logger.info('modeller: No mutations will be applied since "WT" specified.')
 
-    process_tool_directive('apply_mutations', apply_mutations_modeller, None)
+    process_tool_directive(directives, 'apply_mutations', apply_mutations_modeller, None)
 
     # Check that there were no extra options
     if len(directives) > 0:
