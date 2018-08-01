@@ -982,6 +982,7 @@ def apply_modeller(input_file_path, output_file_path, directives):
     env.io.atom_files_directory = [atom_files_directory]
     alignment = modeller.alignment(env)
     model = modeller.model(env, file=atom_file_name)
+    model_original_numbering = modeller.model(env, file=atom_file_name)
     alignment.append_model(model, atom_files=atom_file_name, align_codes=atom_file_name)
 
 
@@ -1020,6 +1021,7 @@ def apply_modeller(input_file_path, output_file_path, directives):
         raise ValueError("The 'modeller:' block contained some nodes that it didn't know how to process: {}".format(directives))
 
     # Write the final model
+    model.res_num_from(model_original_numbering, alignment)
     model.write(file=output_file_path)
 
 def read_csv_lines(file_path, lines):
