@@ -1336,11 +1336,9 @@ class ExperimentBuilder(object):
         pdbfixer:
             required: no
             dependencies: filepath
-            excludes: modeller
         modeller:
             required: no
             dependencies: filepath
-            excludes: pdbfixer
         openeye:
             required: no
             excludes: filepath

@@ -950,10 +950,9 @@ def apply_modeller(input_file_path, output_file_path, directives):
     Apply Salilab Modeller to make changes to the specified molecule.
 
     Single mutants are supported in the form "T315I"
-    Double mutants are not supported currently.
+    Double mutants are not currently supported.
 
     The string "WT" makes no mutations.
-    This is useful for testing.
 
     Original PDB file numbering scheme is used.
 
@@ -1531,6 +1530,14 @@ class SetupDatabase:
                     raise RuntimeError('Cannot strip protons from {} files.'.format(extension[1:]))
                 output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
                 strip_protons(mol_descr['filepath'], output_file_path)
+                mol_descr['filepath'] = output_file_path
+
+            # Apply modeller if requested
+            if 'modeller' in mol_descr:
+                if extension not in ['.pdb', '.PDB']:
+                    raise RuntimeError('Cannot apply modeller to {} files; a .pdb file is required.'.format(extension[1:]))
+                output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
+                apply_modeller(mol_descr['filepath'], output_file_path, mol_descr['modeller'])
                 mol_descr['filepath'] = output_file_path
 
             # Apply PDBFixer if requested
