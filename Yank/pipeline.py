@@ -1224,6 +1224,10 @@ class SetupDatabase:
         elif 'pdbfixer' in molecule_descr:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
+        # If we have to make mutations using modeller, a new PDB should be created
+        elif 'modeller' in molecule_descr:
+            files_to_check = [('filepath', molecule_id_path + '.pdb')]
+
         # If a single structure must be extracted we search for output
         elif 'select' in molecule_descr:
             files_to_check = [('filepath', molecule_id_path + extension)]
@@ -1534,20 +1538,20 @@ class SetupDatabase:
                 strip_protons(mol_descr['filepath'], output_file_path)
                 mol_descr['filepath'] = output_file_path
 
-            # Apply modeller if requested
-            if 'modeller' in mol_descr:
-                if extension not in ['.pdb', '.PDB']:
-                    raise RuntimeError('Cannot apply modeller to {} files; a .pdb file is required.'.format(extension[1:]))
-                output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
-                apply_modeller(mol_descr['filepath'], output_file_path, mol_descr['modeller'])
-                mol_descr['filepath'] = output_file_path
-
             # Apply PDBFixer if requested
             if 'pdbfixer' in mol_descr:
                 if extension not in ['.pdb', '.PDB']:
                     raise RuntimeError('Cannot apply PDBFixer to {} files; a .pdb file is required.'.format(extension[1:]))
                 output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
                 apply_pdbfixer(mol_descr['filepath'], output_file_path, mol_descr['pdbfixer'])
+                mol_descr['filepath'] = output_file_path
+
+            # Apply modeller if requested
+            if 'modeller' in mol_descr:
+                if extension not in ['.pdb', '.PDB']:
+                    raise RuntimeError('Cannot apply modeller to {} files; a .pdb file is required.'.format(extension[1:]))
+                output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
+                apply_modeller(mol_descr['filepath'], output_file_path, mol_descr['modeller'])
                 mol_descr['filepath'] = output_file_path
 
             # Generate missing molecules with OpenEye. At the end of parametrization
