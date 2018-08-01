@@ -803,6 +803,35 @@ def generate_pdbfixer_mutation_code(original_residue_name, residue_index, mutate
     return '{0:s}-{1:d}-{2:s}'.format(original_residue_name, residue_index, mutated_residue_name)
 
 
+def process_tool_directive(option, dispatch, allowed_values, yields_value=False):
+    """Process a directive.
+
+    Parameters
+    ----------
+    option : str
+        The name of the option to be processed.
+        Will remove this option from `directives` once processed.
+    dispatch : function
+        The function to call.
+    allowed_values : list
+        If not None, the value of directives[option] will be checked against this list
+    yields_value : boolean, default False
+        Tells this function to expect a return from the dispatch function and give it back as needed
+    """
+    if option in directives:
+        value = directives[option]
+        # Validate options
+        if allowed_values is not None:
+            if value not in allowed_values:
+                raise ValueError("'{}' must be one of {}".format(option, allowed_values))
+        # Dispatch
+        output = dispatch(value)
+        # Delete the key once we've processed it
+        del directives[option]
+        if yields_value:
+            return output
+        return
+
 def apply_pdbfixer(input_file_path, output_file_path, directives):
     """
     Apply PDBFixer to make changes to the specified molecule.
@@ -836,35 +865,6 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
     fixer = PDBFixer(input_file_path)
     fixer.missingResidues = {}
 
-    def process_directive(option, dispatch, allowed_values, yields_value=False):
-        """Process a directive.
-
-        Parameters
-        ----------
-        option : str
-            The name of the option to be processed.
-            Will remove this option from `directives` once processed.
-        dispatch : function
-            The function to call.
-        allowed_values : list
-            If not None, the value of directives[option] will be checked against this list
-        yields_value : boolean, default False
-            Tells this function to expect a return from the dispatch function and give it back as needed
-        """
-        if option in directives:
-            value = directives[option]
-            # Validate options
-            if allowed_values is not None:
-                if value not in allowed_values:
-                    raise ValueError("'{}' must be one of {}".format(option, allowed_values))
-            # Dispatch
-            output = dispatch(value)
-            # Delete the key once we've processed it
-            del directives[option]
-            if yields_value:
-                return output
-            return
-
     # Dispatch functions
     # These won't be documented individually because they are so short
     def dispatch_pH(value):
@@ -876,7 +876,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
             raise ValueError("'ph' must be a floating-point number: found '{}'".format(value))
         return pH
 
-    pH = process_directive('ph', dispatch_pH, None, yields_value=True)
+    pH = process_tool_directive('ph', dispatch_pH, None, yields_value=True)
 
     def add_missing_residues(value):
         if value == 'yes':
@@ -932,11 +932,11 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         directives['add_missing_atoms'] = 'heavy'
 
     # Dispatch directives
-    process_directive('add_missing_residues', add_missing_residues, [True, False])
-    process_directive('apply_mutations', apply_mutations, None)
-    process_directive('replace_nonstandard_residues', replace_nonstandard_residues, [True, False])
-    process_directive('remove_heterogens', remove_heterogens, ['all', 'water', 'none'])
-    process_directive('add_missing_atoms', add_missing_atoms, ['all', 'heavy', 'hydrogens', 'none'])
+    process_tool_directive('add_missing_residues', add_missing_residues, [True, False])
+    process_tool_directive('apply_mutations', apply_mutations, None)
+    process_tool_directive('replace_nonstandard_residues', replace_nonstandard_residues, [True, False])
+    process_tool_directive('remove_heterogens', remove_heterogens, ['all', 'water', 'none'])
+    process_tool_directive('add_missing_atoms', add_missing_atoms, ['all', 'heavy', 'hydrogens', 'none'])
 
     # Check that there were no extra options
     if len(directives) > 0:
@@ -985,34 +985,6 @@ def apply_modeller(input_file_path, output_file_path, directives):
     model = modeller.model(env, file=atom_file_name)
     alignment.append_model(model, atom_files=atom_file_name, align_codes=atom_file_name)
 
-    def process_directive(option, dispatch, allowed_values, yields_value=False):
-        """Process a directive.
-
-        Parameters
-        ----------
-        option : str
-            The name of the option to be processed.
-            Will remove this option from `directives` once processed.
-        dispatch : function
-            The function to call.
-        allowed_values : list
-            If not None, the value of directives[option] will be checked against this list
-        yields_value : boolean, default False
-            Tells this function to expect a return from the dispatch function and give it back as needed
-        """
-        if option in directives:
-            value = directives[option]
-            # Validate options
-            if allowed_values is not None:
-                if value not in allowed_values:
-                    raise ValueError("'{}' must be one of {}".format(option, allowed_values))
-            # Dispatch
-            output = dispatch(value)
-            # Delete the key once we've processed it
-            del directives[option]
-            if yields_value:
-                return output
-            return
 
     def apply_mutations_modeller(value):
         # Extract chain id
@@ -1028,25 +1000,25 @@ def apply_modeller(input_file_path, output_file_path, directives):
             raise ValueError("You have specified a double mutant, which is not supported by modeller")
         # Convert mutations to PDBFixer format
         if mutations != 'WT':
-            pdbfixer_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
+            modeller_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
                                   for mutation in mutations.split('/')]
-            logger.info('pdbfixer: Will make mutations {} to chain_id {}.'.format(pdbfixer_mutations, chain_id))
-            sel = modeller.selection(model.chains[chain_id].residues[pdbfixer_mutations[0].split('-')[1]])
-            sel.mutate(residue_type=pdbfixer_mutations[0].split('-')[2])
-            alignment.append_model(model, align_codes=pdbfixer_mutations[0])
+            logger.info('modeller: Will make mutations {} to chain_id {}.'.format(modeller_mutations, chain_id))
+            sel = modeller.selection(model.chains[chain_id].residues[modeller_mutations[0].split('-')[1]])
+            sel.mutate(residue_type=modller_mutations[0].split('-')[2])
+            alignment.append_model(model, align_codes=modeller_mutations[0])
             model.clear_topology()
-            model.generate_topology(alignment[pdbfixer_mutations[0]])
+            model.generate_topology(alignment[modeller_mutations[0]])
             model.transfer_xyz(alignment)
             model.build(initialize_xyz=False, build_method='INTERNAL_COORDINATES')
 
         else:
-            logger.info('pdbfixer: No mutations will be applied since "WT" specified.')
+            logger.info('modeller: No mutations will be applied since "WT" specified.')
 
-    process_directive('apply_mutations', apply_mutations_modeller, None)
+    process_tool_directive('apply_mutations', apply_mutations_modeller, None)
 
     # Check that there were no extra options
     if len(directives) > 0:
-        raise ValueError("The 'pdbfixer:' block contained some nodes that it didn't know how to process: {}".format(directives))
+        raise ValueError("The 'modeller:' block contained some nodes that it didn't know how to process: {}".format(directives))
 
     # Write the final model
     model.write(file=output_file_path)
