@@ -593,6 +593,7 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'remove_heterogens': 'all'}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'replace_nonstandard_residues': True}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
+        {'filepath': paths['abl'], 'select': 'all', 'modeller': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'I8A/T9A'}}},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
