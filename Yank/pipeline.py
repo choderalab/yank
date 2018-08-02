@@ -1001,7 +1001,7 @@ def apply_modeller(input_file_path, output_file_path, directives):
                                   for mutation in mutations.split('/')]
             logger.info('modeller: Will make mutations {} to chain_id {}.'.format(modeller_mutations, chain_id))
             sel = modeller.selection(model.chains[chain_id].residues[modeller_mutations[0].split('-')[1]])
-            sel.mutate(residue_type=modller_mutations[0].split('-')[2])
+            sel.mutate(residue_type=modeller_mutations[0].split('-')[2])
             alignment.append_model(model, align_codes=modeller_mutations[0])
             model.clear_topology()
             model.generate_topology(alignment[modeller_mutations[0]])
