@@ -81,8 +81,8 @@ Here is an example:
 
 .. _yaml_protocols_alchemical_path:
 
-``alchemical_path``, ``lambda_electrostatics``, ``lambda_sterics``, and ``lambda_restraints``
----------------------------------------------------------------------------------------------
+``alchemical_path``, ``lambda_electrostatics``, ``lambda_sterics``, and ``lambda_restraints_{suffix}``
+------------------------------------------------------------------------------------------------------
 
 The ``lambda_electrostatics``, ``lambda_sterics``, and ``lambda_restraints`` directives define the alchemical states that YANK will sample at.
 Each directive accepts an equal sized list of floats as arguments and each index of the list corresponds to what value of lambda those interactions will be controlled by at that state.
@@ -92,7 +92,16 @@ Syntax is identical to the example above.
 
 Only ``lambda_restraints`` are optional and do not need to be specified for each phase and system. Further, the directive
 only applies if ``restraint`` :ref:`in experiments is specified <yaml_experiments_syntax>`. How and where the
-``lambda_restraints`` should be will be up to the user. To see use cases of this directive, please see any of the following:
+``lambda_restraints`` should be will be up to the user.
+
+The individual restraints can be controlled
+by a **different variable in the protocol** if the :ref:`yaml_restraints_restraint_name` variable is set for
+any of the restraints. If you wish to control a restraint with a set :ref:`yaml_restraints_restraint_name`, you will
+use ``lambda_restraints_{restraint_name}`` where ``{restraint_name}`` is replaced by the appropriate name. If this is
+*not* set for a give restraint, it the default ``lambda_restraints`` variable is used.
+Multiple restraints can be controlled through the same variable.
+
+To see use cases of this directive, please see any of the following:
 
 * :ref:`The Harmonic restraint in our detailed binding free energy tutorial <p-xylene-explicit>`
 * :ref:`The FlatBottom restraint in our host-guest binding free energy tutorial <host_guest_implicit>`

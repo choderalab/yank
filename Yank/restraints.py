@@ -295,7 +295,14 @@ class ReceptorLigandRestraint(ABC):
 
     This restraint strength is controlled by a global context parameter called
     ``lambda_restraints``. You can easily control this variable through the
-    ``RestraintState`` object.
+    ``RestraintState`` object. There is an optional keyword argument on the
+    constructor which can be passed in to this base class called ``restraint_name``
+    which serves as a suffix to the ``lambda_restraints`` in the form
+    ``lambda_restraints_suffix`` The full name of this variable can
+    be accessed through the ``restraint_name`` property. If this is
+    not set or ``None``, then the global parameter name will just be
+    ``lambda_restraints``. This name should not include the "_" between the
+    ``lambda_restraints`` and the ``suffix`` as it will be added automatically.
 
     Notes
     -----
@@ -313,7 +320,30 @@ class ReceptorLigandRestraint(ABC):
         4. Optionally, implement :func:`determine_missing_parameters` to fill in
         the parameters left undefined in the constructor.
 
+        5. Optionally allow the setting of the ``restraint_name`` keyword arg
+
     """
+
+    def __init__(self, restraint_name=None):
+        self._restraint_name = restraint_name
+
+    @property
+    def restraint_name(self):
+        """Provide the restraint_name suffix"""
+        return self._restraint_name
+
+    @property
+    def full_restraint_name(self):
+        """
+        Provide the full global parameter for this restraint
+
+        Helper function for subclasses to yield the full ``lambda_restraints{_X}``
+        global parameter this is controlled by
+        """
+        name = 'lambda_restraints'
+        if self._restraint_name is not None:
+            name += '_' + self._restraint_name
+        return name
 
     @abc.abstractmethod
     def restrain_state(self, thermodynamic_state):
@@ -384,7 +414,7 @@ class ReceptorLigandRestraint(ABC):
         List of excluded parameters from the :func:`__init__` call to ensure all non-atom selection
         parameters are defined
         """
-        return ['self', 'restrained_receptor_atoms', 'restrained_ligand_atoms']
+        return ['self', 'restrained_receptor_atoms', 'restrained_ligand_atoms', 'restraint_name']
 
     @property
     def _parameters(self):
@@ -482,6 +512,10 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     restrained_ligand_atoms : list of int, str, None
         The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography selection
         string.
+    restraint_name : str or None, Optional
+        Optional suffix string to change which global variable this force is controlled by.
+        If None, the variable will be ``lambda_restraints``, otherwise it will be
+        ``lambda_restraints_{restraint_name}``
 
     Notes
     -----
@@ -496,7 +530,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         method to automatically determine these parameters from the atoms positions.
 
     """
-    def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None):
+    def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None,
+                 restraint_name=None):
+        super().__init__(restraint_name=restraint_name)
         self.restrained_receptor_atoms = restrained_receptor_atoms
         self.restrained_ligand_atoms = restrained_ligand_atoms
 
@@ -860,7 +896,9 @@ class Harmonic(RadiallySymmetricRestraint):
     where `K` is the spring constant, `r` is the distance between the
     two group centroids, and `lambda_restraints` is a scale factor that
     can be used to control the strength of the restraint. You can control
-    ``lambda_restraints`` through :class:`RestraintState` class.
+    ``lambda_restraints`` through :class:`RestraintState` class
+    and can optionally be suffixed (``_suffix``) through
+    the ``restraint_name`` keyword argument.
 
     The class supports automatic determination of the parameters left undefined or defined by strings
     in the constructor through :func:`determine_missing_parameters`.
@@ -887,6 +925,10 @@ class Harmonic(RadiallySymmetricRestraint):
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
+    restraint_name : str or None, Optional
+        Optional suffix string to change which global variable this force is controlled by.
+        If None, the variable will be ``lambda_restraints``, otherwise it will be
+        ``lambda_restraints_{restraint_name}``
 
     Attributes
     ----------
@@ -968,10 +1010,12 @@ class Harmonic(RadiallySymmetricRestraint):
             # CustomBondForce so that we can support 32bit platforms too.
             return mmtools.forces.HarmonicRestraintBondForce(spring_constant=self.spring_constant,
                                                              restrained_atom_index1=particles1[0],
-                                                             restrained_atom_index2=particles2[0])
+                                                             restrained_atom_index2=particles2[0],
+                                                             controlling_parameter_name=self.full_restraint_name)
         return mmtools.forces.HarmonicRestraintForce(spring_constant=self.spring_constant,
                                                      restrained_atom_indices1=particles1,
-                                                     restrained_atom_indices2=particles2)
+                                                     restrained_atom_indices2=particles2,
+                                                     controlling_parameter_name=self.full_restraint_name)
 
     def _determine_restraint_parameters(self, thermodynamic_state, sampler_state, topography):
         """Automatically choose a spring constant for the restraint force.
@@ -1030,7 +1074,8 @@ class FlatBottom(RadiallySymmetricRestraint):
     at which the restraint is imposed, and ``lambda_restraints``
     is a scale factor that can be used to control the strength of the
     restraint. You can control ``lambda_restraints`` through the class
-    :class:`RestraintState`.
+    :class:`RestraintState` and can optionally be suffixed (``_suffix``) through
+    the ``restraint_name`` keyword argument.
 
     The class supports automatic determination of the parameters left undefined
     in the constructor through :func:`determine_missing_parameters`.
@@ -1060,6 +1105,10 @@ class FlatBottom(RadiallySymmetricRestraint):
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
+    restraint_name : str or None, Optional
+        Optional suffix string to change which global variable this force is controlled by.
+        If None, the variable will be ``lambda_restraints``, otherwise it will be
+        ``lambda_restraints_{restraint_name}``
 
     Attributes
     ----------
@@ -1264,7 +1313,8 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         ``lambda_restraints``: a scale factor that can be used to control the strength
         of the restraint.
 
-    You can control ``lambda_restraints`` through the class :class:`RestraintState`.
+    You can control ``lambda_restraints`` through the class :class:`RestraintState` and can optionally
+    be suffixed (``_suffix``) through  the ``restraint_name`` keyword argument.
 
     The class supports automatic determination of the parameters left undefined
     in the constructor through :func:`determine_missing_parameters`.
@@ -1336,6 +1386,10 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
     phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
         The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
         and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
+    restraint_name : str or None, Optional
+        Optional suffix string to change which global variable this force is controlled by.
+        If None, the variable will be ``lambda_restraints``, otherwise it will be
+        ``lambda_restraints_{restraint_name}``
 
     Attributes
     ----------
@@ -1396,7 +1450,9 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
                  K_thetaB=None, theta_B0=None,
                  K_phiA=None, phi_A0=None,
                  K_phiB=None, phi_B0=None,
-                 K_phiC=None, phi_C0=None):
+                 K_phiC=None, phi_C0=None,
+                 restraint_name=None):
+        super().__init__(restraint_name=restraint_name)
         self.restrained_receptor_atoms = restrained_receptor_atoms
         self.restrained_ligand_atoms = restrained_ligand_atoms
         self.K_r = K_r
@@ -1507,7 +1563,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
 
         # Construct CustomCVForce
         restraint_force = openmm.CustomCVForce(energy_function)
-        restraint_force.addGlobalParameter('lambda_restraints', 1.0)
+        restraint_force.addGlobalParameter('{}'.format(self.full_restraint_name), 1.0)
         for cv, force in force_components:
             force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
             restraint_force.addCollectiveVariable(cv, force)
@@ -1629,8 +1685,11 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
 
         Variables should also be used:
 
-          * lambda_restraints : Alchemical variable, should be scalar on whole energy
-          * boresch_restraint_distance          : Restrained distance
+          * lambda_restraints{_suffix} : Alchemical variable, should be scalar on whole energy,
+                                         Because this may be dynamic based on the restraint_name,
+                                         it is HIGHLY recommended to dynamically set this with the
+                                         ``full_restraint_name`` property.
+          * boresch_restraint_distance : Restrained distance
           * boresch_angle_a            : Restrained angle "A"
           * boresch_angle_b            : Restrained angle "B"
           * boresch_torsion_a          : Restrained torsion "A"
@@ -2022,7 +2081,8 @@ class Boresch(BoreschLike):
         ``lambda_restraints``: a scale factor that can be used to control the strength
         of the restraint.
 
-    You can control ``lambda_restraints`` through the class :class:`RestraintState`.
+    You can control ``lambda_restraints`` through the class :class:`RestraintState` and can optionally
+    be suffixed (``_suffix``) through  the ``restraint_name`` keyword argument.
 
     The class supports automatic determination of the parameters left undefined
     in the constructor through :func:`determine_missing_parameters`.
@@ -2072,6 +2132,10 @@ class Boresch(BoreschLike):
     phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
         The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
         and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
+    restraint_name : str or None, Optional
+        Optional suffix string to change which global variable this force is controlled by.
+        If None, the variable will be ``lambda_restraints``, otherwise it will be
+        ``lambda_restraints_{restraint_name}``
 
     Attributes
     ----------
@@ -2131,8 +2195,11 @@ class Boresch(BoreschLike):
         Get the energy function string which defines the full restraint compatible with OpenMM Custom*Force
         expressions.
 
-          * lambda_restraints : Alchemical variable, should be scalar on whole energy
-          * boresch_restraint_distance          : Restrained distance
+          * lambda_restraints{_suffix} : Alchemical variable, should be scalar on whole energy,
+                                         Because this may be dynamic based on the restraint_name,
+                                         it is HIGHLY recommended to dynamically set this with the
+                                         ``full_restraint_name`` property.
+          * boresch_restraint_distance : Restrained distance
           * boresch_angle_a            : Restrained angle "A"
           * boresch_angle_b            : Restrained angle "B"
           * boresch_torsion_a          : Restrained torsion "A"
@@ -2145,15 +2212,15 @@ class Boresch(BoreschLike):
             String defining the force compatible with OpenMM Custom
         """
         energy_function = """
-            lambda_restraints * E;
+            {0} * E;
             E = (K_r/2)*(boresch_restraint_distance - r_aA0)^2
             + (K_thetaA/2)*(boresch_angle_a-theta_A0)^2 + (K_thetaB/2)*(boresch_angle_b-theta_B0)^2
             + (K_phiA/2)*dphi_A^2 + (K_phiB/2)*dphi_B^2 + (K_phiC/2)*dphi_C^2;
             dphi_A = dA - floor(dA/(2*pi)+0.5)*(2*pi); dA = boresch_torsion_a - phi_A0;
             dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = boresch_torsion_b - phi_B0;
             dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = boresch_torsion_c - phi_C0;
-            pi = %f;
-            """ % np.pi
+            pi = {1:f};
+            """.format(self.full_restraint_name, np.pi)
         return energy_function
 
     def _numerical_distance_integrand(self, r, r0, spring_constant, kt):
@@ -2280,7 +2347,8 @@ class PeriodicTorsionBoresch(Boresch):
         ``lambda_restraints``: a scale factor that can be used to control the strength
         of the restraint.
 
-    You can control ``lambda_restraints`` through the class :class:`RestraintState`.
+    You can control ``lambda_restraints`` through the class :class:`RestraintState` and can optionally
+    be suffixed (``_suffix``) through  the ``restraint_name`` keyword argument.
 
     The class supports automatic determination of the parameters left undefined
     in the constructor through :func:`determine_missing_parameters`.
@@ -2352,6 +2420,10 @@ class PeriodicTorsionBoresch(Boresch):
     phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
         The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
         and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
+    restraint_name : str or None, Optional
+        Optional suffix string to change which global variable this force is controlled by.
+        If None, the variable will be ``lambda_restraints``, otherwise it will be
+        ``lambda_restraints_{restraint_name}``
 
     Attributes
     ----------
@@ -2379,15 +2451,15 @@ class PeriodicTorsionBoresch(Boresch):
             String defining the force compatible with OpenMM Custom
         """
         energy_function = """
-            lambda_restraints * E;
+            {0} * E;
             E = (K_r/2)*(boresch_restraint_distance - r_aA0)^2
             + (K_thetaA/2)*(boresch_angle_a-theta_A0)^2 + (K_thetaB/2)*(boresch_angle_b-theta_B0)^2
             + (K_phiA/2)*uphi_A + (K_phiB/2)*uphi_B + (K_phiC/2)*uphi_C;
             uphi_A = (1-cos(dA)); dA = boresch_torsion_a - phi_A0;
             uphi_B = (1-cos(dB)); dB = boresch_torsion_b - phi_B0;
             uphi_C = (1-cos(dC)); dC = boresch_torsion_c - phi_C0;
-            pi = %f;
-            """ % np.pi
+            pi = {1:f};
+            """.format(self.full_restraint_name, np.pi)
         return energy_function
 
     def _numerical_torsion_integrand(self, phi, phi0, spring_constant, kt):
@@ -2431,6 +2503,9 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
 
     ``E = lambda_restraints * step(RMSD-RMSD0) * (K/2)*(RMSD-RMSD0)^2``
 
+    You can control ``lambda_restraints`` through the class :class:`RestraintState` and can optionally
+    be suffixed (``_suffix``) through  the ``restraint_name`` keyword argument.
+
     Parameters
     ----------
     restrained_receptor_atoms : iterable of int, str, or None; Optional
@@ -2464,6 +2539,10 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
         The sampler state must have the same number of particles as the thermodynamic state you
         will apply this force to. This can temporarily be left undefined, but
         ``determine_missing_parameters()`` must be called before using the Restraint object.
+    restraint_name : str or None, Optional
+        Optional suffix string to change which global variable this force is controlled by.
+        If None, the variable will be ``lambda_restraints``, otherwise it will be
+        ``lambda_restraints_{restraint_name}``
 
 
     Attributes
@@ -2506,8 +2585,9 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
     """
     def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None,
                  K_RMSD=None, RMSD0=None,
-                 reference_sampler_state=None):
-        super().__init__()
+                 reference_sampler_state=None,
+                 restraint_name=None):
+        super().__init__(restraint_name=restraint_name)
         self.restrained_receptor_atoms = restrained_receptor_atoms
         self.restrained_ligand_atoms = restrained_ligand_atoms
         self.K_RMSD = K_RMSD
@@ -2576,12 +2656,13 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
         rmsd_cv = openmm.RMSDForce(self.reference_sampler_state.positions, restrained_atoms)
 
         # Create an CustomCVForce
-        energy_expression = 'lambda_restraints * step(dRMSD) * (K_RMSD/2)*dRMSD^2; dRMSD = (RMSD-RMSD0);'
+        energy_expression = ('{} * step(dRMSD) * (K_RMSD/2)*dRMSD^2; '
+                             'dRMSD = (RMSD-RMSD0);'.format(self.full_restraint_name))
         energy_expression += 'K_RMSD = %f;' % self.K_RMSD.value_in_unit_system(unit.md_unit_system)
         energy_expression += 'RMSD0 = %f;' % self.RMSD0.value_in_unit_system(unit.md_unit_system)
         restraint_force = openmm.CustomCVForce(energy_expression)
         restraint_force.addCollectiveVariable('RMSD', rmsd_cv)
-        restraint_force.addGlobalParameter('lambda_restraints', 1.0)
+        restraint_force.addGlobalParameter('{}'.format(self.full_restraint_name), 1.0)
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system

@@ -189,6 +189,7 @@ class TestAlchemicalPhase(object):
         cls.restrained_protocol = dict(lambda_electrostatics=[1.0, 1.0, 0.0, 0.0],
                                        lambda_sterics=[1.0, 1.0, 1.0, 0.0],
                                        lambda_restraints=[0.0, 1.0, 1.0, 1.0])
+        cls.multi_restraint_protocol = {**cls.restrained_protocol, **{'lambda_restraints_new': [0.0, 0.5, 1.0, 1.0]}}
 
         # Ligand-receptor in implicit solvent.
         test_system = testsystems.HostGuestImplicit()
@@ -330,44 +331,61 @@ class TestAlchemicalPhase(object):
             if not (hasattr(restraint, "dev_validate") and not restraint.dev_validate)
         ]
 
+        def draw_restraint():
+            return available_restraints[np.random.randint(0, len(available_restraints))]
+
         for test_index, test_case in enumerate(self.all_test_cases):
             test_name, thermodynamic_state, sampler_state, topography = test_case
 
-            # Add random restraint if this is ligand-receptor system in implicit solvent.
-            if len(topography.ligand_atoms) > 0:
-                restraint_cls = available_restraints[np.random.randint(0, len(available_restraints))]
-                restraint = restraint_cls()
-                protocol = self.restrained_protocol
-                test_name += ' with restraint {}'.format(restraint_cls.__name__)
-            else:
-                restraint = None
-                protocol = self.protocol
+            already_did_it_no_restraint = False
 
-            # Add either automatic of fixed correction cutoff.
-            if test_index % 2 == 0:
-                correction_cutoff = 12 * unit.angstroms
-            else:
-                correction_cutoff = 'auto'
+            for multi_restraint, res_protocol in zip([False, True],
+                                                     [self.restrained_protocol, self.multi_restraint_protocol]):
+                if already_did_it_no_restraint:
+                    # Skip over if there was no restraint
+                    continue
+                # Add random restraint if this is ligand-receptor system in implicit solvent.
+                if len(topography.ligand_atoms) > 0:
+                    restraint_cls = draw_restraint()
+                    restraint = restraint_cls()
+                    test_name += ' with restraint {}'.format(restraint_cls.__name__)
+                    if multi_restraint:
+                        other_restraint_cls = draw_restraint()
+                        other_restraint = other_restraint_cls(restraint_name='new')
+                        restraint = [restraint, other_restraint]
+                        test_name += ' and restraint {}'.format(other_restraint_cls.__name__)
+                    protocol = res_protocol
+                else:
+                    restraint = None
+                    protocol = self.protocol
+                    # Skip over if there was no restraint
+                    already_did_it_no_restraint = True
 
-            # Replace the reaction field of the reference system to compare
-            # also cutoff and switch width for the electrostatics.
-            reference_system = thermodynamic_state.system
-            mmtools.forcefactories.replace_reaction_field(reference_system, return_copy=False)
+                # Add either automatic of fixed correction cutoff.
+                if test_index % 2 == 0:
+                    correction_cutoff = 12 * unit.angstroms
+                else:
+                    correction_cutoff = 'auto'
 
-            alchemical_phase = AlchemicalPhase(sampler=ReplicaExchangeSampler())
-            with self.temporary_storage_path() as storage_path:
-                alchemical_phase.create(thermodynamic_state, sampler_state, topography,
-                                        protocol, storage_path, restraint=restraint,
-                                        anisotropic_dispersion_cutoff=correction_cutoff)
+                # Replace the reaction field of the reference system to compare
+                # also cutoff and switch width for the electrostatics.
+                reference_system = thermodynamic_state.system
+                mmtools.forcefactories.replace_reaction_field(reference_system, return_copy=False)
 
-                yield prepare_yield(self.check_protocol, test_name, alchemical_phase, protocol)
-                yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
-                                    topography, restraint)
-                yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
-                                    protocol, correction_cutoff, reference_system)
+                alchemical_phase = AlchemicalPhase(sampler=ReplicaExchangeSampler())
+                with self.temporary_storage_path() as storage_path:
+                    alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                            protocol, storage_path, restraint=restraint,
+                                            anisotropic_dispersion_cutoff=correction_cutoff)
 
-                # Free memory.
-                del alchemical_phase
+                    yield prepare_yield(self.check_protocol, test_name, alchemical_phase, protocol)
+                    yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
+                                        topography, restraint)
+                    yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
+                                        protocol, correction_cutoff, reference_system)
+
+                    # Free memory.
+                    del alchemical_phase
 
     def test_default_alchemical_region(self):
         """The default alchemical region modify the correct system elements."""

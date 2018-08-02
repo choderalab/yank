@@ -9,10 +9,14 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 0.24.0 Multi-Restraint
 ----------------------
 
-Enhancements and feature
-""""""""""""""""""""""""
+Enhancements and Features
+"""""""""""""""""""""""""
 - New ``restraints`` block in YAML application layer for supporting multiple, and reusable restraints (Backwards compatible with older YAML files)
-- All YANK restraints now use the ``CustomCVForce`` in OpenMM to extract variables for unbiasing
+- Multiple restraints can now be applied to a YANK system, both through the API and YAML
+- Restraints can now use separate protocol variables through the ``restraint_name`` keyword arg in YAML and the API. These
+  are non-unique so multiple restraints can use the same variables. Variables in the ``protocol`` will be of form
+  ``lambda_restraints_{restraint_name}`` but will default to ``lambda_restraints`` if ``restraint_name`` is not set,
+- All YANK restraints are now ``CustomCVForce`` in OpenMM to extract variables for unbiasing.
 
 Bugfixes
 """"""""

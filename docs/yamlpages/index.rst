@@ -193,7 +193,7 @@ Detailed Options List
 * :doc:`restraints <restraints>`
 
   * :ref:`type <yaml_restraints_type>`
-  * :ref:`name <yaml_restraints_name>`
+  * :ref:`restraint_name <yaml_restraints_restraint_name>`
   * :ref:`Restraint-type dependent options <yaml_restraints_other>`
 
 * :doc:`protocols <protocols>`
