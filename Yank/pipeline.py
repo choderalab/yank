@@ -995,9 +995,6 @@ def apply_modeller(input_file_path, output_file_path, directives):
                 chain_id = None
         # Extract mutations
         mutations = value['mutations']
-        # Check that double mutants were not specified
-        if len(mutations) > 1:
-            raise ValueError("You have specified a double mutant, which is not supported by modeller. These mutants are problematic:{}".format(mutations))
         # Convert mutations to PDBFixer format
         if mutations != 'WT':
             modeller_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
