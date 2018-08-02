@@ -1008,14 +1008,17 @@ def apply_modeller(input_file_path, output_file_path, directives):
         if mutations != 'WT':
             modeller_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
                                   for mutation in mutations.split('/')]
-            logger.info('modeller: Will make mutations {} to chain_id {}.'.format(modeller_mutations, chain_id))
-            sel = modeller.selection(model.chains[chain_id].residues[modeller_mutations[0].split('-')[1]])
-            sel.mutate(residue_type=modeller_mutations[0].split('-')[2])
-            alignment.append_model(model, align_codes=modeller_mutations[0])
-            model.clear_topology()
-            model.generate_topology(alignment[modeller_mutations[0]])
-            model.transfer_xyz(alignment)
-            model.build(initialize_xyz=False, build_method='INTERNAL_COORDINATES')
+            if len(modeller_mutations) > 1:
+                raise ValueError('{} is a double mutant and not supported by Modeller currently.'.format(mutations))
+            else:
+                logger.info('modeller: Will make mutations {} to chain_id {}.'.format(modeller_mutations, chain_id))
+                sel = modeller.selection(model.chains[chain_id].residues[modeller_mutations[0].split('-')[1]])
+                sel.mutate(residue_type=modeller_mutations[0].split('-')[2])
+                alignment.append_model(model, align_codes=modeller_mutations[0])
+                model.clear_topology()
+                model.generate_topology(alignment[modeller_mutations[0]])
+                model.transfer_xyz(alignment)
+                model.build(initialize_xyz=False, build_method='INTERNAL_COORDINATES')
 
         else:
             logger.info('modeller: No mutations will be applied since "WT" specified.')
