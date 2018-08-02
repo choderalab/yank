@@ -53,11 +53,6 @@ V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 # CUSTOM EXCEPTIONS
 # ==============================================================================
 
-class RestraintStateError(mmtools.states.ComposableStateError):
-    """Error raised by an :class:`RestraintState`."""
-    pass
-
-
 class RestraintParameterError(Exception):
     """Error raised by a :class:`ReceptorLigandRestraint`."""
     pass
@@ -133,12 +128,13 @@ def create_restraint(restraint_type, **kwargs):
 # ComposableState class to control the strength of restraints.
 # ==============================================================================
 
-class RestraintState(object):
+class RestraintState(mmtools.states.GlobalParameterState):
     """
     The state of a restraint.
 
-    A ``ComposableState`` controlling the strength of a restraint
-    through its ``lambda_restraints`` property.
+    A ``ComposableState`` derivative of ``GlobalParameterState``
+    controlling the strength of a restraint through its
+    ``lambda_restraints`` property.
 
     Parameters
     ----------
@@ -194,194 +190,19 @@ class RestraintState(object):
     >>> compound_state.apply_to_context(context)
     >>> context.getParameter('lambda_restraints')
     0.0
-
     """
-    def __init__(self, lambda_restraints):
-        self.lambda_restraints = lambda_restraints
 
-    @property
-    def lambda_restraints(self):
-        """Float: the strength of the applied restraint (between 0 and 1 inclusive)."""
-        return self._lambda_restraints
+    lambda_restraints = mmtools.states.GlobalParameterState.GlobalParameter('lambda_restraints', standard_value=0.0)
 
-    @lambda_restraints.setter
-    def lambda_restraints(self, value):
-        assert 0.0 <= value <= 1.0
-        self._lambda_restraints = float(value)
+    @lambda_restraints.validator
+    def lambda_restraints(self, instance, new_value):
+        if new_value is not None and not (0.0 <= new_value <= 1.0):
+            raise ValueError('lambda_restraints must be between 0.0 and 1.0')
+        return new_value
 
-    def apply_to_system(self, system):
-        """
-        Set the strength of the system's restraint to this.
-
-        System is updated in-place
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-            The system to modify.
-
-        Raises
-        ------
-        RestraintStateError
-            If the system does not have any ``CustomForce`` with a
-            ``lambda_restraint`` global parameter.
-
-        """
-        # Set lambda_restraints in all forces that have it.
-        for force, parameter_id in self._get_system_forces_parameters(system):
-            force.setGlobalParameterDefaultValue(parameter_id, self._lambda_restraints)
-
-    def check_system_consistency(self, system):
-        """
-        Check if the system's restraint is in this restraint state.
-
-        It raises a :class:`RestraintStateError` if the restraint is not consistent
-        with the state.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-            The system with the restraint to test.
-
-        Raises
-        ------
-        RestraintStateError
-            If the system is not consistent with this state.
-
-        """
-        # Set lambda_restraints in all forces that have it.
-        for force, parameter_id in self._get_system_forces_parameters(system):
-            force_lambda = force.getGlobalParameterDefaultValue(parameter_id)
-            if force_lambda != self.lambda_restraints:
-                err_msg = 'Consistency check failed: system {}, state {}'
-                raise RestraintStateError(err_msg.format(force_lambda, self._lambda_restraints))
-
-    def apply_to_context(self, context):
-        """Put the restraint in the `Context` into this state.
-
-        Parameters
-        ----------
-        context : simtk.openmm.Context
-            The context to set.
-
-        Raises
-        ------
-        RestraintStateError
-            If the context does not have the required lambda global variables.
-
-        """
-        try:
-            context.setParameter('lambda_restraints', self._lambda_restraints)
-        except Exception:
-            raise RestraintStateError('The context does not have a restraint.')
-
-    def _standardize_system(self, system):
-        """Standardize the given system.
-
-        Set lambda_restraints of the system to 1.0.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-            The system to standardize.
-
-        Raises
-        ------
-        RestraintStateError
-            If the system is not consistent with this state.
-
-        """
-        # Set lambda_restraints to 1.0 in all forces that have it.
-        for force, parameter_id in self._get_system_forces_parameters(system):
-            force.setGlobalParameterDefaultValue(parameter_id, 1.0)
-
-    def _on_setattr(self, standard_system, attribute_name):
-        """Check if the standard system needs changes after a state attribute is set.
-
-        Parameters
-        ----------
-        standard_system : simtk.openmm.System
-            The standard system before setting the attribute.
-        attribute_name : str
-            The name of the attribute that has just been set or retrieved.
-
-        Returns
-        -------
-        need_changes : bool
-            True if the standard system has to be updated, False if no change
-            occurred.
-
-        """
-        # There are no attributes that can be set that can alter the standard system.
-        return False
-
-    def _find_force_groups_to_update(self, context, current_context_state, memo):
-        """Find the force groups whose energy must be recomputed after applying self.
-
-        Parameters
-        ----------
-        context : Context
-            The context, currently in `current_context_state`, that will
-            be moved to this state.
-        current_context_state : ThermodynamicState
-            The full thermodynamic state of the given context. This is
-            guaranteed to be compatible with self.
-        memo : dict
-            A dictionary that can be used by the state for memoization
-            to speed up consecutive calls on the same context.
-
-        Returns
-        -------
-        force_groups_to_update : set of int
-            The indices of the force groups whose energy must be computed
-            again after applying this state, assuming the context to be in
-            `current_context_state`.
-        """
-        # Check if lambda_restraints will change.
-        if self.lambda_restraints == current_context_state.lambda_restraints:
-            return set()
-
-        # Update memo if this is the first call for this context.
-        if len(memo) == 0:
-            system = context.getSystem()
-            for force, _ in self._get_system_forces_parameters(system):
-                memo['lambda_restraints'] = force.getForceGroup()
-        return {memo['lambda_restraints']}
-
-    @staticmethod
-    def _get_system_forces_parameters(system):
-        """Yields the system's forces having a ``lambda_restraints`` parameter.
-
-        Yields
-        ------
-        A tuple force, ``parameter_index`` for each force with ``lambda_restraints``.
-
-        """
-        found_restraint = False
-
-        # Retrieve all the forces with global supported parameters.
-        for force_index in range(system.getNumForces()):
-            force = system.getForce(force_index)
-            try:
-                n_global_parameters = force.getNumGlobalParameters()
-            except AttributeError:
-                continue
-            for parameter_id in range(n_global_parameters):
-                parameter_name = force.getGlobalParameterName(parameter_id)
-                if parameter_name == 'lambda_restraints':
-                    found_restraint = True
-                    yield force, parameter_id
-                    break
-
-        # Raise error if the system doesn't have a restraint.
-        if found_restraint is False:
-            raise RestraintStateError('The system does not have a restraint.')
-
-    def __getstate__(self):
-        return dict(lambda_restraints=self._lambda_restraints)
-
-    def __setstate__(self, serialization):
-        self.lambda_restraints = serialization['lambda_restraints']
+    # A constructor just to give parameters_name_suffix a more meaningful name.
+    def __init__(self, restraint_name=None, **kwargs):
+        super().__init__(parameters_name_suffix=restraint_name, **kwargs)
 
 
 # ==============================================================================
@@ -744,7 +565,17 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                                                     self.restrained_ligand_atoms)
 
         # Set periodic conditions on the force if necessary.
-        restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
+        if isinstance(restraint_force, openmm.CustomCVForce):
+            # Handle CV force which does not itself know about PBC, but its subclasses do.
+            # Does not handle CVForce _in_ a CVForce, but that should not happen?
+            for index in range(restraint_force.getNumCollectiveVariables()):
+                cv = restraint_force.getCollectiveVariable(index)
+                try:
+                    cv.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
+                except AttributeError:
+                    pass
+        else:
+            restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system
@@ -1011,7 +842,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 # Harmonic protein-ligand restraint.
 # ==============================================================================
 
-class Harmonic(OpenMM73, RadiallySymmetricRestraint):
+class Harmonic(RadiallySymmetricRestraint):
     """Impose a single harmonic restraint between ligand and protein.
 
     This can be used to prevent the ligand from drifting too far from the
@@ -1639,26 +1470,26 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         force_components = []
         distance_force = openmm.CustomBondForce('r')
         distance_force.addBond(self.restrained_receptor_atoms[-1], self.restrained_ligand_atoms[0], [])
-        force_components.append(['Distance', distance_force])
+        force_components.append(['boresch_restraint_distance', distance_force])
         angle_a_force = openmm.CustomAngleForce('theta')
         angle_a_force.addAngle(self.restrained_receptor_atoms[1],
                                self.restrained_receptor_atoms[2],
                                self.restrained_ligand_atoms[0],
                                [])
-        force_components.append(['AngleA', angle_a_force])
+        force_components.append(['boresch_angle_a', angle_a_force])
         angle_b_force = openmm.CustomAngleForce('theta')
         angle_b_force.addAngle(self.restrained_receptor_atoms[2],
                                self.restrained_ligand_atoms[0],
                                self.restrained_ligand_atoms[1],
                                [])
-        force_components.append(['AngleB', angle_b_force])
+        force_components.append(['boresch_angle_b', angle_b_force])
         torsion_a_force = openmm.CustomTorsionForce('theta')
         torsion_a_force.addTorsion(self.restrained_receptor_atoms[0],
                                    self.restrained_receptor_atoms[1],
                                    self.restrained_receptor_atoms[2],
                                    self.restrained_ligand_atoms[0],
                                    [])
-        force_components.append(['TorsionA', torsion_a_force])
+        force_components.append(['boresch_torsion_a', torsion_a_force])
         torsion_b_force = openmm.CustomTorsionForce('theta')
         torsion_b_force.addTorsion(self.restrained_receptor_atoms[1],
                                    self.restrained_receptor_atoms[2],
@@ -1680,8 +1511,6 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         for cv, force in force_components:
             force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
             restraint_force.addCollectiveVariable(cv, force)
-
-
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system
@@ -1801,12 +1630,12 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         Variables should also be used:
 
           * lambda_restraints : Alchemical variable, should be scalar on whole energy
-          * Distance          : Restrained distance
-          * AngleA            : Restrained angle "A"
-          * AngleB            : Restrained angle "B"
-          * TorsionA          : Restrained torsion "A"
-          * TorsionB          : Restrained torsion "B"
-          * TorsionC          : Restrained torsion "C"
+          * boresch_restraint_distance          : Restrained distance
+          * boresch_angle_a            : Restrained angle "A"
+          * boresch_angle_b            : Restrained angle "B"
+          * boresch_torsion_a          : Restrained torsion "A"
+          * boresch_torsion_b          : Restrained torsion "B"
+          * boresch_torsion_c          : Restrained torsion "C"
 
         Returns
         -------
@@ -2303,12 +2132,12 @@ class Boresch(BoreschLike):
         expressions.
 
           * lambda_restraints : Alchemical variable, should be scalar on whole energy
-          * Distance          : Restrained distance
-          * AngleA            : Restrained angle "A"
-          * AngleB            : Restrained angle "B"
-          * TorsionA          : Restrained torsion "A"
-          * TorsionB          : Restrained torsion "B"
-          * TorsionC          : Restrained torsion "C"
+          * boresch_restraint_distance          : Restrained distance
+          * boresch_angle_a            : Restrained angle "A"
+          * boresch_angle_b            : Restrained angle "B"
+          * boresch_torsion_a          : Restrained torsion "A"
+          * boresch_torsion_b          : Restrained torsion "B"
+          * boresch_torsion_c          : Restrained torsion "C"
 
         Returns
         -------
@@ -2317,12 +2146,12 @@ class Boresch(BoreschLike):
         """
         energy_function = """
             lambda_restraints * E;
-            E = (K_r/2)*(Distance - r_aA0)^2
-            + (K_thetaA/2)*(AngleA-theta_A0)^2 + (K_thetaB/2)*(AngleB-theta_B0)^2
+            E = (K_r/2)*(boresch_restraint_distance - r_aA0)^2
+            + (K_thetaA/2)*(boresch_angle_a-theta_A0)^2 + (K_thetaB/2)*(boresch_angle_b-theta_B0)^2
             + (K_phiA/2)*dphi_A^2 + (K_phiB/2)*dphi_B^2 + (K_phiC/2)*dphi_C^2;
-            dphi_A = dA - floor(dA/(2*pi)+0.5)*(2*pi); dA = TorsionA - phi_A0;
-            dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = TorsionB - phi_B0;
-            dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = TorsionC - phi_C0;
+            dphi_A = dA - floor(dA/(2*pi)+0.5)*(2*pi); dA = boresch_torsion_a - phi_A0;
+            dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = boresch_torsion_b - phi_B0;
+            dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = boresch_torsion_c - phi_C0;
             pi = %f;
             """ % np.pi
         return energy_function
@@ -2551,12 +2380,12 @@ class PeriodicTorsionBoresch(Boresch):
         """
         energy_function = """
             lambda_restraints * E;
-            E = (K_r/2)*(Distance - r_aA0)^2
-            + (K_thetaA/2)*(AngleA-theta_A0)^2 + (K_thetaB/2)*(AngleB-theta_B0)^2
+            E = (K_r/2)*(boresch_restraint_distance - r_aA0)^2
+            + (K_thetaA/2)*(boresch_angle_a-theta_A0)^2 + (K_thetaB/2)*(boresch_angle_b-theta_B0)^2
             + (K_phiA/2)*uphi_A + (K_phiB/2)*uphi_B + (K_phiC/2)*uphi_C;
-            uphi_A = (1-cos(dA)); dA = TorsionA - phi_A0;
-            uphi_B = (1-cos(dB)); dB = TorsionB - phi_B0;
-            uphi_C = (1-cos(dC)); dC = TorsionC - phi_C0;
+            uphi_A = (1-cos(dA)); dA = boresch_torsion_a - phi_A0;
+            uphi_B = (1-cos(dB)); dB = boresch_torsion_b - phi_B0;
+            uphi_C = (1-cos(dC)); dC = boresch_torsion_c - phi_C0;
             pi = %f;
             """ % np.pi
         return energy_function

@@ -290,7 +290,8 @@ def test_partial_parametrization():
                 particles, _ = force.getBondParameters(0)
                 assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
             # RMSD restraint.
-            elif OpenMM73.dev_validate and isinstance(force, openmm.CustomCVForce):
+            elif OpenMM73.dev_validate and isinstance(force, openmm.CustomCVForce) and \
+                    isinstance(force.getCollectiveVariable(0), openmm.RMSDForce):
                 rmsd_cv = force.getCollectiveVariable(0)
                 particles = rmsd_cv.getParticles()
                 assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
@@ -325,7 +326,10 @@ def restraint_selection_template(topography_ligand_atoms=None,
     # The bond force is configured correctly.
     restraint.restrain_state(thermodynamic_state)
     system = thermodynamic_state.system
+
     for force in system.getForces():
+        if isinstance(force, openmm.CustomCVForce):
+            force = force.getCollectiveVariable(0)
         if isinstance(force, openmm.CustomCentroidBondForce):
             assert force.getBondParameters(0)[0] == (0, 1)
             assert len(force.getGroupParameters(0)[0]) == 14
@@ -489,7 +493,7 @@ class TestRestraintState(object):
 
             # Changing the attribute changes the internal representation of a system.
             compound_state.lambda_restraints = 0.5
-            for force, parameter_id in compound_state._get_system_forces_parameters(compound_state.system):
+            for force, _, parameter_id in compound_state._get_system_controlled_parameters(compound_state.system, None):
                 assert force.getGlobalParameterDefaultValue(parameter_id) == 0.5
 
     def test_apply_to_context(self):
@@ -517,7 +521,7 @@ class TestRestraintState(object):
             assert compound_state.is_state_compatible(compatible_state)
 
             # Trying to assign a System without a Restraint raises an error.
-            with nose.tools.assert_raises(yank.restraints.RestraintStateError):
+            with nose.tools.assert_raises(mmtools.states.GlobalParameterError):
                 compound_state.system = unrestrained_system
 
     def test_find_force_groups_to_update(self):
@@ -527,7 +531,7 @@ class TestRestraintState(object):
 
             # Find the restraint force group.
             system = context.getSystem()
-            force, _ = next(yank.restraints.RestraintState._get_system_forces_parameters(system))
+            force, _, _ = next(yank.restraints.RestraintState._get_system_controlled_parameters(system, None))
             force_group = force.getForceGroup()
 
             # No force group should be updated if we don't move.
