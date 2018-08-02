@@ -975,9 +975,18 @@ def apply_modeller(input_file_path, output_file_path, directives):
         raise ImportError('Modeller and license must be installed to use this feature.')
 
     directives = copy.deepcopy(directives)
+
+    # Silence unecessart output to the log files
+    modeller.log.none()
+
+    # Create modeller environment and point it to the PDB file
     env = modeller.environ()
     atom_files_directory = os.path.dirname(input_file_path)
     atom_file_name = os.path.basename(input_file_path)
+
+    # Read in topology and parameter files
+    env.libs.topology.read(file='$(LIB)/top_heav.lib')
+    env.libs.parameters.read(file='$(LIB)/par.lib')
 
     env.io.atom_files_directory = [atom_files_directory]
     alignment = modeller.alignment(env)
