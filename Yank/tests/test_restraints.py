@@ -95,25 +95,47 @@ restraint_test_yaml = """
 options:
   minimize: no
   verbose: yes
-  output_dir: %(output_directory)s
-  default_number_of_iterations: %(number_of_iter)s
-  nsteps_per_iteration: 100
+  output_dir: {output_directory:s}
+  default_number_of_iterations: {number_of_iter:d}
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_cutoff: null
   platform: OpenCL
 
 solvents:
-  vacuum:
+  PME:
     nonbonded_method: PME
     nonbonded_cutoff: 0.59 * nanometer
+  GBSA:
+    nonbonded_method: NoCutoff
+    implicit_solvent: OBC2
 
 systems:
   ship:
-    phase1_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
-    phase2_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    phase1_path: [data/benzene-toluene-standard-state/standard_state_complex_boxless.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    phase2_path: [data/benzene-toluene-standard-state/standard_state_complex_boxless.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
     ligand_dsl: resname ene
-    solvent: vacuum
+    solvent: GBSA
+
+mcmc_moves:
+    Langevin:
+        type: LangevinSplittingDynamicsMove
+        timestep: 2.0*femtoseconds
+        n_steps: 100
+        splitting: 'VRORV' 
+    
+samplers:
+    SAMS:
+        type: SAMSSampler
+        number_of_iterations: {number_of_iter:d}
+        mcmc_moves: Langevin
+    
+restraints:
+  MyHarmoninc:
+    type: Harmonic
+  MyBoresch:
+    type: Boresch
+    restraint_name: waffle
 
 protocols:
   absolute-binding:
@@ -121,17 +143,16 @@ protocols:
       alchemical_path:
         lambda_restraints:     [0.0, 0.25, 0.5, 0.75, 1.0]
         lambda_electrostatics: [0.0, 0.00, 0.0, 0.00, 0.0]
-        lambda_sterics:        [0.0, 0.00, 0.0, 0.00, 0.0]
+        lambda_sterics:        [0.0, 0.00, 0.0, 0.00, 0.0]{waffle_augment}
     solvent:
       alchemical_path:
-        lambda_electrostatics: [1.0, 1.0]
-        lambda_sterics:        [1.0, 1.0]
+        lambda_electrostatics: [0.0, 0.0]
+        lambda_sterics:        [0.0, 0.0]
 
 experiments:
   system: ship
   protocol: absolute-binding
-  restraint:
-    type: %(restraint_type)s
+  restraint: {restraint_type:s}
 """
 
 
@@ -144,21 +165,28 @@ def general_restraint_run(options):
     with mmtools.utils.temporary_directory() as output_directory:
         # TODO refactor this to use AlchemicalPhase API rather than a YAML script.
         options['output_directory'] = output_directory
+        # Check if we are using an additional restraint_name, then add that option to the complex phase
+        if 'restraint_type' in options and 'MyBoresch' in options['restraint_type']:
+            # Choosing a gibberish name to reduce chances it will overlap with other features now or later
+            # ... and waffles are tasty.
+            # Number of spaces in this must match indentation level from the restraint_test_yaml
+            options['waffle_augment'] = '\n        lambda_restraints_waffle: [0.0, 0.25, 0.5, 0.75, 1.0]'
         # run both setup and experiment
-        yaml_builder = experiment.ExperimentBuilder(restraint_test_yaml % options)
+        yaml_builder = experiment.ExperimentBuilder(restraint_test_yaml.format(**options))
         yaml_builder.run_experiments()
         # Estimate Free Energies
         ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
         reporter = multistate.MultiStateReporter(ncfile_path, open_mode='r')
         ncfile = netcdf.Dataset(ncfile_path, 'r')
-        analyzer = multistate.ReplicaExchangeAnalyzer(ncfile)
+        analyzer = multistate.ReplicaExchangeAnalyzer(reporter)
         Deltaf_ij, dDeltaf_ij = analyzer.get_free_energy()
         # Correct the sign for the fact that we are adding vs removing the restraints
         DeltaF_simulated = Deltaf_ij[-1, 0]
         dDeltaF_simulated = dDeltaf_ij[-1, 0]
-        DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
+        DeltaF_restraints = reporter.read_dict('metadata')['standard_state_correction']
+        # DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
         ncfile.close()
-
+        import pdb; pdb.set_trace()
     # Check if they are close
     assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
 
@@ -168,7 +196,7 @@ def test_harmonic_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
-    options = {'number_of_iter': '500',
+    options = {'number_of_iter': 500,
                'restraint_type': 'Harmonic'}
     general_restraint_run(options)
 
@@ -178,7 +206,7 @@ def test_flat_bottom_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
-    options = {'number_of_iter': '500',
+    options = {'number_of_iter': 500,
                'restraint_type': 'FlatBottom'}
     general_restraint_run(options)
 
@@ -189,7 +217,7 @@ def test_Boresch_free_energy():
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
     # These need more samples to converge
-    options = {'number_of_iter': '1000',
+    options = {'number_of_iter': 1000,
                'restraint_type': 'Boresch'}
     general_restraint_run(options)
 
@@ -200,8 +228,18 @@ def test_PeriodicTorsionBoresch_free_energy():
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
     # These need more samples to converge
-    options = {'number_of_iter': '1000',
+    options = {'number_of_iter': 1000,
                'restraint_type': 'PeriodicTorsionBoresch'}
+    general_restraint_run(options)
+
+
+@attr('slow')
+def test_multi_restraints_free_energy():
+    """
+    Test that multiple free energy restraints work as expected
+    """
+    options = {'number_of_iter': 1000,
+               'restraint_type': '[MyHarmoninc, MyBoresch]'}
     general_restraint_run(options)
 
 
