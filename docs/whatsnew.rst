@@ -8,7 +8,20 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 0.24.0 Multi-Restraint
 ----------------------
-- Work in progress
+
+Enhancements and feature
+""""""""""""""""""""""""
+- New ``restraints`` block in YAML application layer for supporting multiple, and reusable restraints (Backwards compatible with older YAML files)
+- All YANK restraints now use the ``CustomCVForce`` in OpenMM to extract variables for unbiasing
+
+Bugfixes
+""""""""
+- Fixed bug where output minimal YAML file did not include ``samplers`` and ``mcmc_moves` blocks
+
+Compatibility Warnings
+""""""""""""""""""""""
+- YANK now requires OpenMM 7.2 or later
+- YANK now requires OpenMMTools 0.16.0 or later
 
 0.23.1 Multi-Experiment and Online Bug
 --------------------------------------
