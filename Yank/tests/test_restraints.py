@@ -276,25 +276,48 @@ def test_partial_parametrization():
         # The rest of the parameters has been determined.
         restraint.get_standard_state_correction(state)
 
+        def get_cv_atoms(inner_force, cv_index, interaction):
+            """Use CV index (int) and interaction type (str, e.g. Bond, Torsion)"""
+            cv = inner_force.getCollectiveVariable(cv_index)
+            inner_parameters = getattr(cv, 'get' + '{}'.format(interaction).title() + 'Parameters')(0)
+            return tuple(inner_parameters[:-1])
+
         # The force has been configured correctly.
         restraint.restrain_state(state)
         system = state.system
         for force in system.getForces():
-            # RadiallySymmetricRestraint between two single atoms.
-            if isinstance(force, openmm.CustomBondForce):
-                particle1, particle2, _ = force.getBondParameters(0)
-                assert particle1 == restraint.restrained_receptor_atoms[0]
-                assert particle2 == restraint.restrained_ligand_atoms[0]
-            # Boresch restraint.
-            elif isinstance(force, openmm.CustomCompoundBondForce):
-                particles, _ = force.getBondParameters(0)
-                assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
-            # RMSD restraint.
-            elif OpenMM73.dev_validate and isinstance(force, openmm.CustomCVForce) and \
-                    isinstance(force.getCollectiveVariable(0), openmm.RMSDForce):
-                rmsd_cv = force.getCollectiveVariable(0)
-                particles = rmsd_cv.getParticles()
-                assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
+            # All restraint forces are CV's now
+            if isinstance(force, openmm.CustomCVForce):
+                base_cv = force.getCollectiveVariableName(0)
+                # RadiallySymmetricRestraint between two single atoms.
+                if base_cv == "symmetric_restraint_distance":
+                    base_force = force.getCollectiveVariable(0)
+                    particle1, particle2, _ = base_force.getBondParameters(0)
+                    assert particle1 == restraint.restrained_receptor_atoms[0]
+                    assert particle2 == restraint.restrained_ligand_atoms[0]
+                elif base_cv == "boresch_restraint_distance":
+                    bond_particles = get_cv_atoms(force, 0, 'Bond')
+                    assert bond_particles == tuple(restraint.restrained_receptor_atoms[2:] +
+                                                   restraint.restrained_ligand_atoms[:1])
+                    angle_particles_a = get_cv_atoms(force, 1, 'Angle')
+                    angle_particles_b = get_cv_atoms(force, 2, 'Angle')
+                    assert angle_particles_a == tuple(restraint.restrained_receptor_atoms[1:] +
+                                                      restraint.restrained_ligand_atoms[:1])
+                    assert angle_particles_b == tuple(restraint.restrained_receptor_atoms[2:] +
+                                                      restraint.restrained_ligand_atoms[:-1])
+                    torsion_particles_a = get_cv_atoms(force, 3, 'Torsion')
+                    torsion_particles_b = get_cv_atoms(force, 4, 'Torsion')
+                    torsion_particles_c = get_cv_atoms(force, 5, 'Torsion')
+                    assert torsion_particles_a == tuple(restraint.restrained_receptor_atoms[:] +
+                                                        restraint.restrained_ligand_atoms[:1])
+                    assert torsion_particles_b == tuple(restraint.restrained_receptor_atoms[1:] +
+                                                        restraint.restrained_ligand_atoms[:-1])
+                    assert torsion_particles_c == tuple(restraint.restrained_receptor_atoms[2:] +
+                                                        restraint.restrained_ligand_atoms[:])
+                elif base_cv == "RMSD" and OpenMM73.dev_validate:
+                    rmsd_cv = force.getCollectiveVariable(0)
+                    particles = rmsd_cv.getParticles()
+                    assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
 
 
 def restraint_selection_template(topography_ligand_atoms=None,
