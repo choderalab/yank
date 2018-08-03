@@ -1496,14 +1496,14 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
                                    self.restrained_ligand_atoms[0],
                                    self.restrained_ligand_atoms[1],
                                    [])
-        force_components.append(['TorsionB', torsion_b_force])
+        force_components.append(['boresch_torsion_b', torsion_b_force])
         torsion_c_force = openmm.CustomTorsionForce('theta')
         torsion_c_force.addTorsion(self.restrained_receptor_atoms[2],
                                    self.restrained_ligand_atoms[0],
                                    self.restrained_ligand_atoms[1],
                                    self.restrained_ligand_atoms[2],
                                    [])
-        force_components.append(['TorsionC', torsion_c_force])
+        force_components.append(['boresch_torsion_c', torsion_c_force])
 
         # Construct CustomCVForce
         restraint_force = openmm.CustomCVForce(energy_function)
