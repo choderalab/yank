@@ -239,6 +239,58 @@ PDBFixer is applied after ``strip_protons`` if both are requested.
 
 **OPTIONAL**
 
+.. _yaml_molecules_modeller:
+
+.. rst-class:: html-toggle
+
+``modeller``
+------------
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       modeller:
+         apply_mutations:
+           mutations: T315I
+           chain_id: A
+
+Specifies whether modeller should be used to model in mutations.
+Can only be used on proteins, on files with ``.pdb`` file extensions.
+
+Mutations
+^^^^^^^^^
+
+Make the directed mutations to amino acid residues.
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       modeller:
+         apply_mutations:
+           mutations: T315I
+           chain_id: A
+
+Mutations are specified using the format ``<original-one-letter-code><resid><new-one-letter-code>``.
+Only single mutations are supported currently.
+
+The initial PDB file numbering is used for residue identifier ``resid``.
+
+Examples for specifying ``mutations:``:
+
+* ``T315I`` : a single mutation that changes Thr at resid 315 to Ile
+
+``chain_id`` can be either an integer or string. Strings are case sensitive!
+If ``chain_id`` is not specified, it defaults to ``0`` (the first chain in the file will be selected).
+
+Examples for specifying ``chain_id``:
+* ``0`` : the first chain in the file will be selected
+* ``B`` : chain B will be selected
+
+Modeller is applied after both ``strip_protons`` and ''pdbfixer'' if either (or both) are requested.
+
+**OPTIONAL**
 
 
 .. _yaml_molecules_select:

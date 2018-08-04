@@ -1001,7 +1001,7 @@ def apply_modeller(input_file_path, output_file_path, directives):
         if 'chain_id' in value:
             chain_id = value['chain_id']
             if chain_id == 'none':
-                chain_id = None
+                chain_id = 0
         # Extract mutations
         mutations = value['mutations']
         # Convert mutations to PDBFixer format
