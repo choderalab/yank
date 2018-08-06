@@ -65,10 +65,15 @@ Feel free to check how each restraint works and should be applied through their 
         restraint_name: {UserDefinedName}
 
 The only other universal option in this block. The ``restraint_name`` is an **OPTIONAL** setting which will map to
-the ``lambda_restraints_{restraint_name}` variable
+the ``lambda_restraints_{restraint_name}`` variable
 in the :doc:`protocols <protocols>` block. These do not have to be unique so each restraint can be controlled by the
 same variable if so chosen. If this is not set, it defaults to ``null`` so the variable controlling it will be
 ``lambda_restraints`` in the :doc:`protocols <protocols>` block.
+
+.. warning::
+
+    Having multiple restraints which have a Standard State Correction on in the fully decoupled state will result
+    in an error. See reasoning in :ref:`the standard state correction theory <standard_state_algorithm>`
 
 
 .. _yaml_restraints_other:

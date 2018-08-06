@@ -186,7 +186,6 @@ def general_restraint_run(options):
         DeltaF_restraints = reporter.read_dict('metadata')['standard_state_correction']
         # DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
         ncfile.close()
-        import pdb; pdb.set_trace()
     # Check if they are close
     assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
 

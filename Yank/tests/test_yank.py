@@ -189,7 +189,8 @@ class TestAlchemicalPhase(object):
         cls.restrained_protocol = dict(lambda_electrostatics=[1.0, 1.0, 0.0, 0.0],
                                        lambda_sterics=[1.0, 1.0, 1.0, 0.0],
                                        lambda_restraints=[0.0, 1.0, 1.0, 1.0])
-        cls.multi_restraint_protocol = {**cls.restrained_protocol, **{'lambda_restraints_new': [0.0, 0.5, 1.0, 1.0]}}
+        # Make the extra restraint go to 0 at the end to ensure no standard state correction overlap
+        cls.multi_restraint_protocol = {**cls.restrained_protocol, **{'lambda_restraints_new': [1.0, 0.5, 0.25, 0.0]}}
 
         # Ligand-receptor in implicit solvent.
         test_system = testsystems.HostGuestImplicit()
@@ -250,8 +251,12 @@ class TestAlchemicalPhase(object):
         is_complex = len(topography.ligand_atoms) > 0
         metadata = alchemical_phase._sampler.metadata
         standard_state_correction = metadata['standard_state_correction']
+        try:
+            restraint_ids = [res.__class__.__name__ for res in restraint]
+        except TypeError:
+            restraint_ids = [restraint.__class__.__name__]
         # TODO: Once we get a SSC for RMSD, undo this check
-        if is_complex and "RMSD" not in restraint.__class__.__name__:
+        if is_complex and not (len(restraint_ids) == 1 and restraint_ids[0] == "RMSD" ):
             assert standard_state_correction != 0
         else:
             assert standard_state_correction == 0
@@ -486,6 +491,47 @@ class TestAlchemicalPhase(object):
         with nose.tools.assert_raises(RuntimeError):
             alchemical_phase.create(thermodynamic_state, sampler_state, topography,
                                     self.protocol, 'not_created.nc', restraint=restraint)
+
+    def test_multi_standard_state_restraint(self):
+        """Test that having multiple restraints with SSC behaves correctly"""
+        test_name, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+
+        class ZeroSSCHarmonic(yank.restraints.Harmonic):
+
+            def get_standard_state_correction(self, *args):
+                """Dummy helper function to make a 0 SSC which works in all versions"""
+                return 0.0
+
+        restraint_base = yank.restraints.Harmonic()
+        restraint_new = yank.restraints.Boresch(restraint_name='new')
+        restraints_null = ZeroSSCHarmonic(restraint_name='new')
+
+        def run_multi_ssc_test(restraints, protocol, error=None):
+            with self.temporary_storage_path() as storage_path:
+                alchemical_phase = AlchemicalPhase(sampler=ReplicaExchangeSampler())
+
+                def create_multi_ssc():
+                    return alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                                   protocol, storage_path,
+                                                   restraint=restraints)
+                if error is None:
+                    create_multi_ssc()
+                else:
+                    with nose.tools.assert_raises(error):
+                        create_multi_ssc()
+
+        # Check that 2 restraints under normal conditions work
+        normal_multi_ssc_restraints = [restraint_base, restraint_new]
+        run_multi_ssc_test(normal_multi_ssc_restraints, self.multi_restraint_protocol)
+
+        # Check that 2 restraints with bad protocol, but one is 0 ssc work
+        bad_protocol = copy.deepcopy(self.multi_restraint_protocol)
+        bad_protocol['lambda_restraints_new'][-1] = 1.0
+        normal_zero_ssc_restraints = [restraint_base, restraints_null]
+        run_multi_ssc_test(normal_zero_ssc_restraints, bad_protocol)
+
+        # Check that 2 restraints with bad protocol, but both have values yield error
+        run_multi_ssc_test(normal_multi_ssc_restraints, bad_protocol, error=ValueError)
 
     def test_from_storage(self):
         """When resuming, the AlchemicalPhase recover the correct sampler."""

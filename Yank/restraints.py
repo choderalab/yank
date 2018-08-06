@@ -333,7 +333,7 @@ class ReceptorLigandRestraint(ABC):
         return self._restraint_name
 
     @property
-    def full_restraint_name(self):
+    def controlling_parameter_name(self):
         """
         Provide the full global parameter for this restraint
 
@@ -1011,11 +1011,11 @@ class Harmonic(RadiallySymmetricRestraint):
             return mmtools.forces.HarmonicRestraintBondForce(spring_constant=self.spring_constant,
                                                              restrained_atom_index1=particles1[0],
                                                              restrained_atom_index2=particles2[0],
-                                                             controlling_parameter_name=self.full_restraint_name)
+                                                             controlling_parameter_name=self.controlling_parameter_name)
         return mmtools.forces.HarmonicRestraintForce(spring_constant=self.spring_constant,
                                                      restrained_atom_indices1=particles1,
                                                      restrained_atom_indices2=particles2,
-                                                     controlling_parameter_name=self.full_restraint_name)
+                                                     controlling_parameter_name=self.controlling_parameter_name)
 
     def _determine_restraint_parameters(self, thermodynamic_state, sampler_state, topography):
         """Automatically choose a spring constant for the restraint force.
@@ -1563,7 +1563,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
 
         # Construct CustomCVForce
         restraint_force = openmm.CustomCVForce(energy_function)
-        restraint_force.addGlobalParameter('{}'.format(self.full_restraint_name), 1.0)
+        restraint_force.addGlobalParameter(self.controlling_parameter_name, 1.0)
         for cv, force in force_components:
             force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
             restraint_force.addCollectiveVariable(cv, force)
@@ -1688,7 +1688,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
           * lambda_restraints{_suffix} : Alchemical variable, should be scalar on whole energy,
                                          Because this may be dynamic based on the restraint_name,
                                          it is HIGHLY recommended to dynamically set this with the
-                                         ``full_restraint_name`` property.
+                                         ``controlling_parameter_name`` property.
           * boresch_restraint_distance : Restrained distance
           * boresch_angle_a            : Restrained angle "A"
           * boresch_angle_b            : Restrained angle "B"
@@ -2198,7 +2198,7 @@ class Boresch(BoreschLike):
           * lambda_restraints{_suffix} : Alchemical variable, should be scalar on whole energy,
                                          Because this may be dynamic based on the restraint_name,
                                          it is HIGHLY recommended to dynamically set this with the
-                                         ``full_restraint_name`` property.
+                                         ``controlling_parameter_name`` property.
           * boresch_restraint_distance : Restrained distance
           * boresch_angle_a            : Restrained angle "A"
           * boresch_angle_b            : Restrained angle "B"
@@ -2220,7 +2220,7 @@ class Boresch(BoreschLike):
             dphi_B = dB - floor(dB/(2*pi)+0.5)*(2*pi); dB = boresch_torsion_b - phi_B0;
             dphi_C = dC - floor(dC/(2*pi)+0.5)*(2*pi); dC = boresch_torsion_c - phi_C0;
             pi = {1:f};
-            """.format(self.full_restraint_name, np.pi)
+            """.format(self.controlling_parameter_name, np.pi)
         return energy_function
 
     def _numerical_distance_integrand(self, r, r0, spring_constant, kt):
@@ -2459,7 +2459,7 @@ class PeriodicTorsionBoresch(Boresch):
             uphi_B = (1-cos(dB)); dB = boresch_torsion_b - phi_B0;
             uphi_C = (1-cos(dC)); dC = boresch_torsion_c - phi_C0;
             pi = {1:f};
-            """.format(self.full_restraint_name, np.pi)
+            """.format(self.controlling_parameter_name, np.pi)
         return energy_function
 
     def _numerical_torsion_integrand(self, phi, phi0, spring_constant, kt):
@@ -2657,12 +2657,12 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
 
         # Create an CustomCVForce
         energy_expression = ('{} * step(dRMSD) * (K_RMSD/2)*dRMSD^2; '
-                             'dRMSD = (RMSD-RMSD0);'.format(self.full_restraint_name))
+                             'dRMSD = (RMSD-RMSD0);'.format(self.controlling_parameter_name))
         energy_expression += 'K_RMSD = %f;' % self.K_RMSD.value_in_unit_system(unit.md_unit_system)
         energy_expression += 'RMSD0 = %f;' % self.RMSD0.value_in_unit_system(unit.md_unit_system)
         restraint_force = openmm.CustomCVForce(energy_expression)
         restraint_force.addCollectiveVariable('RMSD', rmsd_cv)
-        restraint_force.addGlobalParameter('{}'.format(self.full_restraint_name), 1.0)
+        restraint_force.addGlobalParameter(self.controlling_parameter_name, 1.0)
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system

@@ -15,7 +15,11 @@ Enhancements and Features
 - Multiple restraints can now be applied to a YANK system, both through the API and YAML
 - Restraints can now use separate protocol variables through the ``restraint_name`` keyword arg in YAML and the API. These
   are non-unique so multiple restraints can use the same variables. Variables in the ``protocol`` will be of form
-  ``lambda_restraints_{restraint_name}`` but will default to ``lambda_restraints`` if ``restraint_name`` is not set,
+  ``lambda_restraints_{restraint_name}`` but will default to ``lambda_restraints`` if ``restraint_name`` is not set.
+
+    - Science Note: Having multiple restraints which bear a Standard State Correction that are on in the decoupled state
+      will result in an Error (poorly defined)
+
 - All YANK restraints are now ``CustomCVForce`` in OpenMM to extract variables for unbiasing.
 
 Bugfixes

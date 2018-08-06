@@ -965,6 +965,37 @@ class AlchemicalPhase(object):
         # Add receptor-ligand restraint and compute standard state corrections.
         restraint_states = []
         metadata['standard_state_correction'] = 0.0
+        nonzero_scc = None  # Variable to check for the Standard State Correction
+        nonzero_restraint = None
+
+        def is_restraint_off_at_end(test_restraint):
+            """
+            Test whether the input restraint is off at the decoupled state
+
+            Uses the outer scope ``protocol`` variable
+
+            Works on the assumption that if not specified in protocol,
+            its always on.
+
+            Parameters
+            ----------
+            test_restraint : yank.restraint.ReceptorLigandRestraint
+                Input restraint to check
+
+            Returns
+            -------
+            is_off : bool
+                Is it off at the decoupled state?
+
+            """
+            is_off = False
+            try:
+                lambda_at_end = protocol[test_restraint.controlling_parameter_name]
+                is_off = np.allclose(0.0, lambda_at_end[-1])
+            except KeyError:
+                pass
+            return is_off
+
         if is_complex and restraint is not None:
             logger.debug("Creating receptor-ligand restraints...")
             # Cast to list so its always iterable
@@ -985,6 +1016,28 @@ class AlchemicalPhase(object):
                                                                   sampler_states[0], topography)
                     single_restraint.restrain_state(thermodynamic_state)
                 correction = single_restraint.get_standard_state_correction(thermodynamic_state)  # in kT
+                # Check for Multiple Standard State Corrections:
+                correction_is_zero = np.allclose(0.0, correction)
+                if nonzero_scc is None or correction_is_zero:
+                    # No need to record SSC if they are 0
+                    nonzero_scc = correction
+                    nonzero_restraint = single_restraint.__class__.__name__
+                elif not correction_is_zero:
+                    # Check if this restraint is off at fully decoupled state (does not contribute)
+                    if not is_restraint_off_at_end(single_restraint):
+                        conflicting_name = single_restraint.__class__.__name__
+                        err_string = ("Found multiple, non-zero Standard State Corrections where both " 
+                                      "restraints are on in the decoupled state! This leads to " 
+                                      "poorly defined corrections, which are in all likelihood flat out " 
+                                      "incorrect!\n" 
+                                      "The two clashing restraints are:\n" 
+                                      "    - {}, SSC: {}\n" 
+                                      "    - {}, SSC: {}\n".format(nonzero_restraint,
+                                                                   nonzero_scc,
+                                                                   conflicting_name,
+                                                                   correction))
+                        raise ValueError(err_string)
+                    correction = 0.0  # Since its off, it does not bear a SSC, ensure we zero it out
                 metadata['standard_state_correction'] += correction
 
                 # Create restraint state that will be part of composable states.
@@ -1071,10 +1124,11 @@ class AlchemicalPhase(object):
             # will be taken into account with the standard state correction.
             if restraint is not None:
                 for single_restraint, restraint_state in zip(restraint, restraint_states):
-                    full_restraint_name = single_restraint.full_restraint_name
+                    controlling_parameter_name = single_restraint.controlling_parameter_name
                     single_restraint.restrain_state(reference_state_expanded)
                     # The value of lambda_restraints_suffix must be the same as the first state.
-                    setattr(restraint_state, full_restraint_name, getattr(compound_states[0], full_restraint_name))
+                    setattr(restraint_state, controlling_parameter_name, getattr(compound_states[0],
+                                                                                 controlling_parameter_name))
                 reference_state_expanded = mmtools.states.CompoundThermodynamicState(
                     thermodynamic_state=reference_state_expanded, composable_states=[*restraint_states])
 
