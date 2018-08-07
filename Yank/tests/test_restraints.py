@@ -171,6 +171,8 @@ def general_restraint_run(options):
             # ... and waffles are tasty.
             # Number of spaces in this must match indentation level from the restraint_test_yaml
             options['waffle_augment'] = '\n        lambda_restraints_waffle: [0.0, 0.25, 0.5, 0.75, 1.0]'
+        else:
+            options['waffle_augment'] = ''
         # run both setup and experiment
         yaml_builder = experiment.ExperimentBuilder(restraint_test_yaml.format(**options))
         yaml_builder.run_experiments()
