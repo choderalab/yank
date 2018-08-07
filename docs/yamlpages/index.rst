@@ -98,6 +98,7 @@ Detailed Options List
     * :ref:`name <yaml_molecules_name>`
     * :ref:`strip_protons <yaml_molecules_strip_protons>`
     * :ref:`pdbfixer <yaml_molecules_pdbfixer>`
+    * :ref:`modeller <yaml_molecules_modeller>`
     * :ref:`select <yaml_molecules_select>`
 
   * :ref:`Assigning Missing Parameters <yaml_molecules_assign_charges>`

@@ -20,7 +20,7 @@ install:
   - source devtools/travis-ci/install.sh
   - export PYTHONUNBUFFERED=true
   # Add org channel
-  - conda config --add channels omnia --add channels conda-forge
+  - conda config --add channels omnia --add channels conda-forge --add channels salilab
   # Add omnia dev channels
   - if [ $DEVOMNIA ]; then conda config --add channels omnia/label/dev; fi
   # Update everything
@@ -36,6 +36,8 @@ script:
   - source activate test
   # Install extras for OpenEye and testing
   - conda install --yes --quiet pip nose nose-timer coverage
+  # Install extras for Modeller
+  - conda install --yes modeller
   # Install OpenEye toolkit
   - pip install $OPENEYE_CHANNEL openeye-toolkits && python -c "import openeye; print(openeye.__version__)"
   # Build the recipe
@@ -64,6 +66,8 @@ env:
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Decrpyts to VARIABLE=KEY
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
+    # encrypted KEY_MODELLER. Decrpyts to VARIABLE=KEY
+    - secure: "nwK0HCW61j8WRU5k3hrlsD14vmbbh80ZnvMljdG3ovbJXeL9gu0K25peJrvPJ99DDCEfOcEK1Lq8kYkTqDDX64hQglsHCHAP24h3zdkyXRqguv+1o+Py/O/hZfHcxJLTzknnKPMgRslgTSUnmC3TvF6sJHMdxQwHekPkQSSWHa4="
 
 matrix:
   allow_failures:

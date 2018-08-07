@@ -593,6 +593,7 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'remove_heterogens': 'all'}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'replace_nonstandard_residues': True}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
+        {'filepath': paths['abl'], 'select': 'all', 'modeller': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'I8A/T9A'}}},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
@@ -1292,6 +1293,47 @@ def test_pdbfixer_mutations():
 
         # Now we set the strip_protons options and repeat
         exp_builder._db.molecules[mol_id]['pdbfixer'] = {
+            'apply_mutations' : {
+                'chain_id' : 'A',
+                'mutations': 'T85I',
+            }
+        }
+        setup_molecule_output_check(exp_builder._db, mol_id, output_path)
+
+        # Safety check: protein must have mutated residue: ILE at residue 85 in chain A
+        has_mut_residue = False
+        with open(output_path, 'r') as f:
+            for line in f:
+                if (line[:6] == 'ATOM  ') and (line[21] == 'A') and (int(line[22:26]) == 85) and (line[17:20]=='ILE'):
+                    has_mut_residue = True
+                    break
+        assert has_mut_residue
+
+def test_modeller_mutations():
+    """Test that modeller can apply mutations correctly."""
+    mol_id = 'Abl'
+    abl_path = examples_paths()['abl']
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        # Safety check: protein must have WT residue: THR at residue 85 in chain A
+        has_wt_residue = False
+        with open(abl_path, 'r') as f:
+            for line in f:
+                if (line[:6] == 'ATOM  ') and (line[21] == 'A') and (int(line[22:26]) == 85) and (line[17:20]=='THR'):
+                    has_wt_residue = True
+                    break
+        assert has_wt_residue
+
+        yaml_content = get_template_script(tmp_dir)
+        exp_builder = ExperimentBuilder(yaml_content)
+        output_dir = exp_builder._db.get_molecule_dir(mol_id)
+        output_path = os.path.join(output_dir, 'Abl.pdb')
+
+        # We haven't set the strip_protons options, so this shouldn't do anything
+        exp_builder._db._setup_molecules(mol_id)
+        assert not os.path.exists(output_path)
+
+        # Now we set the strip_protons options and repeat
+        exp_builder._db.molecules[mol_id]['modeller'] = {
             'apply_mutations' : {
                 'chain_id' : 'A',
                 'mutations': 'T85I',
