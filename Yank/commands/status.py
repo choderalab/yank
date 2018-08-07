@@ -13,11 +13,7 @@ Query output files for quick status.
 # MODULE IMPORTS
 # =============================================================================================
 
-import operator
-import itertools
-import collections
-
-from .. import experiment
+# Module imports handled in individual functions since CLI should be faster to boot up
 
 # =============================================================================================
 # COMMAND-LINE INTERFACE
@@ -62,8 +58,12 @@ def find_contiguous_ids(job_ids):
         The job ids organized in contiguous sets.
 
     """
+
+    import operator
+    import itertools
+
     contiguous_job_ids = []
-    for k, g in itertools.groupby(enumerate(job_ids), lambda x:x[0]-x[1]):
+    for k, g in itertools.groupby(enumerate(job_ids), lambda x: x[0]-x[1]):
         group = list(map(operator.itemgetter(1), g))
         if len(group) == 1:
             contiguous_job_ids.append(str(group[0]))
@@ -73,6 +73,10 @@ def find_contiguous_ids(job_ids):
 
 
 def dispatch(args):
+
+    import collections
+    from .. import experiment
+
     # Handle optional arguments.
     if args['--njobs']:
         n_jobs = int(args['--njobs'])

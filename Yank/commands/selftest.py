@@ -13,15 +13,7 @@ Run YANK self tests after installation.
 # MODULE IMPORTS
 # =============================================================================================
 
-import doctest
-import pkgutil
-import subprocess
-import re
-
-from .. import version
-from . import platforms
-import simtk.openmm as mm
-
+# Module imports handled in individual functions since CLI should be faster to boot up
 
 # =============================================================================================
 # COMMAND-LINE INTERFACE
@@ -48,12 +40,21 @@ General Options:
 # COMMAND DISPATCH
 # =============================================================================================
 
+
 class LicenseError(Exception):
     """Error raised by a missing License."""
     pass
 
 
 def dispatch(args):
+
+    import re
+    import doctest
+    import pkgutil
+    import subprocess
+    import simtk.openmm as mm
+    from .. import version
+    from . import platforms
 
     # Determine verbosity in advance
     # TODO: Figure out how to get -v back in to command and allow -vv and -vvv

@@ -13,15 +13,7 @@ Analyze YANK output file.
 # MODULE IMPORTS
 # =============================================================================================
 
-import io
-import re
-import os
-import pickle
-
-from simtk import unit
-
-import pkg_resources
-from .. import utils, analyze, mpi
+# Module imports handled in individual functions since CLI should be faster to boot up
 
 # =============================================================================================
 # COMMAND-LINE INTERFACE
@@ -109,6 +101,11 @@ General Options:
 
 
 def dispatch(args):
+
+    import os
+    import pickle
+    from .. import utils, analyze, mpi
+
     utils.config_root_logger(args['--verbose'])
 
     if args['report']:
@@ -154,6 +151,9 @@ def dispatch(args):
 
 
 def extract_analyzer_kwargs(args, quantities_as_strings=False):
+
+    import simtk.unit as unit
+
     """Return a dictionary with the keyword arguments to pass to the analyzer."""
     analyzer_kwargs = {}
     if args['--skipunbiasing']:
@@ -172,6 +172,10 @@ def extract_analyzer_kwargs(args, quantities_as_strings=False):
 
 
 def dispatch_extract_trajectory(args):
+
+    import os
+    from .. import analyze
+
     # Paths
     output_path = args['--trajectory']
     nc_path = args['--netcdf']
@@ -213,6 +217,12 @@ def dispatch_extract_trajectory(args):
 
 
 def dispatch_report(args):
+
+    import io
+    import os
+    import re
+    import pkg_resources
+    from .. import analyze
 
     # Check modules for render
     store = args['--store']

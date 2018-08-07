@@ -13,9 +13,7 @@ Set up and run YANK calculation from script.
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import os
-from ..experiment import ExperimentBuilder
-
+# Module imports handled in individual functions since CLI should be faster to boot up
 
 # =============================================================================================
 # COMMAND-LINE INTERFACE
@@ -67,6 +65,10 @@ def dispatch(args):
        Command-line arguments from docopt.
 
     """
+
+    import os
+    from ..experiment import ExperimentBuilder
+
     override = None
     if args['--override']:  # Is False for None and [] (empty list)
         over_opts = args['--override']
