@@ -1016,12 +1016,12 @@ def test_validation_wrong_protocols():
 def get_valid_restraints():
     harmonic = {'type': 'Harmonic'}
     detailed_harmonic = {'type': 'Harmonic', 'spring_constant': '8*kilojoule_per_mole/nanometers**2',
-                         'name':'super_harmonic'}
+                         'restraint_name': 'super_harmonic'}
     flat_bottom = {'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atoms': 1644}
     bor = {'type': 'Boresch', 'restrained_receptor_atoms': [1335, 1339, 1397],
            'restrained_ligand_atoms': [2609, 2607, 2606], 'r_aA0': '0.35*nanometer',
            'K_r': '20.0*kilocalories_per_mole/angstrom**2'}
-    period_tor_bor = {**bor, 'type': 'PeriodicTorsionBoresch', 'name': 'some_name_you_can_set'}
+    period_tor_bor = {**bor, 'type': 'PeriodicTorsionBoresch', 'restraint_name': 'some_name_you_can_set'}
     list_of_restraints = [harmonic, detailed_harmonic, flat_bottom, bor, period_tor_bor]
     return list_of_restraints
 
@@ -1039,7 +1039,7 @@ def test_validation_wrong_restraints():
     """Wrong restraints throw errors"""
     exp_builder = ExperimentBuilder(get_template_script())
     empty_key = {}
-    missing_type = {'name': 'something'}
+    missing_type = {'restraint_name': 'something'}
     missing_type2 = {'spring_constant': '8*kilojoule_per_mole/nanometers**2'}
     unknown_type = {'type': 'Shenanigans'}
     bad_key = {'type': 'Harmonic', 'doesnt_exist': '3*meter'}

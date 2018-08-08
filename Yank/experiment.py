@@ -211,7 +211,8 @@ class AlchemicalPhaseFactory(object):
     storage : yank.multistate.MultiStateReporter or str
         Reporter object to use, or file path to create the reporter at
         Will be a :class:`yank.multistate.MultiStateReporter` internally if str is given
-    restraint : yank.restraint.ReceptorLigandRestraint or None, Optional, Default: None
+    restraint : yank.restraint.ReceptorLigandRestraint, Iterable of yank.restraint.ReceptorLigandRestraint, or None,
+        Optional, Default: None
         Optional restraint to apply to the system
     alchemical_regions : openmmtools.alchemy.AlchemicalRegion or None, Optional, Default: None
         Alchemical regions which define which atoms to modify.
@@ -2733,6 +2734,7 @@ class ExperimentBuilder(object):
         yaml_content = yaml.dump({'version': self._version}, explicit_start=True, **dump_options)
         content = [['options', opt_section],
                    ['molecules', mol_section],
+                   ['solvents', sol_section],
                    ['systems', sys_section],
                    ['mcmc_moves', mcmc_section],
                    ['samplers', sampler_section],
@@ -2881,12 +2883,21 @@ class ExperimentBuilder(object):
             group_size[expensive_experiment_idx] += 1
         return group_size
 
-    def _create_experiment_restraint(self, experiment_description):
-        """Create a restraint object for the experiment."""
+    def _create_experiment_restraints(self, experiment_description):
+        """Create all restraint objects for the experiment."""
         # Determine restraint description (None if not specified).
         restraint_description = experiment_description.get('restraint', None)
+        available_restraints = self._expanded_raw_yaml.get('restraints', {})
         if restraint_description is not None:
-            return schema.call_restraint_constructor(restraint_description)
+            if isinstance(restraint_description, dict):
+                return schema.call_restraint_constructor(restraint_description)
+            elif isinstance(restraint_description, str):
+                # This should never fail if everything validated
+                return schema.call_restraint_constructor(available_restraints.get(restraint_description))
+            else:
+                # Iterable
+                return [schema.call_restraint_constructor(available_restraints.get(res_id)) for res_id in
+                        restraint_description]
         return None
 
     def _create_default_mcmc_move(self, experiment_description, mc_atoms):
@@ -3110,7 +3121,7 @@ class ExperimentBuilder(object):
             # Apply restraint only if this is the first phase. AlchemicalPhase
             # will take care of raising an error if the phase type does not support it.
             if phase_idx == 0:
-                restraint = self._create_experiment_restraint(experiment)
+                restraint = self._create_experiment_restraints(experiment)
             else:
                 restraint = None
 

@@ -102,10 +102,7 @@ class YANKCerberusValidator(cerberus.Validator):
 
     def _validator_is_restraint_constructor(self, field, constructor_description):
         # Pop out name construct if present
-        name = constructor_description.pop('name', 'restraints')
         self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
-        # Restore pop'ed fields
-        constructor_description['name'] = name
 
     def _validator_is_mcmc_move_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_mcmc_move_constructor, constructor_description)

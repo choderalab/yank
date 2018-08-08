@@ -287,6 +287,23 @@ as a per mole quantity. More detail of how this free energy fits into the thermo
 
 .. The \unicode{xC5} creates the angstrom symbol (A with circle above), \AA and \r{A} are mangled by sphinx and don't render
 
+In theory, it might be possible to numerically compute the true standard state correction from multiple restraints
+applied to the same system. In practice though, we have not devised a general way to do this for an arbitrary number and
+type of restraints, especially when those restraints can be centered on- or affect different atom indices. Because of this,
+we enforce in YANK that at most 1 restraint which has a standard state correction be on in the fully decoupled state,
+otherwise an error is raised.
+
+This restriction is not as limiting as it may first appear. One possibility is to have a Boresch-Like restraint
+affecting the ligand and receptor in the fully decoupled state, but have an RMSD restraint keeping the ligand rigid
+in the intermediate states. This way, the ligand cannot deform and escape the pocket through its non-restrainted
+atoms before swapping back into the decoupled state, resulting in long time-scale artifacts brought on by the
+restraint scheme.
+
+In the future, we plan to support allowing RMSD restraints to be on regardless of other restraints so long as
+*identical* RMSD restraints are applied to the ligand in the decoupled solvent phase. These conditions would result
+in a standard state correction induced by the RMSD restraint alone equal to 0 analytically. There would still need to be
+a correction from a change of box volumes, but that can be handled separately.
+
 
 Restraint types
 ---------------

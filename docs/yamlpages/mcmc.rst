@@ -50,11 +50,11 @@ The default moves used by YANK are equivalent to the following:
     mcmc_moves:
         default1:
             type: LangevinSplittingDynamicsMove
-            timestep: 2.0*femtoseconds, # 2 fs timestep
+            timestep: 2.0*femtoseconds # 2 fs timestep
             collision_rate: 1.0 / picosecond, # weak collision rate
-            n_steps: 500, # 500 steps/iteration
-            reassign_velocities: yes, # reassign Maxwell-Boltzmann velocities each iteration
-            n_restart_attempts: 6, # attempt to recover from NaNs
+            n_steps: 500 # 500 steps/iteration
+            reassign_velocities: yes # reassign Maxwell-Boltzmann velocities each iteration
+            n_restart_attempts: 6 # attempt to recover from NaNs
             splitting: 'VRORV' # use the high-quality BAOAB integrator
         default2:
             type: SequenceMove

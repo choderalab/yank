@@ -21,8 +21,8 @@ compatibility (YANK 0.24.0 is compatible with the same YAML files as version 0.2
         {Restraint Parameter}
         ...
 
-The universal options are :ref:`yaml_restraints_type` and :ref:`yaml_restraints_name`. The ``{Restraint Parameter}``
-are optional and :ref:`unique to each restraint type <yaml_restraints_other>`.
+The universal options are :ref:`yaml_restraints_type` and :ref:`yaml_restraints_restraint_name`. The
+``{Restraint Parameter}`` are optional and :ref:`unique to each restraint type <yaml_restraints_other>`.
 
 
 .. _yaml_restraints_type:
@@ -38,7 +38,7 @@ are optional and :ref:`unique to each restraint type <yaml_restraints_other>`.
      {UserDefinedRestraint}:
         type: {ValidRestraintType}
 
-Select what type of restraint to use, *required*.
+Select what type of restraint to use, this is **the only required** argument.
 
 Valid types are: ``FlatBottom``/``Harmonic``/``Boresch``/``RMSD``/``PeriodicTorsionBoresch``
 
@@ -51,23 +51,29 @@ Feel free to check how each restraint works and should be applied through their 
 * :class:`RMSD Protein-Ligand Restraints <RMSD>`
 
 
-.. _yaml_restraints_name:
+.. _yaml_restraints_restraint_name:
 
 .. rst-class:: html-toggle
 
-``name``
---------
+``restraint_name``
+------------------
 
 .. code-block:: yaml
 
    restraints:
      {UserDefinedRestraint}:
-        name: {UserDefinedName or restraints}
+        restraint_name: {UserDefinedName}
 
-The only other universal option in this block. The ``name`` setting which will map to the ``lambda_{name}` variable
+The only other universal option in this block. The ``restraint_name`` is an **OPTIONAL** setting which will map to
+the ``lambda_restraints_{restraint_name}`` variable
 in the :doc:`protocols <protocols>` block. These do not have to be unique so each restraint can be controlled by the
-same variable if so chosen. If this is not set, it defaults to ``restraints`` so the variable controlling it will be
+same variable if so chosen. If this is not set, it defaults to ``null`` so the variable controlling it will be
 ``lambda_restraints`` in the :doc:`protocols <protocols>` block.
+
+.. warning::
+
+    Having multiple restraints which have a Standard State Correction on in the fully decoupled state will result
+    in an error. See reasoning in :ref:`the standard state correction theory <standard_state_algorithm>`
 
 
 .. _yaml_restraints_other:
