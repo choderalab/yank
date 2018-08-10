@@ -1309,6 +1309,8 @@ def test_pdbfixer_mutations():
                     break
         assert has_mut_residue
 
+
+@unittest.skipIf(not utils.is_modeller_installed(), "This test requires Salilab Modeller")
 def test_modeller_mutations():
     """Test that modeller can apply mutations correctly."""
     mol_id = 'Abl'
@@ -1334,8 +1336,8 @@ def test_modeller_mutations():
 
         # Now we set the strip_protons options and repeat
         exp_builder._db.molecules[mol_id]['modeller'] = {
-            'apply_mutations' : {
-                'chain_id' : 'A',
+            'apply_mutations': {
+                'chain_id': 'A',
                 'mutations': 'T85I',
             }
         }

@@ -7,10 +7,11 @@ This section features and improvements of note in each release.
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
 0.23.3 Adds support for single mutations using Modeller
-------------------------------------
-- - Adds an optional ``modeller` directive to the ``molecules`` section of the YAML file
+-------------------------------------------------------
+- Adds an optional ``modeller` directive to the ``molecules`` section of the YAML file
   through `Modeller <https://salilab.org/modeller/>`_, a tool for comparative modeling of protein structures.
 - The following options are accessible through the ``modeller`` directive. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#modeller>`__
+
   - ``apply_mutations``: Specify protein single mutations (e.g., T315I). `(docs) <http://getyank.org/latest/yamlpages/molecules.html#modeller_mutations>`_
 
 

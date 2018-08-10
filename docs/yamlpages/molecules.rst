@@ -258,6 +258,9 @@ PDBFixer is applied after ``strip_protons`` if both are requested.
 Specifies whether modeller should be used to model in mutations.
 Can only be used on proteins, on files with ``.pdb`` file extensions.
 
+This feature requires the Modeller from the Sali Lab, which can be fetched from
+Omnia's Conda channel. You will need to provide your own license however.
+
 Mutations
 ^^^^^^^^^
 

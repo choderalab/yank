@@ -1210,6 +1210,27 @@ class Mol2File(object):
         return tot_charge
 
 
+def is_modeller_installed():
+    """
+    Check if a Salilab Modeller tool is installed and Licensed.
+
+    If Modeller is not installed and licensed, returns False.
+
+    Returns
+    -------
+    installed : bool
+        True if all tools in ``oetools`` are installed and licensed, False otherwise.
+    """
+    try:
+        import modeller
+    except:
+        # This has to be broad because we cant trap the ModellerError invalid license
+        # since the act of even trying to import Modeller triggers it,
+        # and its NOT an import error which is raised.
+        return False
+    return True
+
+
 # -----------------
 # OpenEye functions
 # -----------------
