@@ -945,6 +945,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
     # Write the final structure
     PDBFile.writeFile(fixer.topology, fixer.positions, open(output_file_path, 'w'))
 
+
 def apply_modeller(input_file_path, output_file_path, directives):
     """
     Apply Salilab Modeller to make changes to the specified molecule.
@@ -969,14 +970,13 @@ def apply_modeller(input_file_path, output_file_path, directives):
         Dict containing directives for modeller.
     """
 
-    try:
-        import modeller
-    except ImportError:
+    if not utils.is_modeller_installed():
         raise ImportError('Modeller and license must be installed to use this feature.')
+    import modeller
 
     directives = copy.deepcopy(directives)
 
-    # Silence unecessart output to the log files
+    # Silence unnecessary output to the log files
     modeller.log.none()
 
     # Create modeller environment and point it to the PDB file
@@ -993,7 +993,6 @@ def apply_modeller(input_file_path, output_file_path, directives):
     model = modeller.model(env, file=atom_file_name)
     model_original_numbering = modeller.model(env, file=atom_file_name)
     alignment.append_model(model, atom_files=atom_file_name, align_codes=atom_file_name)
-
 
     def apply_mutations_modeller(value):
         # Extract chain id
@@ -1032,6 +1031,7 @@ def apply_modeller(input_file_path, output_file_path, directives):
     # Write the final model
     model.res_num_from(model_original_numbering, alignment)
     model.write(file=output_file_path)
+
 
 def read_csv_lines(file_path, lines):
     """Return a list of CSV records.
