@@ -2744,7 +2744,10 @@ class ExperimentBuilder(object):
     def _get_experiment_mpi_group_size(self, experiments):
         """Return the MPI group size to pass when executing the experiments.
 
-        The heuristic tries to allocate the MPI processes among the experiments
+        For SAMS simulations, only 1 process per experiment is currently supported.
+        For repex, if processes_per_experiment >= n_available_mpi_processes, the
+        experiments are run sequentially using all the MPI processes. Otherwise,
+        the heuristic tries to allocate the MPI processes among the experiments
         roughly according to their computational costs using the number of states
         of the first phase (either complex or solvent1).
 
@@ -2757,7 +2760,8 @@ class ExperimentBuilder(object):
         Returns
         -------
         groups_size : list of integers
-            The MPI processes groups to pass to mpi.distribute().
+            The MPI processes groups to pass to mpi.distribute(). group_size[i]
+            is the number of MPI processes assigned to experiments[i].
 
         """
         mpicomm = mpi.get_mpicomm()
@@ -2769,8 +2773,7 @@ class ExperimentBuilder(object):
             return None
         n_mpi_processes = mpicomm.size
 
-        # If we are using SAMS samplers, use 1 process only for all experiments.
-        # TODO when n_replicas is a parameter of the constructor, remove this.
+        # If we are using SAMS samplers, use only 1 process for all experiments.
         sampler_names = {self._create_experiment_sampler(exp[1], []).__class__.__name__ for exp in experiments}
         if 'SAMSSampler' in sampler_names:
             if processes_per_experiment != 'auto':
@@ -2784,7 +2787,8 @@ class ExperimentBuilder(object):
         # Check if the user has specified an hardcoded
         # number of processes per experiments.
         if processes_per_experiment != 'auto':
-            # If more processes are requested than MPI processes, run serially.
+            # If more processes are requested than MPI processes, run
+            # experiments in sequence using all the MPI processes.
             if processes_per_experiment is not None and processes_per_experiment >= n_mpi_processes:
                 return None
             return processes_per_experiment
@@ -2793,8 +2797,13 @@ class ExperimentBuilder(object):
         if n_mpi_processes <= n_experiments:
             return 1
 
+        # Distribute the MPI processes using an heuristic that assigns more MPI
+        # processes to experiments that have a higher number of states in the
+        # first thermodynamic leg.
+        # ---------------------------------------------------------------------
+
         # Split the mpicomm among the experiments.
-        group_size = min(1, int(n_mpi_processes / n_experiments))
+        group_size = int(n_mpi_processes / n_experiments)
 
         # Estimate the computational cost of each experiment taken as the
         # number of thermodynamic states of the complex phase.
@@ -2806,7 +2815,7 @@ class ExperimentBuilder(object):
             experiment_costs[experiment_idx] = n_states
 
         # Find the index of the most expensive jobs.
-        n_expensive_experiments = n_mpi_processes - n_experiments
+        n_expensive_experiments = n_mpi_processes % n_experiments
         expensive_experiment_indices = list(reversed(np.argsort(experiment_costs)))
         expensive_experiment_indices = expensive_experiment_indices[:n_expensive_experiments]
 
