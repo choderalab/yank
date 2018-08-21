@@ -531,11 +531,12 @@ def test_processes_per_experiment():
     # to the number of experiments still have to be completed. Each
     # test case is pair (experiments, MPICOMM size, expected return value).
     test_cases = [
-        (experiments, 5, 1),
-        (experiments[:-1], 4, [1, 1, 2]),
-        (experiments[1:-1], 4, [2, 2]),
-        (list(reversed(experiments[1:-1])), 3, [2, 1]),
-        (experiments[:-1], 2, 1)
+        (experiments, 5, 1),  # This contains a SAMS sampler so only 1 MPI process is used.
+        (experiments[:-1], 4, [1, 1, 2]),  # 3 repex samples, but last experiment has more intermediate states.
+        (experiments[1:-1], 4, [2, 2]),  # 2 repex samples on 4 MPI processes.
+        (experiments[1:-1], 6, [3, 3]),  # 2 repex samples on 4 MPI processes.
+        (list(reversed(experiments[1:-1])), 3, [2, 1]),  # 2 repex samples on 3 MPI processes.
+        (experiments[:-1], 2, 1),  # Less MPI processes than experiments, split everything.
     ]
 
     for i, (exp, mpicomm_size, expected_result) in enumerate(test_cases):
