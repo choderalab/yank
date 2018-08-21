@@ -6,6 +6,14 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+Development
+-----------
+
+Bugfixes
+""""""""
+- Fix bug #1012 when determining automatically the ``group_size`` of replica exchange simulations with MPI (`#1073 <https://github.com/choderalab/yank/pull/1073>`_).
+
+
 0.23.3 Adds support for single mutations using Modeller
 -------------------------------------------------------
 - Adds an optional ``modeller` directive to the ``molecules`` section of the YAML file
