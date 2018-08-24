@@ -1337,7 +1337,7 @@ def test_modeller_mutations():
         assert not os.path.exists(output_path)
 
         # Calling modeller with WT creates a file (although the protein is not mutated).
-        exp_builder._db.molecules[mol_id]['pdbfixer'] = {
+        exp_builder._db.molecules[mol_id]['modeller'] = {
             'apply_mutations': {
                 'chain_id': 'A',
                 'mutations': 'WT',
