@@ -1346,7 +1346,11 @@ def test_modeller_mutations():
         setup_molecule_output_check(exp_builder._db, mol_id, output_path)
         os.remove(output_path)  # Remove file for next check.
 
-        # Now we set the strip_protons options and repeat
+
+        # Reinitialize exp_builder
+        exp_builder = ExperimentBuilder(yaml_content)
+
+        # Now we set the strip_protons options and repeat for the mutant case
         exp_builder._db.molecules[mol_id]['modeller'] = {
             'apply_mutations': {
                 'chain_id': 'A',
