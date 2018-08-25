@@ -1021,6 +1021,7 @@ def apply_modeller(input_file_path, output_file_path, directives):
 
         else:
             logger.info('modeller: No mutations will be applied since "WT" specified.')
+            alignment.append_model(model, align_codes='WT')
 
     process_tool_directive(directives, 'apply_mutations', apply_mutations_modeller, None)
 

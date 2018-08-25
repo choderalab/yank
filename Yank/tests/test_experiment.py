@@ -595,6 +595,7 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'replace_nonstandard_residues': True}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
         {'filepath': paths['abl'], 'select': 'all', 'modeller': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
+        {'filepath': paths['abl'], 'select': 'all', 'modeller': {'apply_mutations': {'chain_id': 'A', 'mutations': 'WT'}}},
         {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'I8A/T9A'}}},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
@@ -1335,7 +1336,21 @@ def test_modeller_mutations():
         exp_builder._db._setup_molecules(mol_id)
         assert not os.path.exists(output_path)
 
-        # Now we set the strip_protons options and repeat
+        # Calling modeller with WT creates a file (although the protein is not mutated).
+        exp_builder._db.molecules[mol_id]['modeller'] = {
+            'apply_mutations': {
+                'chain_id': 'A',
+                'mutations': 'WT',
+            }
+        }
+        setup_molecule_output_check(exp_builder._db, mol_id, output_path)
+        os.remove(output_path)  # Remove file for next check.
+
+
+        # Reinitialize exp_builder
+        exp_builder = ExperimentBuilder(yaml_content)
+
+        # Now we set the strip_protons options and repeat for the mutant case
         exp_builder._db.molecules[mol_id]['modeller'] = {
             'apply_mutations': {
                 'chain_id': 'A',
@@ -1352,7 +1367,6 @@ def test_modeller_mutations():
                     has_mut_residue = True
                     break
         assert has_mut_residue
-
 
 def test_pdbfixer_processing():
     """Test that PDB fixer correctly parses and sets up the molecules"""
