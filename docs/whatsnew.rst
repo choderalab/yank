@@ -6,12 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-Development
------------
+0.23.4 Bugfix release
+---------------------
 
-Bugfixes
-""""""""
 - Fix bug #1012 when determining automatically the ``group_size`` of replica exchange simulations with MPI (`#1073 <https://github.com/choderalab/yank/pull/1073>`_).
+- Fix bug where passing WT to the modeller directive caused the automatic setup pipeline to crash (`#1074 <https://github.com/choderalab/yank/pull/1074>`_).
 
 
 0.23.3 Adds support for single mutations using Modeller
