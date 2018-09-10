@@ -120,8 +120,8 @@ class MultiStateReporter(object):
             logger.debug("Initial checkpoint file automatically chosen as {}".format(checkpoint_storage))
         else:
             checkpoint_storage = os.path.join(dirname, checkpoint_storage)
-        self._storage_file_analysis = storage
-        self._storage_file_checkpoint = checkpoint_storage
+        self._storage_analysis_file_path = storage
+        self._storage_checkpoint_file_path = checkpoint_storage
         self._storage_checkpoint = None
         self._storage_analysis = None
         self._checkpoint_interval = checkpoint_interval
@@ -137,7 +137,7 @@ class MultiStateReporter(object):
 
         Classes outside the Reporter can access the file string for error messages and such.
         """
-        return self._storage_file_analysis
+        return self._storage_analysis_file_path
 
     @property
     def _storage(self):
@@ -153,7 +153,12 @@ class MultiStateReporter(object):
         Return an iterable of paths to the storage files
         Object 0 is always the primary file, all others are subfiles
         """
-        return self._storage_file_analysis, self._storage_file_checkpoint
+        return self._storage_analysis_file_path, self._storage_checkpoint_file_path
+
+    @property
+    def _storage_dict(self):
+        """Return an iterable dictionary of the self._storage_X objects"""
+        return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
 
     @property
     def n_states(self):
@@ -174,11 +179,6 @@ class MultiStateReporter(object):
         if 'box_vectors' in self._storage_analysis.variables:
             return True
         return False
-
-    @property
-    def _storage_dict(self):
-        """Return an iterable dictionary of the self._storage_X objects"""
-        return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
 
     @property
     def analysis_particle_indices(self):
@@ -253,103 +253,60 @@ class MultiStateReporter(object):
         """
         # Ensure we don't have already another file
         # open (possibly in a different mode).
-        for storage in self._storage:
-            if storage is not None:
-                self.close()
-                # No need to execute this code more than once
-                break
+        self.close()
 
         # Create directory if we want to write.
         if mode != 'r':
             for storage_path in self._storage_paths:
-                storage_dir = os.path.dirname(storage_path)
-                # When storage_dir == '', os.path.exists() returns False.
-                if not os.path.exists(storage_dir) and storage_dir != '':
-                    os.makedirs(storage_dir)
+                # normpath() transform '' to '.' for makedirs().
+                storage_dir = os.path.normpath(os.path.dirname(storage_path))
+                os.makedirs(storage_dir, exist_ok=True)
 
-        # Open NetCDF 4 file for writing.
-        # If no file exists, this appropriately throws an error on 'r' mode
-        primary_ncfiles = {}
-        sub_ncfiles = {}
-        # TODO: Figure out how to move around the analysis file without the checkpoint file
-        # Cast this to a common name space for operation below
-        primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version=netcdf_format)
-        primary_ncfiles['analysis'].set_auto_mask(False)
-        if mode == 'w':
-            sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version=netcdf_format)
-        else:  # Read/append mode
-            # Try to open the files in read mode, its okay if they are not there
-            try:
-                sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version=netcdf_format)
-                primary_uuid = primary_ncfiles['analysis'].UUID
-                assert primary_uuid == sub_ncfiles['checkpoint'].UUID
-            except IOError:  # Trap the "not on disk" warning
-                logger.debug('Could not locate checkpoint subfile. This is okay for certain append and read '
-                             'operations, but not for production simulation!')
-            except AttributeError:
-                raise AttributeError("Checkpoint file is missing its linked primary file UUID!"
-                                     "No way to ensure this checkpoint file contains data matching the analysis file!")
-            except AssertionError:
-                primary_uuid = primary_ncfiles['analysis'].UUID
-                check_uuid = sub_ncfiles['checkpoint'].UUID
-                raise IOError("Checkpoint UUID does not match analysis UUID! This checkpoint file came from another "
-                              "simulation!\n"
-                              "Analysis UUID: {}"
-                              "Checkpoint UUID: {}".format(primary_uuid, check_uuid))
+        # Open analysis file.
+        self._storage_analysis = self._open_dataset_robustly(self._storage_analysis_file_path,
+                                                             mode, version=netcdf_format)
+        # TODO - AR: What's the purpose of set_auto_mask(False)? When we create the
+        # TODO - AR:    dataset I think this won't have any effect because any variable
+        # TODO - AR:    created after this call will still have the default behavior.
+        self._storage_analysis.set_auto_mask(False)
 
-        def check_and_build_storage_file(input_ncfile, input_nc_name, checkpoint_interval, input_convention):
-            """
-            Helper function to build default file settings
-            Returns a bool depending on if it ran through the setup to indicate file needs additional data or not
-            """
-            if 'scalar' not in ncfile.dimensions:
-                # Create common dimensions.
-                input_ncfile.createDimension('scalar', 1)  # Scalar dimension.
-                input_ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
-                input_ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
+        # The analysis netcdf file holds a reference UUID so that we can check
+        # that the secondary netcdf files (currently only the checkpoint
+        # file) have the same UUID to verify that the user isn't erroneously
+        # trying to associate the anaysis file to the incorrect checkpoint.
+        try:
+            # Check if we have previously created the file.
+            primary_uuid = self._storage_analysis.UUID
+        except AttributeError:
+            # This is a new file. Use uuid4 to avoid assigning hostname information.
+            primary_uuid = str(uuid.uuid4())
+            self._storage_analysis.UUID = primary_uuid
 
-                # Set global attributes.
-                input_ncfile.application = 'YANK'
-                input_ncfile.program = 'yank.py'
-                input_ncfile.programVersion = version.short_version
-                input_ncfile.Conventions = input_convention
-                input_ncfile.ConventionVersion = '0.2'
-                input_ncfile.DataUsedFor = input_nc_name
-                input_ncfile.CheckpointInterval = checkpoint_interval
+        # Open checkpoint netcdf files.
+        msg = ('Could not locate checkpoint subfile. This is okay for analysis if the '
+               'solvent trajectory is not needed, but not for production simulation!')
+        dataset = self._open_dataset_robustly(self._storage_checkpoint_file_path, mode,
+                                              catch_io_error=True, io_error_warning=msg,
+                                              version=netcdf_format)
+        self._storage_checkpoint = dataset
 
-                # Create and initialize the global variables
-                nc_last_good_iter = ncfile.createVariable('last_iteration', int, 'scalar')
-                nc_last_good_iter[0] = 0
-                return True
-            else:
-                return False
+        # Check that the checkpoint file has the same UUID of the analysis file.
+        try:
+            assert self._storage_checkpoint.UUID == primary_uuid
+        except AttributeError:
+            # This is a new file. Assign UUID.
+            self._storage_checkpoint.UUID = primary_uuid
+        except AssertionError:
+            raise IOError('Checkpoint UUID does not match analysis UUID! '
+                          'This checkpoint file came from another simulation!\n'
+                          'Analysis UUID: {}; Checkpoint UUID: {}'.format(
+                primary_uuid, self._storage_checkpoint.UUID))
 
-        # Setup the primary file if needed
-        # Generate a unique UUID in case we need to assign it
-        # primary and subfiles are linked by UUID
-        # Uses uuid4 to avoid assigning hostname information
-        primary_uuid = str(uuid.uuid4())
-        ncfile_ever_built = False
-        for nc_name, ncfile in primary_ncfiles.items():
-            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval, convention)
-            if ncfile_built:
-                ncfile_ever_built = True
-            # Assign ncfile to class property
-            setattr(self, '_storage_' + nc_name, ncfile)
-        if ncfile_ever_built:  # Assign the same UUID to all primary files
-            for _, ncfile in primary_ncfiles.items():
-                ncfile.UUID = primary_uuid
-        else:
-            primary_uuid = primary_ncfiles['analysis'].UUID
-        # Handle Subfiles
-        for nc_name, ncfile in sub_ncfiles.items():
-            # If they are in the sub-ncfiles dict, they exist and are open
-            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval, convention)
-            if ncfile_built:
-                # Assign the UUID to the subfile
-                ncfile.UUID = primary_uuid
-            setattr(self, '_storage_' + nc_name, ncfile)
+        # Initialize datasets, if needed.
+        self._initialize_storage_file(self._storage_analysis, 'analysis', convention)
+        self._initialize_storage_file(self._storage_checkpoint, 'checkpoint', convention)
 
+        # Further checkpoint interval checks.
         if self._storage_analysis is not None:
             # The same number will be on checkpoint file as well, but its not guaranteed to be present
             on_file_interval = self._storage_analysis.CheckpointInterval
@@ -376,6 +333,63 @@ class MultiStateReporter(object):
                 logger.debug("analysis_particle_indices != on-file analysis_particle_indices!"
                              "Using on file analysis indices of {}".format(stored_analysis_particles))
                 self._analysis_particle_indices = tuple(stored_analysis_particles.astype(int))
+
+    def _open_dataset_robustly(self, *args, n_attempts=5, sleep_time=2,
+                               catch_io_error=False, io_error_warning=None,
+                               **kwargs):
+        """Attempt to open the dataset multiple times if it raises an error.
+
+        This may be useful to solve some MPI concurrency and locking issues
+        that routinely and randomly pop up with HDF5. Some sleep time is
+        added between attempts (in seconds).
+
+        If the file is not found and catch_io_error is True, None is returned.
+        """
+        # Catch eventual errors n_attempts - 1 times.
+        for i in range(n_attempts-1):
+            try:
+                return netcdf.Dataset(*args, **kwargs)
+            except IOError as e:
+                # If the file does not exist, it doesn't make sense to try again.
+                if catch_io_error:
+                    if io_error_warning is not None:
+                        logger.warning(io_error_warning)
+                    return None
+                raise e
+            except:
+                logger.debug('Attempt {}/{} to open {} failed. Retrying '
+                             'in {} seconds'.format(i+1, n_attempts, sleep_time))
+                time.sleep(sleep_time)
+        # Last attempt finally raises any error.
+        return netcdf.Dataset(*args, **kwargs)
+
+    def _initialize_storage_file(self, ncfile, nc_name, convention):
+        """Helper function to initialize dimensions and global attributes.
+
+        If the dataset has been initialized before, nothing happens. Return True
+        if the file has been initialized before and False otherwise.
+        """
+        if 'scalar' not in ncfile.dimensions:
+            # Create common dimensions.
+            ncfile.createDimension('scalar', 1)  # Scalar dimension.
+            ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
+            ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
+
+            # Set global attributes.
+            ncfile.application = 'YANK'
+            ncfile.program = 'yank.py'
+            ncfile.programVersion = version.short_version
+            ncfile.Conventions = convention
+            ncfile.ConventionVersion = '0.2'
+            ncfile.DataUsedFor = nc_name
+            ncfile.CheckpointInterval = self._checkpoint_interval
+
+            # Create and initialize the global variables
+            nc_last_good_iter = ncfile.createVariable('last_iteration', int, 'scalar')
+            nc_last_good_iter[0] = 0
+            return True
+        else:
+            return False
 
     def close(self):
         """Close the storage files"""
@@ -1414,9 +1428,9 @@ class MultiStateReporter(object):
 
          Returns either the integer index, or None if there is no matched index
          """
-        checkpoint_index = float(iteration) / self._checkpoint_interval
-        if checkpoint_index.is_integer():
-            return int(checkpoint_index)
+        checkpoint_index, remainder = divmod(iteration, self._checkpoint_interval)
+        if remainder == 0:
+            return checkpoint_index
         return None
 
     def _map_iteration_to_good(self, iteration):
