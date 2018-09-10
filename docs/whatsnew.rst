@@ -6,6 +6,13 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+Development
+-----------
+
+- Fix bug where the stack trace of an exception raised by an MPI process would be logged incorrectly (`#1084 <https://github.com/choderalab/yank/pull/1084>`_).
+- Improved robustness of NetCDF dataset opening and closing (`#1084 <https://github.com/choderalab/yank/pull/1084>`_).
+
+
 0.23.4 Bugfix release
 ---------------------
 
