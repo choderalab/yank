@@ -1031,11 +1031,10 @@ class TestMultiStateSampler(object):
                 restored_ets = restored_dict.pop('_energy_thermodynamic_states')
                 original_eus = original_dict.pop('_energy_unsampled_states')
                 restored_eus = restored_dict.pop('_energy_unsampled_states')
-                for replica_id in range(n_replicas):
-                    if replica_id in node_replica_ids:
-                        assert np.allclose(original_neighborhoods[replica_id], restored_neighborhoods[replica_id])
-                        assert np.allclose(original_ets[replica_id], restored_ets[replica_id])
-                        assert np.allclose(original_eus[replica_id], restored_eus[replica_id])
+                for replica_id in node_replica_ids:
+                    assert np.allclose(original_neighborhoods[replica_id], restored_neighborhoods[replica_id])
+                    assert np.allclose(original_ets[replica_id], restored_ets[replica_id])
+                    assert np.allclose(original_eus[replica_id], restored_eus[replica_id])
 
                 # Only node 0 has updated accepted and proposed exchanges.
                 original_accepted = original_dict.pop('_n_accepted_matrix')
@@ -1051,10 +1050,6 @@ class TestMultiStateSampler(object):
                 restored_mcmc_moves = restored_dict.pop('_mcmc_moves')
                 if len(node_replica_ids) == n_replicas:
                     assert pickle.dumps(original_mcmc_moves) == pickle.dumps(restored_mcmc_moves)
-
-                # Remove cached values that are not resumed.
-                original_dict.pop('_cached_transition_counts', None)
-                original_dict.pop('_cached_last_replica_thermodynamic_states', None)
 
                 # Check all other arrays. Instantiate list so that we can pop from original_dict.
                 for attr, original_value in list(original_dict.items()):

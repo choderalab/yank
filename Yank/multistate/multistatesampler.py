@@ -1324,19 +1324,17 @@ class MultiStateSampler(object):
 
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica in every ThermodynamicState."""
-        # Initialize replica energies for each thermodynamic state.
-        energy_thermodynamic_states = np.zeros(self.n_states)
-        energy_unsampled_states = np.zeros(len(self._unsampled_states))
-
-        # Retrieve sampler state associated to this replica.
-        sampler_state = self._sampler_states[replica_id]
-
         # Determine neighborhood
         state_index = self._replica_thermodynamic_states[replica_id]
         neighborhood = self._neighborhood(state_index)
-        # Only compute energies over neighborhoods
-        energy_neighborhood_states = energy_thermodynamic_states[neighborhood]  # Array, can be indexed like this
-        neighborhood_thermodynamic_states = [self._thermodynamic_states[n] for n in neighborhood]  # List
+
+        # Only compute energies of the sampled states over neighborhoods.
+        energy_neighborhood_states = np.zeros(len(neighborhood))
+        energy_unsampled_states = np.zeros(len(self._unsampled_states))
+        neighborhood_thermodynamic_states = [self._thermodynamic_states[n] for n in neighborhood]
+
+        # Retrieve sampler state associated to this replica.
+        sampler_state = self._sampler_states[replica_id]
 
         # Compute energy for all thermodynamic states.
         for energies, states in [(energy_neighborhood_states, neighborhood_thermodynamic_states),
