@@ -262,6 +262,9 @@ class MultiStateReporter(object):
                 storage_dir = os.path.normpath(os.path.dirname(storage_path))
                 os.makedirs(storage_dir, exist_ok=True)
 
+        # Analysis file.
+        # ---------------
+
         # Open analysis file.
         self._storage_analysis = self._open_dataset_robustly(self._storage_analysis_file_path,
                                                              mode, version=netcdf_format)
@@ -282,6 +285,12 @@ class MultiStateReporter(object):
             primary_uuid = str(uuid.uuid4())
             self._storage_analysis.UUID = primary_uuid
 
+        # Initialize dataset, if needed.
+        self._initialize_storage_file(self._storage_analysis, 'analysis', convention)
+
+        # Checkpoint file.
+        # -----------------
+
         # Open checkpoint netcdf files.
         msg = ('Could not locate checkpoint subfile. This is okay for analysis if the '
                'solvent trajectory is not needed, but not for production simulation!')
@@ -289,24 +298,25 @@ class MultiStateReporter(object):
                                               catch_io_error=True, io_error_warning=msg,
                                               version=netcdf_format)
         self._storage_checkpoint = dataset
+        if self._storage_checkpoint is not None:
+            # Check that the checkpoint file has the same UUID of the analysis file.
+            try:
+                assert self._storage_checkpoint.UUID == primary_uuid
+            except AttributeError:
+                # This is a new file. Assign UUID.
+                self._storage_checkpoint.UUID = primary_uuid
+            except AssertionError:
+                raise IOError('Checkpoint UUID does not match analysis UUID! '
+                              'This checkpoint file came from another simulation!\n'
+                              'Analysis UUID: {}; Checkpoint UUID: {}'.format(
+                    primary_uuid, self._storage_checkpoint.UUID))
 
-        # Check that the checkpoint file has the same UUID of the analysis file.
-        try:
-            assert self._storage_checkpoint.UUID == primary_uuid
-        except AttributeError:
-            # This is a new file. Assign UUID.
-            self._storage_checkpoint.UUID = primary_uuid
-        except AssertionError:
-            raise IOError('Checkpoint UUID does not match analysis UUID! '
-                          'This checkpoint file came from another simulation!\n'
-                          'Analysis UUID: {}; Checkpoint UUID: {}'.format(
-                primary_uuid, self._storage_checkpoint.UUID))
-
-        # Initialize datasets, if needed.
-        self._initialize_storage_file(self._storage_analysis, 'analysis', convention)
-        self._initialize_storage_file(self._storage_checkpoint, 'checkpoint', convention)
+            # Initialize dataset, if needed.
+            self._initialize_storage_file(self._storage_checkpoint, 'checkpoint', convention)
 
         # Further checkpoint interval checks.
+        # -----------------------------------
+
         if self._storage_analysis is not None:
             # The same number will be on checkpoint file as well, but its not guaranteed to be present
             on_file_interval = self._storage_analysis.CheckpointInterval
