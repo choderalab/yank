@@ -268,6 +268,8 @@ class MultiStateReporter(object):
         # Open analysis file.
         self._storage_analysis = self._open_dataset_robustly(self._storage_analysis_file_path,
                                                              mode, version=netcdf_format)
+        # Without set_auto_mask(False) np.inf are read as masked.
+        self._storage_analysis.set_auto_mask(False)
 
         # The analysis netcdf file holds a reference UUID so that we can check
         # that the secondary netcdf files (currently only the checkpoint
