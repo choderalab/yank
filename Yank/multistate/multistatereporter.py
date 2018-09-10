@@ -268,10 +268,6 @@ class MultiStateReporter(object):
         # Open analysis file.
         self._storage_analysis = self._open_dataset_robustly(self._storage_analysis_file_path,
                                                              mode, version=netcdf_format)
-        # TODO - AR: What's the purpose of set_auto_mask(False)? When we create the
-        # TODO - AR:    dataset I think this won't have any effect because any variable
-        # TODO - AR:    created after this call will still have the default behavior.
-        self._storage_analysis.set_auto_mask(False)
 
         # The analysis netcdf file holds a reference UUID so that we can check
         # that the secondary netcdf files (currently only the checkpoint
@@ -294,10 +290,10 @@ class MultiStateReporter(object):
         # Open checkpoint netcdf files.
         msg = ('Could not locate checkpoint subfile. This is okay for analysis if the '
                'solvent trajectory is not needed, but not for production simulation!')
-        dataset = self._open_dataset_robustly(self._storage_checkpoint_file_path, mode,
-                                              catch_io_error=True, io_error_warning=msg,
-                                              version=netcdf_format)
-        self._storage_checkpoint = dataset
+        self._storage_checkpoint = self._open_dataset_robustly(self._storage_checkpoint_file_path,
+                                                               mode, catch_io_error=True,
+                                                               io_error_warning=msg,
+                                                               version=netcdf_format)
         if self._storage_checkpoint is not None:
             # Check that the checkpoint file has the same UUID of the analysis file.
             try:
