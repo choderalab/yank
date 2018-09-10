@@ -949,26 +949,30 @@ class MultiStateSampler(object):
 
         """
         # Find faulty replicas to create error message.
-        faulty_replicas = set()
+        nan_replicas = []
 
         # Check sampled thermodynamic states first.
         state_type = 'thermodynamic state'
-
-        for (replica_id, state_id) in enumerate(self._replica_thermodynamic_states):
+        for replica_id, state_id in enumerate(self._replica_thermodynamic_states):
             neighborhood = self._neighborhood(state_id)
-            if np.any(np.isnan(self._energy_thermodynamic_states[replica_id,neighborhood])):
-                faulty_replicas.add(replica_id)
+            energies_neighborhood = self._energy_thermodynamic_states[replica_id, neighborhood]
+            if np.any(np.isnan(energies_neighborhood)):
+                nan_replicas.append((replica_id, energies_neighborhood))
 
-        # If there are no NaNs in energies, the problem is in the unsampled states.
-        if (len(faulty_replicas) == 0) and (self._energy_unsampled_states.shape[1] > 0):
+        # If there are no NaNs in energies, look for NaNs in the unsampled states energies.
+        if (len(nan_replicas) == 0) and (self._energy_unsampled_states.shape[1] > 0):
             state_type = 'unsampled thermodynamic state'
             for replica_id in range(self.n_replicas):
                 if np.any(np.isnan(self._energy_unsampled_states[replica_id])):
-                    faulty_replicas.add(replica_id)
+                    nan_replicas.append((replica_id, self._energy_unsampled_states[replica_id]))
 
-        if len(faulty_replicas) > 0:
-            # Raise exception.
-            err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
+        # Raise exception if we have found some NaN energies.
+        if len(nan_replicas) > 0:
+            # Log failed replica, its thermo state, and the energy matrix row.
+            err_msg = "NaN encountered in {} energies for the following replicas and states".format(state_type)
+            for replica_id, energy_row in nan_replicas:
+                err_msg += '\n\tEnergies for positions at replica {} (current state {}): {} kT'.format(
+                    replica_id, self._replica_thermodynamic_states[replica_id], energy_row)
             logger.critical(err_msg)
             raise SimulationNaNError(err_msg)
 
@@ -1221,8 +1225,9 @@ class MultiStateSampler(object):
             file_name = 'iteration{}-replica{}-state{}'.format(self._iteration, replica_id,
                                                                thermodynamic_state_id)
             e.serialize_error(os.path.join(output_dir, file_name))
-            message = ('This Multistate Sampler simulation threw a NaN!\nLook for error logs in:\n'
-                       '\tDirectory: {}\tFile Name Base: {}').format(output_dir, file_name)
+            message = ('Propagating replica {} at state {} resulted in a NaN!\n'
+                       'The state of the system and integrator before the error were saved'
+                       ' in {}').format(replica_id, thermodynamic_state_id, output_dir)
             logger.critical(message)
             raise SimulationNaNError(message)
 
