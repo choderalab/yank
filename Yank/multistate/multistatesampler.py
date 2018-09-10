@@ -213,15 +213,24 @@ class MultiStateSampler(object):
             last stored iteration.
 
         """
-        sampler, reporter = cls._instantiate_sampler_from_storage(storage)
-        sampler._restore_sampler_from_reporter(reporter)
-        # Close reading reporter.
-        reporter.close()
+        # Handle case in which storage is a string.
+        reporter = cls._reporter_from_storage(storage, check_exist=True)
+
+        try:
+            # Open the reporter to read the data.
+            reporter.open(mode='r')
+            sampler = cls._instantiate_sampler_from_reporter(reporter)
+            sampler._restore_sampler_from_reporter(reporter)
+        finally:
+            # Close reporter in reading mode.
+            reporter.close()
+
         # We open the reporter only in node 0 in append mode ready for use
         sampler._reporter = reporter
         mpi.run_single_node(0, sampler._reporter.open, mode='a',
                             broadcast_result=False, sync_nodes=False)
-        # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
+        # Don't write the new last iteration, we have not technically
+        # written anything yet, so there is no "junk".
         return sampler
 
     # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
@@ -255,21 +264,24 @@ class MultiStateSampler(object):
         reporter = cls._reporter_from_storage(storage, check_exist=True)
 
         # Read iteration and online analysis info.
-        reporter.open(mode='r')
-        options = reporter.read_dict('options')
-        iteration = reporter.read_last_iteration(last_checkpoint=False)
-        # Search for last cached free energies only if online analysis is activated.
-        target_error = None
-        last_err_free_energy = None
-        # Check if online analysis is set AND that the target error is a stopping condition (> 0)
-        if options['online_analysis_interval'] is not None and options['online_analysis_target_error'] != 0.0:
-            target_error = options['online_analysis_target_error']
-            try:
-                last_err_free_energy = cls._read_last_free_energy(reporter, iteration)[1][1]
-            except TypeError:
-                # Trap for undefined free energy (has not been run yet)
-                last_err_free_energy = np.inf
-        reporter.close()
+        try:
+            reporter.open(mode='r')
+            options = reporter.read_dict('options')
+            iteration = reporter.read_last_iteration(last_checkpoint=False)
+            # Search for last cached free energies only if online analysis is activated.
+            target_error = None
+            last_err_free_energy = None
+            # Check if online analysis is set AND that the target error is a stopping condition (> 0)
+            if (options['online_analysis_interval'] is not None and
+                        options['online_analysis_target_error'] != 0.0):
+                target_error = options['online_analysis_target_error']
+                try:
+                    last_err_free_energy = cls._read_last_free_energy(reporter, iteration)[1][1]
+                except TypeError:
+                    # Trap for undefined free energy (has not been run yet)
+                    last_err_free_energy = np.inf
+        finally:
+            reporter.close()
 
         # Check if the calculation is done.
         number_of_iterations = options['number_of_iterations']
@@ -512,9 +524,6 @@ class MultiStateSampler(object):
         if mpi.run_single_node(0, self._reporter.storage_exists, broadcast_result=True):
             raise RuntimeError('Storage file {} already exists; cowardly '
                                'refusing to overwrite.'.format(self._reporter.filepath))
-
-        # Make sure that only the root node has an open reporter.
-        self._reporter.close()
 
         # Make sure sampler_states is an iterable of SamplerStates.
         if isinstance(sampler_states, mmtools.states.SamplerState):
@@ -820,7 +829,7 @@ class MultiStateSampler(object):
         self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
 
     @classmethod
-    def _instantiate_sampler_from_storage(cls, storage):
+    def _instantiate_sampler_from_reporter(cls, reporter):
         """
         Creates a new instance of the reporter on disk and sampler which can then be manipulated.
         Does not set any variables, use :func:`_restore_sampler_from_reporter` after calling this to set them.
@@ -828,27 +837,16 @@ class MultiStateSampler(object):
 
         Parameters
         ----------
-        storage : str or Reporter
-            If str: The path to the storage file.
-            If :class:`Reporter`: uses the :class:`Reporter` options
-            In the future this will be able to take a Storage class as well.
+        reporter : Reporter
+            A reporter open for reading.
 
         Returns
         -------
         sampler :  MultiStateSampler
-            A new instance of MultiStateSampler (or subclass) with options restored from disk
-        reporter : MultiStateReporter
-            Loaded instance of the reporter from disk.
-            In case ``storage`` was a reporter  returns the input reporter.
-            Reporter will be closed when returned.
+            A new instance of MultiStateSampler (or subclass) with options
+            restored from disk.
+
         """
-
-        # Handle case in which storage is a string.
-        reporter = cls._reporter_from_storage(storage, check_exist=True)
-
-        # Open a reporter to read the data.
-        reporter.open(mode='r')
-
         # Retrieve options and create new simulation.
         options = reporter.read_dict('options')
         options['mcmc_moves'] = reporter.read_mcmc_moves()
@@ -856,8 +854,7 @@ class MultiStateSampler(object):
 
         # Display papers to be cited.
         sampler._display_citations()
-        reporter.close()
-        return sampler, reporter
+        return sampler
 
     def _restore_sampler_from_reporter(self, reporter):
         """
@@ -876,13 +873,9 @@ class MultiStateSampler(object):
         Parameters
         ----------
         reporter : MultiStateReporter
-            Reporter instance to read options from
+            Reporter open for reading.
 
         """
-        # Ensure reporter is closed for safe keeping first
-        reporter.close()
-        # Reopen in read mode
-        reporter.open(mode='r')
         # Read the last iteration reported to ensure we don't include junk
         # data written just before a crash.
         logger.debug("Reading storage file {}...".format(reporter.filepath))
@@ -956,26 +949,30 @@ class MultiStateSampler(object):
 
         """
         # Find faulty replicas to create error message.
-        faulty_replicas = set()
+        nan_replicas = []
 
         # Check sampled thermodynamic states first.
         state_type = 'thermodynamic state'
-
-        for (replica_id, state_id) in enumerate(self._replica_thermodynamic_states):
+        for replica_id, state_id in enumerate(self._replica_thermodynamic_states):
             neighborhood = self._neighborhood(state_id)
-            if np.any(np.isnan(self._energy_thermodynamic_states[replica_id,neighborhood])):
-                faulty_replicas.add(replica_id)
+            energies_neighborhood = self._energy_thermodynamic_states[replica_id, neighborhood]
+            if np.any(np.isnan(energies_neighborhood)):
+                nan_replicas.append((replica_id, energies_neighborhood))
 
-        # If there are no NaNs in energies, the problem is in the unsampled states.
-        if (len(faulty_replicas) == 0) and (self._energy_unsampled_states.shape[1] > 0):
+        # If there are no NaNs in energies, look for NaNs in the unsampled states energies.
+        if (len(nan_replicas) == 0) and (self._energy_unsampled_states.shape[1] > 0):
             state_type = 'unsampled thermodynamic state'
             for replica_id in range(self.n_replicas):
                 if np.any(np.isnan(self._energy_unsampled_states[replica_id])):
-                    faulty_replicas.add(replica_id)
+                    nan_replicas.append((replica_id, self._energy_unsampled_states[replica_id]))
 
-        if len(faulty_replicas) > 0:
-            # Raise exception.
-            err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
+        # Raise exception if we have found some NaN energies.
+        if len(nan_replicas) > 0:
+            # Log failed replica, its thermo state, and the energy matrix row.
+            err_msg = "NaN encountered in {} energies for the following replicas and states".format(state_type)
+            for replica_id, energy_row in nan_replicas:
+                err_msg += '\n\tEnergies for positions at replica {} (current state {}): {} kT'.format(
+                    replica_id, self._replica_thermodynamic_states[replica_id], energy_row)
             logger.critical(err_msg)
             raise SimulationNaNError(err_msg)
 
@@ -1051,7 +1048,7 @@ class MultiStateSampler(object):
         """Return the Reporter object associated to this storage.
 
         If check_exist is True, FileNotFoundError is raised if the files
-        are not found.
+        are not found. The return reporter is closed.
         """
         if isinstance(storage, str):
             # Open a reporter to read the data.
@@ -1061,7 +1058,6 @@ class MultiStateSampler(object):
 
         # Check if netcdf file exists.
         if check_exist and not reporter.storage_exists():
-            reporter.close()
             raise FileNotFoundError('Storage file {} or its subfiles do not exist; '
                                     'cannot read status.'.format(reporter.filepath))
         return reporter
@@ -1229,8 +1225,9 @@ class MultiStateSampler(object):
             file_name = 'iteration{}-replica{}-state{}'.format(self._iteration, replica_id,
                                                                thermodynamic_state_id)
             e.serialize_error(os.path.join(output_dir, file_name))
-            message = ('This Multistate Sampler simulation threw a NaN!\nLook for error logs in:\n'
-                       '\tDirectory: {}\tFile Name Base: {}').format(output_dir, file_name)
+            message = ('Propagating replica {} at state {} resulted in a NaN!\n'
+                       'The state of the system and integrator before the error were saved'
+                       ' in {}').format(replica_id, thermodynamic_state_id, output_dir)
             logger.critical(message)
             raise SimulationNaNError(message)
 
@@ -1327,19 +1324,17 @@ class MultiStateSampler(object):
 
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica in every ThermodynamicState."""
-        # Initialize replica energies for each thermodynamic state.
-        energy_thermodynamic_states = np.zeros(self.n_states)
-        energy_unsampled_states = np.zeros(len(self._unsampled_states))
-
-        # Retrieve sampler state associated to this replica.
-        sampler_state = self._sampler_states[replica_id]
-
         # Determine neighborhood
         state_index = self._replica_thermodynamic_states[replica_id]
         neighborhood = self._neighborhood(state_index)
-        # Only compute energies over neighborhoods
-        energy_neighborhood_states = energy_thermodynamic_states[neighborhood]  # Array, can be indexed like this
-        neighborhood_thermodynamic_states = [self._thermodynamic_states[n] for n in neighborhood]  # List
+
+        # Only compute energies of the sampled states over neighborhoods.
+        energy_neighborhood_states = np.zeros(len(neighborhood))
+        energy_unsampled_states = np.zeros(len(self._unsampled_states))
+        neighborhood_thermodynamic_states = [self._thermodynamic_states[n] for n in neighborhood]
+
+        # Retrieve sampler state associated to this replica.
+        sampler_state = self._sampler_states[replica_id]
 
         # Compute energy for all thermodynamic states.
         for energies, states in [(energy_neighborhood_states, neighborhood_thermodynamic_states),

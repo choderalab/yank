@@ -308,7 +308,7 @@ class SAMSSampler(MultiStateSampler):
         super()._pre_write_create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
 
         if self.state_update_scheme == 'global-jump':
-            self.locality = None # override locality to be global
+            self.locality = None  # override locality to be global
         if self.locality is not None:
             if self.locality < 1:
                 raise Exception('locality must be >= 1')
@@ -373,13 +373,14 @@ class SAMSSampler(MultiStateSampler):
         # TODO: We may be able to refactor this to simply have different update schemes compute neighborhoods differently.
         # TODO: Can we allow "plugin" addition of new update schemes that can be registered externally?
         with mmtools.utils.time_it('Mixing of replicas'):
-            jump_and_mix = self._JumpAndMixPacket(self.n_replicas, self.n_states)
+            # Initialize statistics. This matrix is modified by the jump function and used when updating the logZ estimates.
+            replicas_log_P_k = np.zeros([self.n_replicas, self.n_states], np.float64)
             if self.state_update_scheme == 'global-jump':
-                self._global_jump(jump_and_mix)
+                self._global_jump(replicas_log_P_k)
             elif self.state_update_scheme == 'local-jump':
-                self._local_jump(jump_and_mix)
+                self._local_jump(replicas_log_P_k)
             elif self.state_update_scheme == 'restricted-range-jump':
-                self._restricted_range_jump(jump_and_mix)
+                self._restricted_range_jump(replicas_log_P_k)
             else:
                 raise Exception('Programming error: Unreachable code')
 
@@ -394,12 +395,12 @@ class SAMSSampler(MultiStateSampler):
                                                                        swap_fraction_accepted * 100.0))
 
         # Update logZ estimates
-        self._update_logZ_estimates(jump_and_mix)
+        self._update_logZ_estimates(replicas_log_P_k)
 
         # Update log weights based on target probabilities
         self._update_log_weights()
 
-    def _local_jump(self, jump_and_mix_data):
+    def _local_jump(self, replicas_log_P_k):
         n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
         for (replica_index, current_state_index) in enumerate(self._replica_thermodynamic_states):
             u_k = np.zeros([n_states], np.float64)
@@ -433,35 +434,37 @@ class SAMSSampler(MultiStateSampler):
             new_state_index = np.random.choice(neighborhood, p=P_k[neighborhood])
             self._replica_thermodynamic_states[replica_index] = new_state_index
             # Accumulate statistics
-            jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
+            replicas_log_P_k[replica_index,:] = log_P_k[:]
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
             self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
-    def _global_jump(self, jump_and_mix_data):
+    def _global_jump(self, replicas_log_P_k):
         """
         Global jump scheme.
         This method is described after Eq. 3 in [2]
         """
         n_replica, n_states = self.n_replicas, self.n_states
-        for (replica_index, current_state_index) in enumerate(self._replica_thermodynamic_states):
-            u_k = np.zeros([n_states], np.float64)
-            log_P_k = np.zeros([n_states], np.float64)
-            # Compute unnormalized log probabilities for all thermodynamic states
+        for replica_index, current_state_index in enumerate(self._replica_thermodynamic_states):
             neighborhood = self._neighborhood(current_state_index)
+
+            # Compute unnormalized log probabilities for all thermodynamic states.
+            log_P_k = np.zeros([n_states], np.float64)
             for state_index in neighborhood:
-                u_k[state_index] = self._energy_thermodynamic_states[replica_index, state_index]
-                log_P_k[state_index] = self.log_weights[state_index] - u_k[state_index]
+                u_k = self._energy_thermodynamic_states[replica_index, :]
+                log_P_k[state_index] =  - u_k[state_index] + self.log_weights[state_index]
             log_P_k -= logsumexp(log_P_k)
+
             # Update sampler Context to current thermodynamic state.
             P_k = np.exp(log_P_k[neighborhood])
             new_state_index = np.random.choice(neighborhood, p=P_k)
             self._replica_thermodynamic_states[replica_index] = new_state_index
-            # Accumulate statistics
-            jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
+
+            # Accumulate statistics.
+            replicas_log_P_k[replica_index,:] = log_P_k[:]
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
             self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
-    def _restricted_range_jump(self, jump_and_mix_data):
+    def _restricted_range_jump(self, replicas_log_P_k):
         # TODO: This has an major bug in that we also need to compute energies in `proposed_neighborhood`.
         # I'm working on a way to make this work.
         n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
@@ -495,7 +498,7 @@ class SAMSSampler(MultiStateSampler):
             logger.debug('  new_state_index     : %d' % new_state_index)
             self._replica_thermodynamic_states[replica_index] = new_state_index
             # Accumulate statistics
-            jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
+            replicas_log_P_k[replica_index,:] = log_P_k[:]
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
             self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
@@ -565,7 +568,7 @@ class SAMSSampler(MultiStateSampler):
                 # TODO: On resuming, we need to recompute or restore t0, or use some other way to compute it
                 self._t0 = self._iteration - 1
 
-    def _update_logZ_estimates(self, jump_and_mix_data):
+    def _update_logZ_estimates(self, replicas_log_P_k):
         """
         Update the logZ estimates according to selected SAMS update method
 
@@ -616,7 +619,7 @@ class SAMSSampler(MultiStateSampler):
                 # Based on Eq. 12 of Ref [1]
                 # TODO: This has to be the previous state index and log_P_k used before update; store neighborhood?
                 # TODO: Can we use masked arrays for this purpose?
-                log_P_k = jump_and_mix_data.replica_log_P_k[replica_index,:]
+                log_P_k = replicas_log_P_k[replica_index,:]
                 neighborhood = np.where(self._neighborhoods[replica_index,:])[0] # compact list of states defining neighborhood
                 #logger.debug('  using neighborhood: %s' % str(neighborhood))
                 #logger.debug('  using log_P_k : %s' % str(log_P_k[neighborhood]))
@@ -645,14 +648,6 @@ class SAMSSampler(MultiStateSampler):
         # TODO: If target probabilities are adapted, we need to store them as well
 
         self.log_weights = self.log_target_probabilities[:] - self._logZ[:]
-
-    class _JumpAndMixPacket(object):
-        """
-        Helper class to pass information around between jump, mixing, and parameter update schemes
-        which can be easily created and collapsed as an extendable object
-        """
-        def __init__(self, n_replicas, n_states):
-            self.replica_log_P_k = np.zeros([n_replicas, n_states], np.float64)
 
 
 class SAMSAnalyzer(MultiStateSamplerAnalyzer):

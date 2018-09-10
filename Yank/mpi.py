@@ -42,12 +42,13 @@ Routines
 # GLOBAL IMPORTS
 # ==============================================================================
 
+import functools
+import logging
 import os
 import sys
 import signal
-import logging
-import functools
 from contextlib import contextmanager
+from traceback import format_exception
 
 import numpy as np
 
@@ -125,10 +126,17 @@ def get_mpicomm():
     def mpi_excepthook(type, value, traceback):
         sys.__excepthook__(type, value, traceback)
         node_name = '{}/{}'.format(MPI.COMM_WORLD.rank+1, MPI.COMM_WORLD.size)
-        logger.exception('MPI node {} raised exception.'.format(node_name))
-        logger.critical('MPI node {} called Abort()!'.format(node_name))
+        # logging.exception() automatically print the sys.exc_info(), but here
+        # we may want to save the exception traceback of another MPI node so
+        # we pass the traceback manually.
+        logger.critical('MPI node {} raised an exception and called Abort()! The '
+                        'exception traceback follows'.format(node_name), exc_info=value)
+        # Flush everything.
         sys.stdout.flush()
         sys.stderr.flush()
+        for logger_handler in logger.handlers:
+            logger_handler.flush()
+        # Abort MPI execution.
         if MPI.COMM_WORLD.size > 1:
             MPI.COMM_WORLD.Abort(1)
     # Use our exception handler.
@@ -350,7 +358,11 @@ class _MpiProcessingUnit(object):
             except Exception as e:
                 # Create an exception with same type and traceback but with node info.
                 error = type(e)('{}: {}'.format(node_name, str(e)))
-                error.with_traceback(sys.exc_info()[2])
+                error.with_traceback(e.__traceback__)
+                # When sending the error over the network, the traceback seems to be lost,
+                # so we create a string version of it, and expose it for others to print.
+                traceback_str = ''.join(format_exception(type(e), e, e.__traceback__))
+                error.traceback_str = traceback_str
                 break
 
         # Propagate eventual exceptions to other nodes before raising.
@@ -363,7 +375,15 @@ class _MpiProcessingUnit(object):
         if error is not None:
             raise error
         elif len(all_errors) > 0:
-            raise all_errors[0]
+            # Raise the first error received from a different MPI process.
+            external_error = all_errors[0]
+            # Include original traceback in the error message (indented 4 spaces).
+            traceback_str = '\n    '.join(external_error.traceback_str.split('\n'))
+            err_msg = ('{} received an exception from another MPI process. Original'
+                       ' stack trace follow:\n{}').format(node_name, traceback_str)
+            error = type(external_error)(err_msg)
+            error.with_traceback(external_error.__traceback__)
+            raise error
 
         return results
 

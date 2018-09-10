@@ -1218,6 +1218,14 @@ class AlchemicalPhase(object):
         self._sampler.extend(n_iterations)
 
     # -------------------------------------------------------------------------
+    # Magic methods
+    # -------------------------------------------------------------------------
+
+    def __del__(self):
+        # Explicitly delete the sampler so that its reporter will close.
+        del self._sampler
+
+    # -------------------------------------------------------------------------
     # Internal-usage
     # -------------------------------------------------------------------------
 
