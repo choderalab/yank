@@ -450,8 +450,8 @@ class SAMSSampler(MultiStateSampler):
             # Compute unnormalized log probabilities for all thermodynamic states.
             log_P_k = np.zeros([n_states], np.float64)
             for state_index in neighborhood:
-                u_k = self._energy_thermodynamic_states[replica_index, state_index]
-                log_P_k[state_index] = self.log_weights[state_index] - u_k
+                u_k = self._energy_thermodynamic_states[replica_index, :]
+                log_P_k[state_index] =  - u_k[state_index] + self.log_weights[state_index]
             log_P_k -= logsumexp(log_P_k)
 
             # Update sampler Context to current thermodynamic state.
