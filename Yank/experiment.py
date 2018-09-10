@@ -21,6 +21,7 @@ created by going through the Command Line Interface with the ``yank script`` com
 
 import collections
 import copy
+import gc
 import logging
 import os
 
@@ -489,8 +490,10 @@ class Experiment(object):
                     iterations_left[phase_id] -= iterations_to_run
                 self._phases_last_iterations[phase_id] = alchemical_phase.iteration
 
-                # Delete alchemical phase and prepare switching.
+                # Delete alchemical phase and prepare switching. We force garbage
+                # collection to make sure that everything finalizes correctly.
                 del alchemical_phase
+                gc.collect()
 
 
 class ExperimentBuilder(object):
@@ -2554,6 +2557,7 @@ class ExperimentBuilder(object):
             sampler_state = alchemical_phase._sampler._sampler_states[0]
             mcmc_move = alchemical_phase._sampler.mcmc_moves[0]
             del alchemical_phase
+            gc.collect()
 
             # Restrain the receptor heavy atoms to avoid drastic
             # conformational changes (possibly after equilibration).
