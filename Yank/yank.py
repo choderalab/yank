@@ -186,9 +186,11 @@ class Topography(object):
     def ions_atoms(self):
         """The indices of all ions atoms in the solvent (read-only)."""
         # Ions are all atoms of the solvent whose residue name show a charge.
+        ION_RESIDUE_NAMES = {'NA', 'CL'}
         return [i for i in self._solvent_atoms
                 if '-' in self._topology.atom(i).residue.name or
-                '+' in self._topology.atom(i).residue.name]
+                '+' in self._topology.atom(i).residue.name or
+                self._topology.atom(i).residue.name in ION_RESIDUE_NAMES]
 
     def add_region(self, region_name, region_selection, subset=None):
         """
