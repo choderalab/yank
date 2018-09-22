@@ -29,7 +29,9 @@ import yank.restraints
 from yank import experiment, Topography
 import yank.multistate as multistate
 
-OpenMM73 = yank.restraints.OpenMM73
+from yank.utils import get_data_filename
+
+OpenMM73 = yank.restraints.OpenMM73 # TODO: Document this
 
 
 # =============================================================================================
@@ -97,7 +99,7 @@ options:
   verbose: yes
   output_dir: %(output_directory)s
   default_number_of_iterations: %(number_of_iter)s
-  nsteps_per_iteration: 100
+  default_nsteps_per_iteration: 100
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_cutoff: null
@@ -110,8 +112,8 @@ solvents:
 
 systems:
   ship:
-    phase1_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
-    phase2_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    phase1_path: [%(input_directory)s/benzene-toluene-standard-state/standard_state_complex.inpcrd, %(input_directory)s/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    phase2_path: [%(input_directory)s/benzene-toluene-standard-state/standard_state_complex.inpcrd, %(input_directory)s/benzene-toluene-standard-state/standard_state_complex.prmtop]
     ligand_dsl: resname ene
     solvent: vacuum
 
@@ -143,6 +145,7 @@ def general_restraint_run(options):
     """
     with mmtools.utils.temporary_directory() as output_directory:
         # TODO refactor this to use AlchemicalPhase API rather than a YAML script.
+        options['input_directory'] = get_data_filename(os.path.join('tests', 'data'))
         options['output_directory'] = output_directory
         # run both setup and experiment
         yaml_builder = experiment.ExperimentBuilder(restraint_test_yaml % options)
