@@ -98,12 +98,29 @@ options:
   minimize: no
   verbose: yes
   output_dir: %(output_directory)s
-  default_number_of_iterations: %(number_of_iter)s
-  default_nsteps_per_iteration: 100
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_cutoff: null
-  platform: OpenCL
+  platform: CPU
+
+mcmc_moves:
+  langevin:
+    type: MCDisplacementMove
+    type: MCRotationMove
+    type: LangevinSplittingDynamicsMove
+    timestep: 4.0 * femtoseconds
+    n_steps: 25
+    n_restart_attempts: 4
+
+samplers:
+  sams:
+    type: SAMSSampler
+    mcmc_moves: langevin
+    number_of_iterations: %(number_of_iter)s
+    state_update_scheme: global-jump
+    gamma0: 10.0
+    flatness_threshold: 10.0
+    online_analysis_interval: null
 
 solvents:
   vacuum:
@@ -126,11 +143,12 @@ protocols:
         lambda_sterics:        [0.0, 0.00, 0.0, 0.00, 0.0]
     solvent:
       alchemical_path:
-        lambda_electrostatics: [1.0, 1.0]
-        lambda_sterics:        [1.0, 1.0]
+        lambda_electrostatics: [0.0, 0.0]
+        lambda_sterics:        [0.0, 0.0]
 
 experiments:
   system: ship
+  sampler: sams
   protocol: absolute-binding
   restraint:
     type: %(restraint_type)s
