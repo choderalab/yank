@@ -1738,6 +1738,10 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
             # Determine restraint parameters for these atoms.
             self._determine_restraint_parameters(sampler_state, topography)
 
+        # DEBUG
+        ssc = self.get_standard_state_correction(thermodynamic_state)
+        logger.debug('Standard state correction: {} kT'.format(ssc))
+
     # -------------------------------------------------------------------------
     # Abstract Functions
     # -------------------------------------------------------------------------

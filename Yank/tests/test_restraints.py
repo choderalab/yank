@@ -118,9 +118,19 @@ samplers:
     mcmc_moves: langevin
     number_of_iterations: %(number_of_iter)s
     state_update_scheme: global-jump
-    gamma0: 10.0
+    gamma0: 2.0
     flatness_threshold: 10.0
-    online_analysis_interval: null
+    online_analysis_interval: 200
+    online_analysis_minimum_iterations: 50
+    online_analysis_target_error: 0.1
+
+  repex:
+    type: ReplicaExchangeSampler
+    mcmc_moves: langevin
+    number_of_iterations: %(number_of_iter)s
+    online_analysis_interval: 50
+    online_analysis_minimum_iterations: 25
+    online_analysis_target_error: 0.1
 
 solvents:
   vacuum:
@@ -138,9 +148,9 @@ protocols:
   absolute-binding:
     complex:
       alchemical_path:
-        lambda_restraints:     [0.0, 0.25, 0.5, 0.75, 1.0]
-        lambda_electrostatics: [0.0, 0.00, 0.0, 0.00, 0.0]
-        lambda_sterics:        [0.0, 0.00, 0.0, 0.00, 0.0]
+        lambda_restraints:     [0.0, 0.05, 0.10, 0.15, 0.25, 0.5, 0.75, 1.0]
+        lambda_electrostatics: [0.0, 0.00, 0.00, 0.00, 0.00, 0.0, 0.00, 0.0]
+        lambda_sterics:        [0.0, 0.00, 0.00, 0.00, 0.00, 0.0, 0.00, 0.0]
     solvent:
       alchemical_path:
         lambda_electrostatics: [0.0, 0.0]
@@ -148,7 +158,7 @@ protocols:
 
 experiments:
   system: ship
-  sampler: sams
+  sampler: repex
   protocol: absolute-binding
   restraint:
     type: %(restraint_type)s
@@ -171,16 +181,21 @@ def general_restraint_run(options):
         # Estimate Free Energies
         ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
         reporter = multistate.MultiStateReporter(ncfile_path, open_mode='r')
-        ncfile = netcdf.Dataset(ncfile_path, 'r')
-        analyzer = multistate.ReplicaExchangeAnalyzer(ncfile)
+        analyzer = multistate.MultiStateSamplerAnalyzer(reporter)
         Deltaf_ij, dDeltaf_ij = analyzer.get_free_energy()
         # Correct the sign for the fact that we are adding vs removing the restraints
         DeltaF_simulated = Deltaf_ij[-1, 0]
         dDeltaF_simulated = dDeltaf_ij[-1, 0]
+        ncfile = netcdf.Dataset(ncfile_path, 'r')
+        print('Standard state correction:')
+        print(ncfile.groups['metadata'].variables['standard_state_correction'][:])
         DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
         ncfile.close()
 
     # Check if they are close
+    print(DeltaF_restraints)
+    print(DeltaF_simulated)
+    print(dDeltaF_simulated)
     assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
 
 
@@ -189,7 +204,7 @@ def test_harmonic_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
-    options = {'number_of_iter': '500',
+    options = {'number_of_iter': '40',
                'restraint_type': 'Harmonic'}
     general_restraint_run(options)
 
@@ -199,7 +214,7 @@ def test_flat_bottom_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
-    options = {'number_of_iter': '500',
+    options = {'number_of_iter': '1000',
                'restraint_type': 'FlatBottom'}
     general_restraint_run(options)
 
