@@ -28,6 +28,7 @@ from nose.plugins.attrib import attr
 import yank.restraints
 from yank import experiment, Topography
 import yank.multistate as multistate
+from yank.analyze import YankMultiStateSamplerAnalyzer
 
 from yank.utils import get_data_filename
 
@@ -181,22 +182,29 @@ def general_restraint_run(options):
         # Estimate Free Energies
         ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
         reporter = multistate.MultiStateReporter(ncfile_path, open_mode='r')
-        analyzer = multistate.MultiStateSamplerAnalyzer(reporter)
+        #analyzer = multistate.MultiStateSamplerAnalyzer(reporter)
+        analyzer = YankMultiStateSamplerAnalyzer(reporter)
         Deltaf_ij, dDeltaf_ij = analyzer.get_free_energy()
         # Correct the sign for the fact that we are adding vs removing the restraints
         DeltaF_simulated = Deltaf_ij[-1, 0]
         dDeltaF_simulated = dDeltaf_ij[-1, 0]
-        ncfile = netcdf.Dataset(ncfile_path, 'r')
         print('Standard state correction:')
-        print(ncfile.groups['metadata'].variables['standard_state_correction'][:])
-        DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
-        ncfile.close()
+        #ncfile = netcdf.Dataset(ncfile_path, 'r')
+        #print(ncfile.groups['metadata'].variables['standard_state_correction'][:])
+        #print(float(ncfile.groups['metadata'].variables['standard_state_correction'][:]))
+        #ncfile.close()
+        DeltaF_restraints = analyzer.get_standard_state_correction()
 
     # Check if they are close
-    print(DeltaF_restraints)
-    print(DeltaF_simulated)
-    print(dDeltaF_simulated)
-    assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
+    msg = ''
+    msg += 'Computed:  %8.3f          kT\n' % (DeltaF_restraints)
+    msg += 'Actual:    %8.3f +- %8.3f kT\n' % (DeltaF_simulated, dDeltaF_simulated)
+    msg += 'ERROR:     %8.3f +- %8.3f kT\n' % (DeltaF_restraints - DeltaF_simulated, dDeltaF_simulated)
+
+    # DEBUG
+    print(msg)
+
+    assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=2*dDeltaF_simulated), 'Standard state correction is inaccurate.\n' + msg
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -204,7 +212,7 @@ def test_harmonic_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
-    options = {'number_of_iter': '40',
+    options = {'number_of_iter': '1000',
                'restraint_type': 'Harmonic'}
     general_restraint_run(options)
 
