@@ -1674,7 +1674,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
 
         # Radial
         sigma = 1 / unit.sqrt(p.K_r / kT)
-        rmin = strip(min(0*unit.angstrom, p.r_aA0 - 8 * sigma))
+        rmin = strip(max(0*unit.angstrom, p.r_aA0 - 8 * sigma))
         rmax = strip(p.r_aA0 + 8 * sigma)
         r0 = strip(p.r_aA0)
         K_r = strip(p.K_r)
@@ -1686,7 +1686,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         for name in ['A', 'B']:
             theta0 = strip(getattr(p, 'theta_' + name + '0'))
             K_theta = strip(getattr(p, 'K_theta' + name))
-            I = lambda theta: self._numerical_angle_integrand(theta, theta0, K_theta, kT)
+            I = lambda theta: self._numerical_angle_integrand(theta, theta0, K_theta, strip(kT))
             integral_packet = scipy.integrate.quad(I, 0, pi)
             ExpDeltaG *= integral_packet[0]
 
@@ -1694,8 +1694,8 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         for name in ['A', 'B', 'C']:
             phi0 = strip(getattr(p, 'phi_' + name + '0'))
             K_phi = strip(getattr(p, 'K_phi' + name))
-            I = lambda phi: self._numerical_torsion_integrand(phi, phi0, K_phi, kT)
-            integral_packet = scipy.integrate.quad(I, 0, 2*pi)
+            I = lambda phi: self._numerical_torsion_integrand(phi, phi0, K_phi, strip(kT))
+            integral_packet = scipy.integrate.quad(I, -pi, pi)
             ExpDeltaG *= integral_packet[0]
 
         DeltaG = -np.log(8 * pi**2 * V0 / ExpDeltaG)
@@ -1783,7 +1783,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         """
         Integrand for the torsion (phi) restraints which will be integrated numerically for standard state correction
 
-        Domain is on [0, 2*pi]
+        Domain is on [-pi, pi], the same domain OpenMM uses
 
         Parameters
         ----------
@@ -1792,7 +1792,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         phi0 : float
             Equilibrium torsion angle at which force of restraint often is 0, units of radians
         spring_constant : float
-            Spring constant for this torsion in units of with kJ/(mol * nm**2)
+            Spring constant for this torsion in units of kJ/mol/nm**2
         kt : float
             Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
             in units of kJ/mol
@@ -1818,7 +1818,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         theta0 : float
             Equilibrium angle at which force of restraint often is 0, units of radians
         spring_constant : float
-            Spring constant for this angle in units of with kilocalories_per_mole/nm**2
+            Spring constant for this angle in units of with kJ/mol/nm**2
         kt : float
             Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
             in units of kJ/mol
@@ -1844,7 +1844,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         r0 : float
             Equilibrium distance at which force of restraint often is 0, nm
         spring_constant : float
-            Spring constant for this distance in units of with kilocalories_per_mole/nm**2
+            Spring constant for this distance in units of kJ/mol/nm**2
         kt : float
             Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
             in units of kJ/mol
@@ -2295,7 +2295,7 @@ class Boresch(BoreschLike):
         r0 : float
             Equilibrium distance at which force of restraint often is 0, nm
         spring_constant : float
-            Spring constant for this distance in units of with kilocalories_per_mole/nm**2
+            Spring constant for this distance in units of kJ/mol/nm**2
         kt : float
             Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
             in units of kJ/mol
@@ -2322,7 +2322,7 @@ class Boresch(BoreschLike):
         theta0 : float
             Equilibrium angle at which force of restraint often is 0, units of radians
         spring_constant : float
-            Spring constant for this angle in units of with kilocalories_per_mole/nm**2
+            Spring constant for this angle in units of kJ/mol/nm**2
 
         Returns
         -------
@@ -2337,7 +2337,7 @@ class Boresch(BoreschLike):
 
         Uses a harmonic restraint around phi0 with corrections to the OpenMM limits of dihedral calculation
 
-        Domain is on [0, 2*pi]
+        Domain is on [-pi, pi], the same domain OpenMM uses
 
         Parameters
         ----------
@@ -2346,7 +2346,7 @@ class Boresch(BoreschLike):
         phi0 : float
             Equilibrium torsion angle at which force of restraint often is 0, units of radians
         spring_constant : float
-            Spring constant for this torsion in units of with kJ/(mol * nm**2)
+            Spring constant for this torsion in units of kJ/mol/nm**2
         kt : float
             Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
             in units of kJ/mol
@@ -2532,7 +2532,7 @@ class PeriodicTorsionBoresch(Boresch):
         phi0 : float
             Equilibrium torsion angle at which force of restraint often is 0, units of radians
         spring_constant : float
-            Spring constant for this torsion in units of with kJ/(mol * nm**2)
+            Spring constant for this torsion in units of kJ/mol/nm**2
         kt : float
             Boltzmann Temperature of the thermodynamic state restraining the atoms = kB * T
             in units of kJ/mol

@@ -103,15 +103,17 @@ options:
   pressure: null
   anisotropic_dispersion_cutoff: null
   platform: CPU
+  hydrogen_mass: 3*amu
 
 mcmc_moves:
   langevin:
-    type: MCDisplacementMove
-    type: MCRotationMove
     type: LangevinSplittingDynamicsMove
-    timestep: 4.0 * femtoseconds
-    n_steps: 25
+    timestep: 4.0*femtoseconds
+    collision_rate: 1.0 / picosecond
+    n_steps: 50
+    reassign_velocities: yes
     n_restart_attempts: 4
+    splitting: 'V R O R V'
 
 samplers:
   sams:
@@ -249,11 +251,10 @@ def test_PeriodicTorsionBoresch_free_energy():
     general_restraint_run(options)
 
 
-def test_harmonic_standard_state():
+def test_harmonic_standard_state_analytical():
     """
-    Test that the expected harmonic standard state correction is close to our approximation
-
-    Also ensures that PBC bonds are being computed and disabled correctly as expected
+    Perform some analytical tests of the Harmonic standard state correction.
+    Also ensures that PBC is being handled correctly
     """
     LJ_fluid = testsystems.LennardJonesFluid()
 
@@ -277,6 +278,50 @@ def test_harmonic_standard_state():
     restraint_standard_state_G = restraint.get_standard_state_correction(thermodynamic_state)
     np.testing.assert_allclose(analytical_standard_state_G, restraint_standard_state_G)
 
+def test_BoreschLike_standard_state_analytical():
+    """
+    Perform some analytical tests of the Boresch standard state correction.
+    Also ensures that PBC is being handled correctly
+    """
+    LJ_fluid = testsystems.LennardJonesFluid()
+
+    # Define receptor and ligand atoms
+    receptor_atoms = [0, 1, 2]
+    ligand_atoms = [3, 4, 5]
+
+    # Create restraint
+    K_r = 1.0*unit.kilocalories_per_mole/unit.angstrom**2
+    r_0 = 0.0*unit.angstrom
+    K_theta = 0.0*unit.kilocalories_per_mole/unit.degrees**2
+    theta_0 = 30.0*unit.degrees
+
+    topography = Topography(LJ_fluid.topology, ligand_atoms=ligand_atoms)
+    sampler_state = states.SamplerState(positions=LJ_fluid.positions)
+    thermodynamic_state = states.ThermodynamicState(system=LJ_fluid.system,
+                                                    temperature=300.0 * unit.kelvin)
+
+    for restraint_name in ['Boresch', 'PeriodicTorsionBoresch']:
+        restraint = yank.restraints.create_restraint('Boresch',
+                             restrained_receptor_atoms=receptor_atoms,
+                             restrained_ligand_atoms=ligand_atoms,
+                             K_r=K_r, r_aA0=r_0,
+                             K_thetaA=K_theta, theta_A0=theta_0,
+                             K_thetaB=K_theta, theta_B0=theta_0,
+                             K_phiA=K_theta, phi_A0=theta_0,
+                             K_phiB=K_theta, phi_B0=theta_0,
+                             K_phiC=K_theta, phi_C0=theta_0)
+
+        # Determine other parameters
+        restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+
+        # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
+        liter = 1000.0 * unit.centimeters ** 3  # one liter
+        box_volume = liter / (unit.AVOGADRO_CONSTANT_NA * unit.mole)  # standard state volume
+        analytical_shell_volume = (2 * math.pi / (K_r * thermodynamic_state.beta))**(3.0/2)
+        analytical_standard_state_G = - math.log(box_volume / analytical_shell_volume)
+        restraint_standard_state_G = restraint.get_standard_state_correction(thermodynamic_state)
+        msg = 'Failed test for restraint {}'.format(restraint_name)
+        np.testing.assert_allclose(analytical_standard_state_G, restraint_standard_state_G, err_msg=msg)
 
 # ==============================================================================
 # RESTRAINT PARAMETER DETERMINATION
