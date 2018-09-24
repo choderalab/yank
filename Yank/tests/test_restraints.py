@@ -97,7 +97,7 @@ restraint_test_yaml = """
 ---
 options:
   minimize: no
-  verbose: yes
+  verbose: no
   output_dir: %(output_directory)s
   temperature: 300*kelvin
   pressure: null
@@ -122,7 +122,7 @@ samplers:
     number_of_iterations: %(number_of_iter)s
     state_update_scheme: global-jump
     gamma0: 2.0
-    flatness_threshold: 10.0
+    flatness_threshold: 5.0
     online_analysis_interval: 200
     online_analysis_minimum_iterations: 50
     online_analysis_target_error: 0.1
