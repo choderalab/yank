@@ -6,12 +6,13 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-Development
------------
+0.23.5 Bugfix release
+---------------------
 
 - Fix bug where the stack trace of an exception raised by an MPI process would be logged incorrectly (`#1084 <https://github.com/choderalab/yank/pull/1084>`_).
 - Improved robustness of NetCDF dataset opening and closing (`#1084 <https://github.com/choderalab/yank/pull/1084>`_).
-
+- The algorithm identifying ions now detects also ions called "NA" and "CL" (`#1086 <https://github.com/choderalab/yank/pull/1086>`_).
+- Fix bug that caused the standard state correction of the Boresch restraint to be computed incorrectly (`#1092 <https://github.com/choderalab/yank/pull/1092>`_)
 
 0.23.4 Bugfix release
 ---------------------
