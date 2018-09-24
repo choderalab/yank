@@ -667,7 +667,9 @@ class MultiStateSampler(object):
             # Increment iteration counter.
             self._iteration += 1
 
+            logger.debug('*' * 80)
             logger.debug('Iteration {}/{}'.format(self._iteration, iteration_limit))
+            logger.debug('*' * 80)
             timer.start('Iteration')
 
             # Update thermodynamic states
@@ -1510,6 +1512,13 @@ class MultiStateSampler(object):
 
         timer.stop("Online analysis")
 
+        # Report online analysis to debug log
+        logger.debug('*** ONLINE analysis free energies:')
+        msg = '    '
+        for x in self._last_mbar_f_k:
+            msg += '%8.1f' % x
+        logger.debug(msg)
+
         return self._last_err_free_energy
 
     def _update_analysis(self):
@@ -1520,14 +1529,19 @@ class MultiStateSampler(object):
 
         # TODO: Simplify this
         if self.online_analysis_interval is None:
+            logger.debug('No online analysis requested')
             analysis_to_perform = None
-        elif self._iteration <= self.online_analysis_minimum_iterations:
+        elif self._iteration < self.online_analysis_minimum_iterations:
+            logger.debug('Not enough iterations for online analysis (self.online_analysis_minimum_iterations = %d)' % self.online_analysis_minimum_iterations)
             analysis_to_perform = 'online'
         elif self._iteration % self.online_analysis_interval != 0:
+            logger.debug('Not an online analysis iteration')
             analysis_to_perform = 'online'
         elif self.locality is not None:
+            logger.debug('Not a global locality')
             analysis_to_perform = 'online'
         else:
+            logger.debug('Will perform offline analysis')
             # All conditions are met for offline analysis
             analysis_to_perform = 'offline'
 

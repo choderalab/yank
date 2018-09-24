@@ -15,8 +15,8 @@ import textwrap
 import openmoltools as omt
 
 from nose import tools
-from yank.utils import *
-from yank.schema.validator import *
+from yank.utils import * # TODO: Don't use 'import *'
+from yank.schema.validator import * # TODO: Don't use 'import *'
 
 
 # =============================================================================================
@@ -332,4 +332,3 @@ def test_TLeap_export_run():
         assert os.path.getsize(output_path + '.prmtop') > 0
         assert os.path.getsize(output_path + '.inpcrd') > 0
         assert os.path.isfile(os.path.join(tmp_dir, 'benzene.leap.log'))
-

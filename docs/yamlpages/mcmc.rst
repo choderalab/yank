@@ -50,24 +50,24 @@ The default moves used by YANK are equivalent to the following:
     mcmc_moves:
         default1:
             type: LangevinSplittingDynamicsMove
-            timestep: 2.0*femtoseconds, # 2 fs timestep
-            collision_rate: 1.0 / picosecond, # weak collision rate
-            n_steps: 500, # 500 steps/iteration
-            reassign_velocities: yes, # reassign Maxwell-Boltzmann velocities each iteration
-            n_restart_attempts: 6, # attempt to recover from NaNs
-            splitting: 'VRORV' # use the high-quality BAOAB integrator
+            timestep: 2.0*femtoseconds # 2 fs timestep
+            collision_rate: 1.0 / picosecond # weak collision rate
+            n_steps: 500 # 500 steps/iteration
+            reassign_velocities: yes # reassign Maxwell-Boltzmann velocities each iteration
+            n_restart_attempts: 6 # attempt to recover from NaNs
+            splitting: 'V R O R V' # use the high-quality BAOAB integrator
         default2:
             type: SequenceMove
             move_list:
                 - type: MCDisplacementMove # Monte Carlo ligand displacement
                 - type: MCRotationMove # Monte Carlo ligand rotation
                 - type: LangevinSplittingDynamicsMove
-                  timestep: 2.0*femtoseconds, # 2 fs timestep
-                  collision_rate: 1.0 / picosecond, # weak collision rate
-                  n_steps: 500, # 500 steps/iteration
-                  reassign_velocities: yes, # reassign Maxwell-Boltzmann velocities each iteration
-                  n_restart_attempts: 6, # attempt to recover from NaNs
-                  splitting: 'VRORV' # use the high-quality BAOAB integrator
+                  timestep: 2.0*femtoseconds # 2 fs timestep
+                  collision_rate: 1.0 / picosecond # weak collision rate
+                  n_steps: 500 # 500 steps/iteration
+                  reassign_velocities: yes # reassign Maxwell-Boltzmann velocities each iteration
+                  n_restart_attempts: 6 # attempt to recover from NaNs
+                  splitting: 'V R O R V' # use the high-quality BAOAB integrator
 
 
 ``default1`` is used for the solvent phase and for complex phases using a ``BoreschLike`` restraint.

@@ -35,6 +35,7 @@ from scipy.misc import logsumexp
 from pymbar import MBAR, timeseries
 import openmmtools as mmtools
 
+from .multistatereporter import MultiStateReporter
 
 from . import utils
 
@@ -535,7 +536,7 @@ class PhaseAnalyzer(ABC):
         measured from and how each phase interfaces with other phases.
         """
         # Arguments validation.
-        if type(reporter) is str:
+        if not type(reporter) is MultiStateReporter:
             raise ValueError('reporter must be a MultiStateReporter instance')
         if not isinstance(registry, ObservablesRegistry):
             raise ValueError("Registry must be an instanced ObservablesRegistry")
@@ -836,11 +837,11 @@ class PhaseAnalyzer(ABC):
         Optionally truncate the data to self.max_n_iterations.
 
         """
-        logger.info("Reading energies...")
+        logger.debug("Reading energies...")
         # reporter_energies is [energy_sampled_states, neighborhoods, energy_unsampled_states].
         energy_data = list(self._reporter.read_energies())
         energy_data.append(self._reporter.read_replica_thermodynamic_states())
-        logger.info("Done.")
+        logger.debug("Done.")
 
         # Truncate the number of iterations to self.max_n_iterations if requested.
         if truncate_max_n_iterations:
@@ -1014,9 +1015,9 @@ class PhaseAnalyzer(ABC):
 
         """
         # Initialize MBAR (computing free energy estimates, which may take a while)
-        logger.info("Computing free energy differences...")
+        logger.debug("Computing free energy differences...")
         self.mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
-        logger.info('Done.')
+        logger.debug('Done.')
         return self.mbar
 
     def _read_online_data_if_present(self):
@@ -1307,25 +1308,25 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             If there are no radially-symmetric restraints in the bound state.
 
         """
-        logger.info('Trying to get radially symmetric restraint data...')
+        logger.debug('Trying to get radially symmetric restraint data...')
 
         # Check cached value.
         if self._radially_symmetric_restraint_data is not None:
             return self._radially_symmetric_restraint_data
 
         # Isolate the end states.
-        logger.info('Retrieving end thermodynamic states...')
+        logger.debug('Retrieving end thermodynamic states...')
         end_states = self._get_end_thermodynamic_states()
 
         # Isolate restraint force.
-        logger.info('Isolating restraint force...')
+        logger.debug('Isolating restraint force...')
         system = end_states[0].system
         restraint_parent_class = mmtools.forces.RadiallySymmetricRestraintForce
         # This raises mmtools.forces.NoForceFoundError if there's no restraint to unbias.
         force_idx, restraint_force = mmtools.forces.find_forces(system, force_type=restraint_parent_class,
                                                                 only_one=True, include_subclasses=True)
         # The force is owned by the System, we have to copy to avoid the memory to be deallocated.
-        logger.info('Deep copying restraint force...')
+        logger.debug('Deep copying restraint force...')
         restraint_force = copy.deepcopy(restraint_force)
 
         # Check that the restraint was turned on at the end states.
@@ -1333,13 +1334,13 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             raise TypeError('Cannot unbias a restraint that is turned off at one of the end states.')
 
         # Read the centroid weights (mass) of the restrained particles.
-        logger.info('Retrieving particle masses...')
+        logger.debug('Retrieving particle masses...')
         weights_group1 = [system.getParticleMass(i) for i in restraint_force.restrained_atom_indices1]
         weights_group2 = [system.getParticleMass(i) for i in restraint_force.restrained_atom_indices2]
 
         # Cache value so that we won't have to deserialize the system again.
         self._radially_symmetric_restraint_data = restraint_force, weights_group1, weights_group2
-        logger.info('Done.')
+        logger.debug('Done.')
         return self._radially_symmetric_restraint_data
 
     # -------------------------------------------------------------------------
@@ -1383,7 +1384,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         n_replicas, n_states, n_iterations = energies.shape
 
-        logger.info("Assembling effective timeseries...")
+        logger.debug("Assembling effective timeseries...")
         # Check for log weights
         has_log_weights = False
         if self.has_log_weights:
@@ -1404,7 +1405,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                 u_n[iteration] += - np.sum(log_weights[states_slice, iteration]) + (
                         n_replicas * logsumexp(-f_l[:] + log_weights[:, iteration]))
 
-        logger.info("Done.")
+        logger.debug("Done.")
         return u_n
 
     def _compute_mbar_decorrelated_energies(self):
@@ -1431,7 +1432,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         number_equilibrated, g_t, Neff_max = self._get_equilibration_data(sampled_energy_matrix,
                                                                           replicas_state_indices)
 
-        logger.info("Assembling uncorrelated energies...")
+        logger.debug("Assembling uncorrelated energies...")
 
         if not self.use_full_trajectory:
             for i, energies in enumerate(energy_data):
@@ -1462,8 +1463,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Add energies of unsampled states to the end points.
         if n_unsampled_states > 0:
             energy_matrix[[0, -1], :] = self.reformat_energies_for_mbar(unsampled_energy_matrix)
-            logger.info("Found expanded cutoff states in the energies!")
-            logger.info("Free energies will be reported relative to them instead!")
+            logger.debug("Found expanded cutoff states in the energies!")
+            logger.debug("Free energies will be reported relative to them instead!")
         if self.use_online_data and self._online_data is not None:
             # Do online data only if present and already exists as stored in self._online_data
             temp_online = copy.deepcopy(self._online_data)
@@ -1482,7 +1483,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         self._decorrelated_u_ln = energy_matrix
         self._decorrelated_N_l = samples_per_state
 
-        logger.info('Done.')
+        logger.debug('Done.')
         return self._decorrelated_u_ln, self._decorrelated_N_l
 
     def _compute_mbar_unbiased_energies(self):
@@ -1503,7 +1504,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             The total number of samples drawn from each state (including the
             unbiased states).
         """
-        logger.info('Checking if we need to unbias the restraint...')
+        logger.debug('Checking if we need to unbias the restraint...')
 
         # Check if we need to unbias the restraint.
         unbias_restraint = self.unbias_restraint
@@ -1512,7 +1513,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                 restraint_data = self._get_radially_symmetric_restraint_data()
             except (TypeError, mmtools.forces.NoForceFoundError) as e:
                 # If we don't need to unbias the restraint there's nothing else to do.
-                logger.info(str(e) + ' The restraint will not be unbiased.')
+                logger.debug(str(e) + ' The restraint will not be unbiased.')
                 unbias_restraint = False
         if not unbias_restraint:
             self._unbiased_decorrelated_u_ln = self._decorrelated_u_ln
@@ -1521,19 +1522,19 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         # Compute the restraint energies/distances.
         restraint_force, weights_group1, weights_group2 = restraint_data
-        logger.info('Found {} restraint. The restraint will be unbiased.'.format(restraint_force.__class__.__name__))
+        logger.debug('Found {} restraint. The restraint will be unbiased.'.format(restraint_force.__class__.__name__))
         logger.debug('Receptor restrained atoms: {}'.format(restraint_force.restrained_atom_indices1))
         logger.debug('ligand restrained atoms: {}'.format(restraint_force.restrained_atom_indices2))
 
 
         # Compute restraint energies/distances.
-        logger.info('Computing restraint energies...')
+        logger.debug('Computing restraint energies...')
         energies_ln, distances_ln = self._compute_restraint_energies(restraint_force, weights_group1,
                                                                      weights_group2)
 
         # Convert energies to kT unit for comparison to energy cutoff.
         energies_ln = energies_ln / self.kT
-        logger.info('Restraint energy mean: {} kT; std: {} kT'
+        logger.debug('Restraint energy mean: {} kT; std: {} kT'
                      ''.format(np.mean(energies_ln), np.std(energies_ln, ddof=1)))
 
         # Don't modify the cached decorrelated energies.
@@ -1594,7 +1595,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         self._unbiased_decorrelated_u_ln = u_ln_new
         self._unbiased_decorrelated_N_l = N_l_new
 
-        logger.info('Done.')
+        logger.debug('Done.')
         return self._unbiased_decorrelated_u_ln, self._unbiased_decorrelated_N_l
 
     def _compute_restraint_energies(self, restraint_force, weights_group1, weights_group2):
@@ -1847,7 +1848,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         nstates = self.mbar.N_k.size
 
         # Get matrix of dimensionless free energy differences and uncertainty estimate.
-        logger.info("Computing covariance matrix...")
+        logger.debug("Computing covariance matrix...")
 
         try:
             # pymbar 2
@@ -1857,21 +1858,21 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             (Deltaf_ij, dDeltaf_ij, _) = self.mbar.getFreeEnergyDifferences()
 
         # Matrix of free energy differences
-        logger.info("Deltaf_ij:")
+        logger.debug("Deltaf_ij:")
         for i in range(nstates):
             str_row = ""
             for j in range(nstates):
                 str_row += "{:8.3f}".format(Deltaf_ij[i, j])
-            logger.info(str_row)
+            logger.debug(str_row)
 
         # Matrix of uncertainties in free energy difference (expectations standard
         # deviations of the estimator about the true free energy)
-        logger.info("dDeltaf_ij:")
+        logger.debug("dDeltaf_ij:")
         for i in range(nstates):
             str_row = ""
             for j in range(nstates):
                 str_row += "{:8.3f}".format(dDeltaf_ij[i, j])
-            logger.info(str_row)
+            logger.debug(str_row)
 
         # Return free energy differences and an estimate of the covariance.
         free_energy_dict = {'value': Deltaf_ij, 'error': dDeltaf_ij}
