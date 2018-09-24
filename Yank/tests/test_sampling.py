@@ -182,7 +182,7 @@ def test_replica_exchange_harmonic_oscillator(verbose=False, verbose_simulation=
     move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtoseconds,
                                              collision_rate=20.0/unit.picosecond,
                                              n_steps=500, reassign_velocities=True)
-    simulation = ReplicaExchangeSampler(mcmc_moves=move, number_of_iterations=200)
+    simulation = ReplicaExchangeSampler(mcmc_moves=move, number_of_iterations=400)
 
     # Define file for temporary storage.
     with mmtools.utils.temporary_directory() as tmp_dir:
