@@ -1305,6 +1305,10 @@ class ExperimentBuilder(object):
                     required: yes
                     type: string
                     nullable: yes
+                net_charge:
+                    required: no
+                    type: integer
+                    nullable: yes
         select:
             required: no
             dependencies: filepath
@@ -1342,15 +1346,6 @@ class ExperimentBuilder(object):
         modeller:
             required: no
             dependencies: filepath
-        openeye:
-            required: no
-            excludes: filepath
-        antechamber:
-            required: no
-            excludes: filepath
-        epik:
-            required: no
-            excludes: filepath
         """
         peptide_schema = {**yaml.load(peptide_schema_yaml), **common_molecules_schema}
 

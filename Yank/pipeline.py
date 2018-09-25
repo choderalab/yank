@@ -1674,8 +1674,13 @@ class SetupDatabase:
                                                       residue_name=residue_name)
 
                     utils.Mol2File(mol2_file_path).round_charge()  # normalize charges
-                    net_charge = None  # we don't need Epik's net charge
+                    # We don't need Epik's or input net charge as antechamber will
+                    # infer the net charge from the sum of the OpenEye charges.
+                    net_charge = None
                     mol_descr['filepath'] = mol2_file_path
+                # Check if use specified a net_charge, but don't overwrite Epik's protonation state.
+                elif net_charge is not None:
+                    net_charge = mol_descr['antechamber'].get('net_charge', None)
 
                 # Generate parameters
                 charge_method = mol_descr['antechamber']['charge_method']
