@@ -2897,7 +2897,8 @@ class ExperimentBuilder(object):
         if mcmc_move_id is None:
             mcmc_move = self._create_default_mcmc_move(experiment_description, default_mc_atoms)
         else:
-            mcmc_move = schema.call_mcmc_move_constructor(self._mcmc_moves[mcmc_move_id])
+            mcmc_move = schema.call_mcmc_move_constructor(self._mcmc_moves[mcmc_move_id],
+                                                          atom_subset=default_mc_atoms)
         constructor_description['mcmc_moves'] = mcmc_move
         # Create the sampler.
         return schema.call_sampler_constructor(constructor_description)

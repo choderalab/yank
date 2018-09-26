@@ -175,7 +175,7 @@ def _check_type_keyword(constructor_description):
 
 
 def call_constructor(parent_cls, constructor_description, special_conversions=None,
-                     convert_quantity_strings=False):
+                     convert_quantity_strings=False, **default_kwargs):
     """Convert the constructor representation into an object.
 
     Parameters
@@ -192,6 +192,8 @@ def call_constructor(parent_cls, constructor_description, special_conversions=No
         If True, all the string constructor values are attempted to be
         converted to quantities before creating the object (default is
         False).
+    **default_kwargs
+        Overwrite the default value of the constructor keyword arguments.
 
     Returns
     -------
@@ -221,8 +223,15 @@ def call_constructor(parent_cls, constructor_description, special_conversions=No
     except ValueError as e:
         raise RuntimeError(str(e))
 
-    # Validate init keyword arguments.
+    # Read the keyword arguments of the constructor.
     constructor_kwargs = utils.get_keyword_args(subcls.__init__, try_mro_from_class=subcls)
+
+    # Overwrite eventual keyword arguments.
+    for k, v in default_kwargs.items():
+        if k in constructor_kwargs and k not in constructor_description:
+            constructor_description[k] = v
+
+    # Validate init keyword arguments.
     try:
         constructor_kwargs = utils.validate_parameters(
             parameters=constructor_description, template_parameters=constructor_kwargs,
@@ -256,7 +265,27 @@ def call_restraint_constructor(constructor_description):
                             convert_quantity_strings=True)
 
 
-def call_mcmc_move_constructor(constructor_description):
+def call_mcmc_move_constructor(constructor_description, **default_kwargs):
+    """Create an MCMCMove from a dict representation of the constructor parameters.
+
+    Parameters
+    ----------
+    constructor_description : dict
+        A dict containing the keyword ``'type'`` to indicate the class
+        of the MCMCMove and all the keyword arguments to pass to its
+        constructor. If ``'type'`` is ``'SequenceMove'``, the ``'move_list'``
+        keyword should be a list of dict representations of the single
+        moves.
+    **default_kwargs
+        Overwrite the the default keyword argument of the MCMCMove constructor
+        or, if a ``SequenceMove`` is instantiated, the constructors of the move
+        list.
+
+    Returns
+    -------
+    mcmc_move : openmmtools.mcmc.MCMCMove
+        The intantiation of the ``MCMCMove`` object.
+    """
     # Check if this is a sequence of moves and we need to unnest the constructors.
     # If we end up with other nested constructors, we'll probably need a general strategy.
     _check_type_keyword(constructor_description)
@@ -273,7 +302,7 @@ def call_mcmc_move_constructor(constructor_description):
     moves = []
     for mcmc_move_constructor in mcmc_moves_constructors:
         moves.append(call_constructor(mmtools.mcmc.MCMCMove, mcmc_move_constructor,
-                                      convert_quantity_strings=True))
+                                      convert_quantity_strings=True, **default_kwargs))
     if is_sequence_move:
         return mmtools.mcmc.SequenceMove(move_list=moves)
     return moves[0]
