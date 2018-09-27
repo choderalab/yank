@@ -29,6 +29,7 @@ Features
 Get going
 ---------
 * `Get YANK up and running now <quickstart.html>`_
+* `Read the YAML syntax tutorial <tutorial.html>`_
 
 Get involved
 ------------
@@ -44,21 +45,22 @@ Getting YANK Up and Running
 ---------------------------
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
 
    quickstart
    installation
+   tutorial
    running
    yamlpages/index
-   whatsnew
    examples/index
    faq
+   whatsnew
 
 The Science Behind YANK
 -----------------------
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
 
    theory
    algorithms

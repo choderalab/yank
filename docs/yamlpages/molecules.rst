@@ -347,12 +347,17 @@ Assigning Missing Parameters
        filepath: benzene.mol2
        antechamber:
          charge_method: bcc
+         net_charge = -1
 
 Pass the molecule through AmberTools ANTECHAMBER to assign missing parameters such as torsions and angle terms.
 
 ``charge_method`` is a required sub-directive which allows assigning missing charges to the molecule. It is either given
 a known charge method to ANTECHAMBER method or ``null`` to skip assigning charges. The later is helpful when you
 already have the charges, but are missing other parameters.
+
+The ``net_charge`` keyword passed to antechamber has no effect if the ``charge_method`` is ``null`` (e.g., when using
+OpenEye charges) or if ``epik`` is used to enumerate protonation states. In these cases, the net charge is handled
+automatically.
 
 **OPTIONAL**
 

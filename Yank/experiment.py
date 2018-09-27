@@ -1305,6 +1305,10 @@ class ExperimentBuilder(object):
                     required: yes
                     type: string
                     nullable: yes
+                net_charge:
+                    required: no
+                    type: integer
+                    nullable: yes
         select:
             required: no
             dependencies: filepath
@@ -1342,15 +1346,6 @@ class ExperimentBuilder(object):
         modeller:
             required: no
             dependencies: filepath
-        openeye:
-            required: no
-            excludes: filepath
-        antechamber:
-            required: no
-            excludes: filepath
-        epik:
-            required: no
-            excludes: filepath
         """
         peptide_schema = {**yaml.load(peptide_schema_yaml), **common_molecules_schema}
 
@@ -2902,7 +2897,8 @@ class ExperimentBuilder(object):
         if mcmc_move_id is None:
             mcmc_move = self._create_default_mcmc_move(experiment_description, default_mc_atoms)
         else:
-            mcmc_move = schema.call_mcmc_move_constructor(self._mcmc_moves[mcmc_move_id])
+            mcmc_move = schema.call_mcmc_move_constructor(self._mcmc_moves[mcmc_move_id],
+                                                          atom_subset=default_mc_atoms)
         constructor_description['mcmc_moves'] = mcmc_move
         # Create the sampler.
         return schema.call_sampler_constructor(constructor_description)
