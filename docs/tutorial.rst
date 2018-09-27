@@ -150,7 +150,7 @@ If we don't specify the parameters in the ``solvents`` and ``molecules`` section
       hydration-system:
         ...
         leap:
-          parameters: [leaprc.protein.ff14SB, leaprc..water.tip4pew, leaprc.gaff]
+          parameters: [leaprc.protein.ff14SB, leaprc.water.tip4pew, leaprc.gaff]
 
 Alchemical protocol
 """""""""""""""""""
@@ -706,7 +706,7 @@ and then load it normally together with the leap parameters in the YAML file
     molecules:
       t4-lysozyme:
         filepath: input/t4.pdb
-        tleap:
+        leap:
           parameters: [leaprc.renameatoms]
 
 When the automatic pipeline won't do
