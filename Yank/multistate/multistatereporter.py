@@ -1438,7 +1438,8 @@ class MultiStateReporter(object):
          """
         checkpoint_index, remainder = divmod(iteration, self._checkpoint_interval)
         if remainder == 0:
-            return checkpoint_index
+            # NetCDF variables can't be assigned using numpy integers.
+            return int(checkpoint_index)
         return None
 
     def _map_iteration_to_good(self, iteration):
