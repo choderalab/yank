@@ -6,10 +6,15 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.23.7 Bugfix release
+---------------------
+
+- Fix bug where resuming a simulation caused the checkpoint iteration to crash (`#1103 <https://github.com/choderalab/yank/pull/1103>`_).
+
 0.23.6 Bugfix release
 ---------------------
 
-- Fix bug where redefining ``MCDisplacement/RotationMove`` in the YAML ``mcmc_moves`` block without specifying ``atom_subset`` caused the MC move to affect the whole system instead of only the ligand atoms  (`#1099 <https://github.com/choderalab/yank/pull/1099>`_).
+- Fix bug where redefining ``MCDisplacement/RotationMove`` in the YAML ``mcmc_moves`` block without specifying ``atom_subset`` caused the MC move to affect the whole system instead of only the ligand atoms (`#1099 <https://github.com/choderalab/yank/pull/1099>`_).
 - Add ``net_charge`` option to the antechamber YAML pipeline for charged small molecules  (`#1099 <https://github.com/choderalab/yank/pull/1099>`_).
 - Added YAML syntax tutorial in the online documentation  (`#1099 <https://github.com/choderalab/yank/pull/1099>`_).
 
