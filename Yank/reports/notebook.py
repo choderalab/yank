@@ -167,6 +167,39 @@ class HealthReportData(analyze.ExperimentAnalyzer):
 
         return equilibration_figure
 
+    def generate_sams_weights_plots(self):
+        """Plot SAMS weights.
+
+        Returns None if no SAMS logZ data found, or the Matplotlib figure handle if present.
+        """
+
+        # Return None if no SAMS logZ history data found
+        for phase_index, phase in enumerate(self.analyzers.keys()):
+            try:
+                logZ_history = self.analyzers[phase].reporter._storage[0].groups['online_analysis']['logZ_history']
+            except Exception as e:
+                print('No SAMS logZ history found.')
+                return None
+
+        # Generate logZ history plots
+        import numpy as np
+        import copy
+        n_phases = len(self.analyzers)
+        figure = plt.figure(figsize=(20, 5*n_phases));
+        for phase_index, phase in enumerate(self.analyzers.keys()):
+            logZ_history = np.array(self.analyzers[phase].reporter._storage[0].groups['online_analysis']['logZ_history'][:,:])
+            n_iterations, n_states = logZ_history.shape
+            nthin = 1
+
+            ax = plt.subplot(n_phases, 1, phase_index+1)
+            ax.plot(logZ_history);
+            plt.xlabel('iteration');
+            plt.ylabel('logZ');
+            plt.title(phase)
+
+        plt.tight_layout()
+        return figure
+
     def compute_rmsds(self):
         return NotImplementedError("This function is still a prototype and has segfault issues, please disable for now")
         # """Compute the RMSD of the ligand and the receptor by state"""
