@@ -1967,7 +1967,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         t0 = 1 # discard minimization frame
         try:
             iteration = len(u_n)
-            data = self._reporter.read_online_analysis_data(iteration, 't0')
+            data = self._reporter.read_online_analysis_data(None, 't0')
             t0 = max(t0, int(data['t0'][0]))
             logger.debug('t0 found; using initial t0 = {} instead of 1'.format(t0))
         except Exception as e:

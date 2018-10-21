@@ -422,7 +422,7 @@ class ExperimentAnalyzer(object):
                 # Update discard_from_start to match t0 if present
                 try:
                     iteration = len(series)
-                    data = analyzer.reporter.read_online_analysis_data(iteration, 't0')
+                    data = analyzer.reporter.read_online_analysis_data(None, 't0')
                     t0 = max(t0, int(data['t0'][0]))
                     logger.debug('t0 found; using initial t0 = {} instead of 1'.format(t0))
                     self._n_discarded = t0
