@@ -409,21 +409,37 @@ class ExperimentAnalyzer(object):
             for i, phase_name in enumerate(self.phase_names):
                 serial = {}
                 analyzer = self.analyzers[phase_name]
+
+
                 # Data crunching to get timeseries
                 # TODO: Figure out how not to discard the first sample
                 # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
                 # This throws off all of the equilibrium data
-                self._n_discarded = discard_from_start
+                t0 = discard_from_start
+                self._n_discarded = t0
                 series = analyzer.get_effective_energy_timeseries()
-                if series.size <= discard_from_start:
+
+                # Update discard_from_start to match t0 if present
+                try:
+                    iteration = len(series)
+                    data = analyzer.reporter.read_online_analysis_data(iteration, 't0')
+                    t0 = max(t0, int(data['t0'][0]))
+                    logger.debug('t0 found; using initial t0 = {} instead of 1'.format(t0))
+                    self._n_discarded = t0
+                except Exception as e:
+                    # No t0 found
+                    pass
+
+                if series.size <= t0:
                     # Trap case where user has dropped their whole set.
                     # Rare, but happens, often with debugging
-                    discard_from_start = 0
+                    t0 = 0
                     logger.warning("Alert: analyzed timeseries has the same or fewer number of values as "
                                    "discard_from_start! The whole series has been preserved to ensure there is "
                                    "*something* to analyze.")
                     self._n_discarded = 0
-                self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[discard_from_start:]
+
+                self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[t0:]
                 # Timeseries statistics
                 i_t, g_i, n_effective_i = multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
                 n_effective_max = n_effective_i.max()
@@ -433,7 +449,7 @@ class ExperimentAnalyzer(object):
                 self.Neff_maxs[phase_name] = n_effective_max
                 self.nequils[phase_name] = n_equilibration
                 self.g_ts[phase_name] = g_t
-                serial['discarded_from_start'] = int(discard_from_start)
+                serial['discarded_from_start'] = int(t0)
                 serial['effective_samples'] = float(self.Neff_maxs[phase_name])
                 serial['equilibration_samples'] = int(self.nequils[phase_name])
                 serial['subsample_rate'] = float(self.g_ts[phase_name])
