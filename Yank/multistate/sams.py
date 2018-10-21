@@ -637,8 +637,14 @@ class SAMSSampler(MultiStateSampler):
         if self._stage == 1: # asymptotically optimal or one-stage
             self._logZ[:] -= self._logZ[0]
 
-        logger.debug('  logZ: %s' % str(self._logZ))
-
+        # Format logZ
+        msg = '  logZ: ['
+        for i, val in enumerate(self._logZ):
+            if i > 0: msg += ', '
+            msg += '%6.1f' % val
+        msg += ']'
+        logger.debug(msg)
+        
         # Store gamma
         self._reporter.write_online_analysis_data(self._iteration, gamma=gamma)
 

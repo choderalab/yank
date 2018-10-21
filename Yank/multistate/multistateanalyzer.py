@@ -1402,8 +1402,9 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
             # Correct for potentially-changing log weights
             if has_log_weights:
-                u_n[iteration] += - np.sum(log_weights[states_slice, iteration]) + (
-                        n_replicas * logsumexp(-f_l[:] + log_weights[:, iteration]))
+                u_n[iteration] += - np.sum(log_weights[states_slice, iteration])
+                    # JDC: Don't include changing normalization of expanded ensemble so as not to pull in unconverged log weight region
+                    #+ (n_replicas * logsumexp(-f_l[:] + log_weights[:, iteration]))
 
         logger.debug("Done.")
         return u_n
