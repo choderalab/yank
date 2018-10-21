@@ -338,6 +338,7 @@ class SAMSSampler(MultiStateSampler):
     def _restore_sampler_from_reporter(self, reporter):
         super()._restore_sampler_from_reporter(reporter)
         self._cached_state_histogram = self._compute_state_histogram(reporter=reporter)
+        logger.debug('Restored state histogram: {}'.format(self._cached_state_histogram))
         data = reporter.read_online_analysis_data(self._iteration, 'logZ', 'stage', 't0')
         self._logZ = data['logZ']
         self._stage = int(data['stage'][0])
@@ -345,6 +346,9 @@ class SAMSSampler(MultiStateSampler):
 
         # Compute log weights from log target probability and logZ estimate
         self._update_log_weights()
+
+        # Determine t0
+        self._update_stage()
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
     @mpi.delayed_termination
@@ -520,6 +524,7 @@ class SAMSSampler(MultiStateSampler):
         if reporter is None:
             reporter = self._reporter
         replica_thermodynamic_states = reporter.read_replica_thermodynamic_states()
+        logger.debug('Read replica thermodynamic states: {}'.format(replica_thermodynamic_states))
         n_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, self.n_states + 0.5))
         return n_k
 
@@ -533,7 +538,7 @@ class SAMSSampler(MultiStateSampler):
         flatness_criteria = 'logZ-flatness' # DEBUG
         minimum_visits = 1
         N_k = self._state_histogram
-        logger.debug('    state histogram counts: {}'.format(self._cached_state_histogram))
+        logger.debug('    state histogram counts ({} total): {}'.format(self._cached_state_histogram.sum(), self._cached_state_histogram))
         if (self.update_stages == 'two-stage') and (self._stage == 0):
             advance = False
             if N_k.sum() == 0:
@@ -555,7 +560,7 @@ class SAMSSampler(MultiStateSampler):
                 # TODO: Advance to asymptotically optimal scheme when logZ update fractional counts per state exceed threshold
                 # for all states.
                 criteria = abs(self._logZ / self.gamma0) > self.flatness_threshold
-                logger.debug('logZ-flatness criteria met: %s' % str(np.array(criteria, 'i1')))
+                logger.debug('logZ-flatness criteria met (%d total): %s' % (np.sum(criteria), str(np.array(criteria, 'i1'))))
                 if np.all(criteria):
                     advance = True
             else:
