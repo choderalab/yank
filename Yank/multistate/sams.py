@@ -346,10 +346,6 @@ class SAMSSampler(MultiStateSampler):
         # Compute log weights from log target probability and logZ estimate
         self._update_log_weights()
 
-        # Determine t0
-        self._initialize_stage()
-        self._update_stage()
-
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
     @mpi.delayed_termination
     def _report_iteration_items(self):
@@ -644,7 +640,7 @@ class SAMSSampler(MultiStateSampler):
             msg += '%6.1f' % val
         msg += ']'
         logger.debug(msg)
-        
+
         # Store gamma
         self._reporter.write_online_analysis_data(self._iteration, gamma=gamma)
 
