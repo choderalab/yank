@@ -428,6 +428,7 @@ class ExperimentAnalyzer(object):
                     self._n_discarded = t0
                 except Exception as e:
                     # No t0 found
+                    logger.debug('Could not find t0: {}'.format(e))
                     pass
 
                 if series.size <= t0:

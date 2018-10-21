@@ -1972,6 +1972,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             logger.debug('t0 found; using initial t0 = {} instead of 1'.format(t0))
         except Exception as e:
             # No t0 found
+            logger.debug('Could not find t0: {}'.format(e))
             pass
 
         # Discard equilibration samples.
