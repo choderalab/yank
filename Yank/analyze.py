@@ -440,12 +440,12 @@ class ExperimentAnalyzer(object):
                                    "*something* to analyze.")
                     self._n_discarded = 0
 
-                self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[t0:]
+                self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[1:]
                 # Timeseries statistics
                 i_t, g_i, n_effective_i = multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
                 n_effective_max = n_effective_i.max()
                 i_max = n_effective_i.argmax()
-                n_equilibration = i_t[i_max]
+                n_equilibration = i_t[i_max] + t0
                 g_t = g_i[i_max]
                 self.Neff_maxs[phase_name] = n_effective_max
                 self.nequils[phase_name] = n_equilibration
