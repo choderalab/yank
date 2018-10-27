@@ -26,7 +26,7 @@ This code is licensed under the latest available version of the MIT License.
 import logging
 import numpy as np
 import openmmtools as mmtools
-from scipy.misc import logsumexp
+from scipy.special import logsumexp
 
 from .. import mpi
 from .multistatesampler import MultiStateSampler
