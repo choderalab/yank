@@ -263,9 +263,9 @@ class SAMSSampler(MultiStateSampler):
     def _initialize_stage(self):
         self._t0 = 0  # reference iteration to subtract
         if self.update_stages == 'one-stage':
-            self._stage = 'asymptotically-optimal'  # start with asymptotically-optimal stage
+            self._stage = 1 # start with asymptotically-optimal stage
         elif self.update_stages == 'two-stage':
-            self._stage = 'initial'  # start with rapid heuristic adaptation initial stage
+            self._stage = 0 # start with rapid heuristic adaptation initial stage
 
     def _pre_write_create(self, thermodynamic_states: list, sampler_states: list, storage,
                           **kwargs):
@@ -321,8 +321,8 @@ class SAMSSampler(MultiStateSampler):
         # Update log target probabilities
         if self.log_target_probabilities is None:
             self.log_target_probabilities = np.zeros([self.n_states], np.float64) - np.log(self.n_states) # log(1/n_states)
-            logger.debug('Setting log target probabilities: %s' % str(self.log_target_probabilities))
-            logger.debug('Target probabilities: %s' % str(np.exp(self.log_target_probabilities)))
+            #logger.debug('Setting log target probabilities: %s' % str(self.log_target_probabilities))
+            #logger.debug('Target probabilities: %s' % str(np.exp(self.log_target_probabilities)))
 
         # Record initial logZ estimates
         self._logZ = np.zeros([self.n_states], np.float64)
@@ -338,20 +338,23 @@ class SAMSSampler(MultiStateSampler):
     def _restore_sampler_from_reporter(self, reporter):
         super()._restore_sampler_from_reporter(reporter)
         self._cached_state_histogram = self._compute_state_histogram(reporter=reporter)
-        self._logZ = reporter.read_logZ(self._iteration)
+        logger.debug('Restored state histogram: {}'.format(self._cached_state_histogram))
+        data = reporter.read_online_analysis_data(self._iteration, 'logZ', 'stage', 't0')
+        self._logZ = data['logZ']
+        self._stage = int(data['stage'][0])
+        self._t0 = int(data['t0'][0])
 
         # Compute log weights from log target probability and logZ estimate
         self._update_log_weights()
 
         # Determine t0
-        self._initialize_stage()
         self._update_stage()
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
     @mpi.delayed_termination
     def _report_iteration_items(self):
         super(SAMSSampler, self)._report_iteration_items()
-        self._reporter.write_logZ(self._iteration, self._logZ)
+        self._reporter.write_online_data_dynamic_and_static(self._iteration, logZ=self._logZ, stage=self._stage, t0=self._t0)
         # Split into which states and how many samplers are in each state
         # Trying to do histogram[replica_thermo_states] += 1 does not correctly handle multiple
         # replicas in the same state.
@@ -521,6 +524,7 @@ class SAMSSampler(MultiStateSampler):
         if reporter is None:
             reporter = self._reporter
         replica_thermodynamic_states = reporter.read_replica_thermodynamic_states()
+        logger.debug('Read replica thermodynamic states: {}'.format(replica_thermodynamic_states))
         n_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, self.n_states + 0.5))
         return n_k
 
@@ -534,8 +538,8 @@ class SAMSSampler(MultiStateSampler):
         flatness_criteria = 'logZ-flatness' # DEBUG
         minimum_visits = 1
         N_k = self._state_histogram
-        logger.debug('    state histogram counts: {}'.format(self._cached_state_histogram))
-        if (self.update_stages == 'two-stage') and (self._stage == 'initial'):
+        logger.debug('    state histogram counts ({} total): {}'.format(self._cached_state_histogram.sum(), self._cached_state_histogram))
+        if (self.update_stages == 'two-stage') and (self._stage == 0):
             advance = False
             if N_k.sum() == 0:
                 # No samples yet; don't do anything.
@@ -556,7 +560,7 @@ class SAMSSampler(MultiStateSampler):
                 # TODO: Advance to asymptotically optimal scheme when logZ update fractional counts per state exceed threshold
                 # for all states.
                 criteria = abs(self._logZ / self.gamma0) > self.flatness_threshold
-                logger.debug('logZ-flatness criteria met: %s' % str(np.array(criteria, 'i1')))
+                logger.debug('logZ-flatness criteria met (%d total): %s' % (np.sum(criteria), str(np.array(criteria, 'i1'))))
                 if np.all(criteria):
                     advance = True
             else:
@@ -564,7 +568,7 @@ class SAMSSampler(MultiStateSampler):
 
             if advance or ((self._t0 > 0) and (self._iteration > self._t0)):
                 # Histograms are sufficiently flat; switch to asymptotically optimal scheme
-                self._stage = 'asymptotically-optimal'
+                self._stage = 1 # asymptotically optimal
                 # TODO: On resuming, we need to recompute or restore t0, or use some other way to compute it
                 self._t0 = self._iteration - 1
 
@@ -600,14 +604,14 @@ class SAMSSampler(MultiStateSampler):
             beta_factor = 0.8
             pi_star = pi_k.min()
             t = float(self._iteration)
-            if self._stage == 'initial':
+            if self._stage == 0: # initial stage
                 gamma = self.gamma0 * min(pi_star, t**(-beta_factor)) # Eq. 15 of [1]
-            elif self._stage == 'asymptotically-optimal':
+            elif self._stage == 1:
                 gamma = self.gamma0 * min(pi_star, (t - self._t0 + self._t0**beta_factor)**(-1)) # Eq. 15 of [1]
             else:
-                raise Exception('Programming error:unreachable code')
+                raise Exception('stage {} unknown'.format(self._stage))
 
-            logger.debug('  gamma: %s' % gamma)
+            #logger.debug('  gamma: %s' % gamma)
 
             # Update online logZ estimate
             if self.weight_update_method == 'optimal':
@@ -631,10 +635,16 @@ class SAMSSampler(MultiStateSampler):
                 raise Exception('Programming error: Unreachable code')
 
         # Subtract off logZ[0] to prevent logZ from growing without bound once we reach the asymptotically optimal stage
-        if self._stage == 'asymptotically-optimal':
+        if self._stage == 1: # asymptotically optimal or one-stage
             self._logZ[:] -= self._logZ[0]
 
-        logger.debug('  logZ: %s' % str(self._logZ))
+        # Format logZ
+        msg = '  logZ: ['
+        for i, val in enumerate(self._logZ):
+            if i > 0: msg += ', '
+            msg += '%6.1f' % val
+        msg += ']'
+        logger.debug(msg)
 
         # Store gamma
         self._reporter.write_online_analysis_data(self._iteration, gamma=gamma)
