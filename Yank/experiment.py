@@ -2477,6 +2477,11 @@ class ExperimentBuilder(object):
         """
         class DummyReporter(object):
             """A dummy reporter since we don't need to store MultiState stuff on disk."""
+            def __init__(self, filepath):
+                # Expose explicitly the filepath attribute so that the debug files
+                # will be serialized on disk in case of a NaN during equilibration.
+                self.filepath = filepath
+
             def nothing(self, *args, **kwargs):
                 """This serves both as an attribute and a callable."""
                 pass
@@ -2542,7 +2547,7 @@ class ExperimentBuilder(object):
             phase.options['number_of_equilibration_iterations'] = n_equilibration_iterations
 
             # Use a reporter that doesn't write anything to save time.
-            phase.storage = DummyReporter()
+            phase.storage = DummyReporter(phase.storage)
 
             # Create the thermodynamic state exactly as AlchemicalPhase would make it.
             alchemical_phase = phase.initialize_alchemical_phase()
