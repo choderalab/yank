@@ -2547,7 +2547,7 @@ class ExperimentBuilder(object):
             phase.options['number_of_equilibration_iterations'] = n_equilibration_iterations
 
             # Use a reporter that doesn't write anything to save time.
-            phase.storage = DummyReporter(phase.storage.filepath)
+            phase.storage = DummyReporter(phase.storage)
 
             # Create the thermodynamic state exactly as AlchemicalPhase would make it.
             alchemical_phase = phase.initialize_alchemical_phase()
