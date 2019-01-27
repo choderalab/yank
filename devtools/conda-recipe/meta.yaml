@@ -1,6 +1,6 @@
 package:
   name: yank-dev
-  version: !!str 0.0.0
+  version: 0.0.0
 
 source:
   path: ../..
@@ -39,15 +39,6 @@ requirements:
     - jupyter
     - pdbfixer
     - libnetcdf >=4.6.0
-
-test:
-  requires:
-    - nose
-    - nose-timer
-  imports:
-    - yank
-  commands:
-    - yank --help
 
 about:
   home: https://github.com/choderalab/yank
