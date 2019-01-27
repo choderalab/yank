@@ -22,7 +22,7 @@ Analyze YANK output file.
 usage = """
 YANK analyze
 
-Usage: 
+Usage:
   yank analyze ((-s STORE | --store=STORE) | (-y YAML | --yaml=YAML)) [-e SERIAL | --serial=SERIAL] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
   yank analyze report ((-s STORE | --store=STORE) | (-y YAML | --yaml=YAML)) (-o OUTPUT | --output=OUTPUT) [--format=FORMAT] [-e SERIAL | --serial=SERIAL] [--skipunbiasing] [--distcutoff=DISTANCE] [--energycutoff=ENERGY] [-v | --verbose] [--fulltraj]
   yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
@@ -32,29 +32,29 @@ Description:
   yank analyze report generates a Jupyter (Ipython) notebook of the report instead of writing it to standard output
 
 Free Energy Required Arguments:
-  -s STORE, --store=STORE       Storage directory for NetCDF data files. 
+  -s STORE, --store=STORE       Storage directory for NetCDF data files.
                                 EXCLUSIVE with -y and --yaml
-  -y YAML, --yaml=YAML          Target YAML file which setup and ran the experiment(s) being analyzed. 
+  -y YAML, --yaml=YAML          Target YAML file which setup and ran the experiment(s) being analyzed.
                                 This slightly changes the optional -o|--output flag.
                                 EXCLUSIVE with -s and --store
-  
+
 YANK Analysis Output Arguments:
-  -e SERIAL, --serial=SERIAL    Save data in Pickle serialized output. This behaves differently in report mode. 
+  -e SERIAL, --serial=SERIAL    Save data in Pickle serialized output. This behaves differently in report mode.
                                 In normal mode, this is a SINGULAR output file in Pickle format
-                                In report mode, this is the base name of the individual serial files. If not provided, 
+                                In report mode, this is the base name of the individual serial files. If not provided,
                                 then the name is inferred from the storage (-s) or the yaml (-y) file
-  report                        Toggles output to be of the Jupyter Notebook analysis as a rendered notebook or as 
+  report                        Toggles output to be of the Jupyter Notebook analysis as a rendered notebook or as
                                 a static file. Can use a path + name as well. File format is set by the --format flag
-                                
+
   -o=REPORT, --output=REPORT    Name of the health report Jupyter notebook or static file, can use a path + name as well
                                 If the filename ends in .pdf or .html, the notebook is auto run and converted to a
                                 static PDF or HTML file respectively
                                 PDF requires xelatex binary in OS path, often provided by LaTeX packages
-                                MODIFIED BY -y|--yaml: This becomes the DIRECTORY of the output. The names are inferred 
+                                MODIFIED BY -y|--yaml: This becomes the DIRECTORY of the output. The names are inferred
                                 from the input YAML file
-  --format=FORMAT               File format of the notebook. If the filename ends in .pdf or .html, the notebook is run 
-                                and converted to a static PDF or HTML file respectively. If --format is NOT set, it 
-                                defaults to '.ipynb'                                
+  --format=FORMAT               File format of the notebook. If the filename ends in .pdf or .html, the notebook is run
+                                and converted to a static PDF or HTML file respectively. If --format is NOT set, it
+                                defaults to '.ipynb'
 
 Free Energy Optional Arguments:
   --skipunbiasing               Skip the radially-symmetric restraint unbiasing. This can be an expensive step.
@@ -88,9 +88,9 @@ Extract Trajectory Options:
 
 General Options:
   -v, --verbose                 Print verbose output
-  --fulltraj                    Force ALL analysis run from this command to rely on the full trajectory and not do any 
-                                automatic equilibration detection or decorrelation subsampling. Although the 
-                                equilibration and correlation times will still be computed, no calculation depending on 
+  --fulltraj                    Force ALL analysis run from this command to rely on the full trajectory and not do any
+                                automatic equilibration detection or decorrelation subsampling. Although the
+                                equilibration and correlation times will still be computed, no calculation depending on
                                 them will use this information.
 
 """

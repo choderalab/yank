@@ -759,9 +759,15 @@ class ExperimentBuilder(object):
         # Validate experiments
         self._parse_experiments(yaml_content)
 
-    def run_experiments(self):
+    def run_experiments(self, write_status=False):
         """
         Set up and run all the Yank experiments.
+
+        Parameters
+        ----------
+        write_status : bool, optional, default=False
+            If True, a YAML file will be updated for each experiment, every
+            switch cycle.
 
         See Also
         --------
@@ -788,12 +794,13 @@ class ExperimentBuilder(object):
                 if group_size is None:
                     completed = [False] * len(all_experiments)
                     for exp_index, exp in enumerate(all_experiments):
-                        completed[exp_index] = self._run_experiment(exp)
+                        completed[exp_index] = self._run_experiment(exp, write_status=write_status)
                 else:
                     completed = mpi.distribute(self._run_experiment,
                                                distributed_args=all_experiments,
                                                group_size=group_size,
-                                               send_results_to='all')
+                                               send_results_to='all',
+                                               write_status=write_status)
 
                 # Remove any completed experiments, releasing possible parallel resources
                 # to be reused. Evaluate in reverse order to avoid shuffling indices.
@@ -3090,7 +3097,27 @@ class ExperimentBuilder(object):
     # Experiment run
     # --------------------------------------------------------------------------
 
-    def _run_experiment(self, experiment):
+    def _write_status_file(self, experiment_path):
+        """Write status file for the given experiment in the storage directory
+
+        experiment_path : str
+            Path to single experiment; will also be used to write status pickle
+        """
+        # Analyze the experiment path
+        from . import analyze
+        logger.debug('Analyzing experiment in directory {}'.format(experiment_path))
+        output = analyze.analyze_directory(experiment_path)
+        # Write the output to a
+        import pickle
+        status_filename = os.path.join(experiment_path, 'status.pkl')
+        with open(status_filename, 'wb') as f:
+            pickle.dump(output, f)
+
+    # --------------------------------------------------------------------------
+    # Experiment run
+    # --------------------------------------------------------------------------
+
+    def _run_experiment(self, experiment, write_status=False):
         """Run a single experiment.
 
         This runs the experiment only for ``switch_experiment_interval``
@@ -3100,6 +3127,9 @@ class ExperimentBuilder(object):
         ----------
         experiment : tuple (str, dict)
             A tuple with the experiment path and the experiment description.
+        write_status : bool, optional, default=False
+            If True, a YAML file will be updated for each experiment, every
+            switch cycle.
 
         Returns
         -------
@@ -3138,6 +3168,11 @@ class ExperimentBuilder(object):
 
             # Flag the experiment as completed to avoid continuing in the next cycle.
             return True
+
+        # Write a status file if requested
+        if write_status:
+            self._write_status_file(self._get_experiment_dir(experiment_path))
+
         return built_experiment.is_completed
 
 

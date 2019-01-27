@@ -23,7 +23,7 @@ usage = """
 YANK script
 
 Usage:
-  yank script (-y FILEPATH | --yaml=FILEPATH) [--jobid=INTEGER] [--njobs=INTEGER] [-o OVERRIDE]...
+  yank script (-y FILEPATH | --yaml=FILEPATH) [--jobid=INTEGER] [--njobs=INTEGER] [-o OVERRIDE] [--status] ...
 
 Description:
   Set up and run free energy calculations from a YAML script. All options can be specified in the YAML script.
@@ -48,6 +48,9 @@ Optional Arguments:
                                 Please see script file documentation for valid options.
                                 Specifying the same option multiple times results in an error.
                                 This method is not recommended for complex options such as lists or combinations
+  --status                      Generate status.pkl pickle file with current estimates of progress,
+                                updated each time experiment is switched.
+
 """
 
 # =============================================================================================
@@ -126,6 +129,11 @@ def dispatch(args):
     else:
         n_jobs = None
 
+    # Handle specification of status file
+    write_status = False
+    if args['--status']:
+        write_status = args['--status']
+
     if args['--yaml']:
         yaml_path = args['--yaml']
 
@@ -135,7 +143,7 @@ def dispatch(args):
         yaml_builder = ExperimentBuilder(script=yaml_path, job_id=job_id, n_jobs=n_jobs)
         if override:  # Parse the string present.
             yaml_builder.update_yaml(override)
-        yaml_builder.run_experiments()
+        yaml_builder.run_experiments(write_status=write_status)
         return True
 
     return False
