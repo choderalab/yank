@@ -39,7 +39,7 @@ script:
   # Build the recipe
   - conda build devtools/conda-recipe
   # Install the package
-  - conda install --quiet --yes --use-local ${PACKAGENAME}-dev
+  - conda install -c $HOME/miniconda/envs/test/conda-bld/ --quiet --yes --use-local ${PACKAGENAME}-dev
   # Test the package
   - cd devtools && nosetests $PACKAGENAME --with-coverage --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 37 ]]; then devtools/travis-ci/build_docs.sh; fi
 
