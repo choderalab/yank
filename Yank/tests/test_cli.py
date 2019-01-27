@@ -143,7 +143,7 @@ def test_script_yaml_status():
             resume_setup: yes
             resume_simulation: no
             minimize: no
-            verbose: yes
+            verbose: no
             switch_experiment_interval: 20
 
         molecules:
