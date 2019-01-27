@@ -21,8 +21,8 @@ install:
   - export PYTHONUNBUFFERED=true
   # Add org channel
   - conda config --add channels omnia --add channels conda-forge
-  # Add omnia dev channels
-  - if [ $DEVOMNIA ]; then conda config --add channels omnia/label/dev; fi
+  # Add omnia dev channels if requested
+  - if [ $DEVOMNIA ]; then conda config --add channels omnia-dev; fi
   # Update everything
   - conda update --quiet --yes --all
   # Unpack encrypted OpenEye license file
@@ -43,13 +43,13 @@ script:
   # Install the package
   - conda install --quiet --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --with-coverage --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - cd devtools && nosetests $PACKAGENAME --with-coverage --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 37 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
-    - python=3.5 CONDA_PY=3.5
-    - python=3.5 CONDA_PY=35 DEVOMNIA=true
-    - python=3.6 CONDA_PY=3.6
+    - python=3.6 CONDA_PY=36
+    - python=3.7 CONDA_PY=37
+    - python=3.7 CONDA_PY=37 DEVOMNIA=true
 
   global:
     - ORGNAME="omnia"
@@ -69,7 +69,7 @@ env:
 
 matrix:
   allow_failures:
-  - env: python=3.5 CONDA_PY=35 DEVOMNIA=true
+  - env: python=3.7 CONDA_PY=37 DEVOMNIA=true
 
 deploy:
     - provider: s3
@@ -80,4 +80,4 @@ deploy:
       local_dir: docs/_deploy
       on:
           branch: master
-          condition: "$CONDA_PY = 3.5"
+          condition: "$CONDA_PY = 3.7"
