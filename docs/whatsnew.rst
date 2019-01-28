@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.24.0 Adds support for status files
+------------------------------------
+
+- Added an experimental feature that allows ``--status`` to be provided with ``yank script`` invocations to emit a ``status.pkl`` file in the experiment directory at the conclusion of each experiment switch interval (`#1135 <https://github.com/choderalab/yank/pull/1135>`_). This feature is experimental, and its invocation may be changed in a future release.
+
 0.23.7 Bugfix release
 ---------------------
 
