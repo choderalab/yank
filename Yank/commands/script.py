@@ -50,6 +50,8 @@ Optional Arguments:
                                 This method is not recommended for complex options such as lists or combinations
   --status                      Generate status.pkl pickle file with current estimates of progress,
                                 updated each time experiment is switched.
+                                This feature is EXPERIMENTAL and its invocation scheme is subject to change in
+                                future releases.
 
 """
 
