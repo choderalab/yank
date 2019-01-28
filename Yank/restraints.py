@@ -143,6 +143,11 @@ class RestraintState(GlobalParameterState):
 
     Parameters
     ----------
+    parameters_name_suffix : str, optional
+        If specified, the state will control the parameter
+        ``lambda_restraint_[parameters_name_suffix]`` instead of just
+        ``lambda_restraint``. This is useful if it's necessary to control
+        multiple restraints.
     lambda_restraints : float
         The strength of the restraint. Must be between 0 and 1.
 
