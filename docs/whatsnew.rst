@@ -6,6 +6,12 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.24.0 Development
+------------------
+
+- This release requires OpenMMTools >= 0.17.0, which includes a much faster way of implementing exact treatment of PME
+during alchemical calculations (`#1136 <https://github.com/choderalab/yank/pull/1136>`_).
+
 0.23.7 Bugfix release
 ---------------------
 
