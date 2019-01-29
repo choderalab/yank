@@ -3097,6 +3097,7 @@ class ExperimentBuilder(object):
     # Experiment run
     # --------------------------------------------------------------------------
 
+    @mpi.on_single_node(rank=0)
     def _write_status_file(self, experiment_path):
         """Write status file for the given experiment in the storage directory
 
