@@ -750,15 +750,6 @@ def get_analyzer(file_base_path, **analyzer_kwargs):
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
     reporter = multistate.MultiStateReporter(file_base_path, open_mode='r')
-    """
-    storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
-    metadata = storage.metadata
-    sampler_class = metadata['sampler_full_name']
-    module_name, cls_name = sampler_full_name.rsplit('.', 1)
-    module = importlib.import_module(module_name)
-    cls = getattr(module, cls_name)
-    reporter = cls.create_reporter('complex.nc')
-    """
     # Eventually change this to auto-detect simulation from reporter:
     if True:
         analyzer = YankReplicaExchangeAnalyzer(reporter, **analyzer_kwargs)
