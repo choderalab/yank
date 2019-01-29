@@ -576,9 +576,10 @@ class PhaseAnalyzer(ABC):
 
     def __del__(self):
         # Explicitly close storage
+        self.clear()
         if self._reporter is not None:
             del self._reporter
-            
+
     def clear(self):
         """Reset all cached objects.
 

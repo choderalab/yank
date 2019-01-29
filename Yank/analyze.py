@@ -794,7 +794,6 @@ def analyze_directory(source_directory, **analyzer_kwargs):
     del auto_experiment_analyzer
     return analysis_data
 
-
 @mpi.on_single_node(0)
 def print_analysis_data(analysis_data, header=None):
     """
