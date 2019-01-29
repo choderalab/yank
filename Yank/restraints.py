@@ -54,11 +54,6 @@ V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 # CUSTOM EXCEPTIONS
 # ==============================================================================
 
-class RestraintStateError(mmtools.states.GlobalParameterError):
-    """Error raised by an :class:`RestraintState`."""
-    pass
-
-
 class RestraintParameterError(Exception):
     """Error raised by a :class:`ReceptorLigandRestraint`."""
     pass
