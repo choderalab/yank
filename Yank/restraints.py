@@ -205,8 +205,10 @@ class RestraintState(GlobalParameterState):
     lambda_restraints = GlobalParameterState.GlobalParameter('lambda_restraints', standard_value=1.0)
 
     @lambda_restraints.validator
-    def lambda_bonds(self, instance, new_value):
-        if new_value is not None and not (0.0 <= new_value <= 1.0):
+    def lambda_restraints_validator(self, instance, new_value):
+        if new_value is None:
+            return None
+        if not (0.0 <= new_value <= 1.0):
             raise ValueError('lambda_restraints must be between 0.0 and 1.0')
         return float(new_value)
 
