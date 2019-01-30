@@ -133,8 +133,8 @@ def test_script_yaml():
 
 def test_script_yaml_status():
     """Check that 'yank script --yaml --status' works."""
-    host_path = openmmtools.testsystems.get_data_filename('cb7-b2/cb7_am1-bcc.mol2`)
-    guest_path = openmmtools.testsystems.get_data_filename('cb7-b2/b2_am1-bcc.mol2`)
+    host_path = openmmtools.testsystems.get_data_filename('cb7-b2/cb7_am1-bcc.mol2')
+    guest_path = openmmtools.testsystems.get_data_filename('cb7-b2/b2_am1-bcc.mol2')
     yaml_content = """\
         ---
         options:
