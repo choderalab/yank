@@ -22,8 +22,9 @@ requirements:
     - numpy >=1.14
     - scipy
     - cython
-    - netcdf4
-    - openmm >=7.1
+    - netcdf4 >=1.4.2 # after bugfix: "always return masked array by default, even if there are no masked values"
+    - libnetcdf >=4.6.2 # workaround for libssl issues
+    - openmm >=7.3
     - mdtraj >=1.7.2
     - openmmtools >=0.15.0
     - pymbar
@@ -38,7 +39,6 @@ requirements:
     - matplotlib
     - jupyter
     - pdbfixer
-    - libnetcdf >=4.6.0
 
 about:
   home: https://github.com/choderalab/yank
