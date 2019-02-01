@@ -10,6 +10,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 ------------------------------------
 
 - Added an experimental feature that allows ``--status`` to be provided with ``yank script`` invocations to emit a ``status.pkl`` file in the experiment directory at the conclusion of each experiment switch interval (`#1135 <https://github.com/choderalab/yank/pull/1135>`_). This feature is experimental, and its invocation may be changed in a future release.
+- This release requires OpenMMTools >= 0.17.0, which includes a much faster way of implementing exact treatment of PME during alchemical calculations (`#1136 <https://github.com/choderalab/yank/pull/1136>`_).
 
 0.23.7 Bugfix release
 ---------------------

@@ -578,7 +578,8 @@ class TestRestraintState(object):
 
             # Changing the attribute changes the internal representation of a system.
             compound_state.lambda_restraints = 0.5
-            for force, parameter_id in compound_state._get_system_forces_parameters(compound_state.system):
+            for force, parameter_name, parameter_id in compound_state._get_system_controlled_parameters(
+                    compound_state.system, parameters_name_suffix=None):
                 assert force.getGlobalParameterDefaultValue(parameter_id) == 0.5
 
     def test_apply_to_context(self):
@@ -606,7 +607,7 @@ class TestRestraintState(object):
             assert compound_state.is_state_compatible(compatible_state)
 
             # Trying to assign a System without a Restraint raises an error.
-            with nose.tools.assert_raises(yank.restraints.RestraintStateError):
+            with nose.tools.assert_raises(mmtools.states.GlobalParameterError):
                 compound_state.system = unrestrained_system
 
     def test_find_force_groups_to_update(self):
@@ -616,7 +617,8 @@ class TestRestraintState(object):
 
             # Find the restraint force group.
             system = context.getSystem()
-            force, _ = next(yank.restraints.RestraintState._get_system_forces_parameters(system))
+            force, _, _ = next(yank.restraints.RestraintState._get_system_controlled_parameters(
+                system, parameters_name_suffix=None))
             force_group = force.getForceGroup()
 
             # No force group should be updated if we don't move.

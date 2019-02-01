@@ -31,6 +31,7 @@ import numpy as np
 import scipy.integrate
 import mdtraj as md
 import openmmtools as mmtools
+from openmmtools.states import GlobalParameterState
 from simtk import openmm, unit
 
 from . import pipeline
@@ -52,11 +53,6 @@ V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 # ==============================================================================
 # CUSTOM EXCEPTIONS
 # ==============================================================================
-
-class RestraintStateError(mmtools.states.ComposableStateError):
-    """Error raised by an :class:`RestraintState`."""
-    pass
-
 
 class RestraintParameterError(Exception):
     """Error raised by a :class:`ReceptorLigandRestraint`."""
@@ -133,7 +129,7 @@ def create_restraint(restraint_type, **kwargs):
 # ComposableState class to control the strength of restraints.
 # ==============================================================================
 
-class RestraintState(object):
+class RestraintState(GlobalParameterState):
     """
     The state of a restraint.
 
@@ -142,6 +138,11 @@ class RestraintState(object):
 
     Parameters
     ----------
+    parameters_name_suffix : str, optional
+        If specified, the state will control the parameter
+        ``lambda_restraint_[parameters_name_suffix]`` instead of just
+        ``lambda_restraint``. This is useful if it's necessary to control
+        multiple restraints.
     lambda_restraints : float
         The strength of the restraint. Must be between 0 and 1.
 
@@ -196,192 +197,15 @@ class RestraintState(object):
     0.0
 
     """
-    def __init__(self, lambda_restraints):
-        self.lambda_restraints = lambda_restraints
+    lambda_restraints = GlobalParameterState.GlobalParameter('lambda_restraints', standard_value=1.0)
 
-    @property
-    def lambda_restraints(self):
-        """Float: the strength of the applied restraint (between 0 and 1 inclusive)."""
-        return self._lambda_restraints
-
-    @lambda_restraints.setter
-    def lambda_restraints(self, value):
-        assert 0.0 <= value <= 1.0
-        self._lambda_restraints = float(value)
-
-    def apply_to_system(self, system):
-        """
-        Set the strength of the system's restraint to this.
-
-        System is updated in-place
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-            The system to modify.
-
-        Raises
-        ------
-        RestraintStateError
-            If the system does not have any ``CustomForce`` with a
-            ``lambda_restraint`` global parameter.
-
-        """
-        # Set lambda_restraints in all forces that have it.
-        for force, parameter_id in self._get_system_forces_parameters(system):
-            force.setGlobalParameterDefaultValue(parameter_id, self._lambda_restraints)
-
-    def check_system_consistency(self, system):
-        """
-        Check if the system's restraint is in this restraint state.
-
-        It raises a :class:`RestraintStateError` if the restraint is not consistent
-        with the state.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-            The system with the restraint to test.
-
-        Raises
-        ------
-        RestraintStateError
-            If the system is not consistent with this state.
-
-        """
-        # Set lambda_restraints in all forces that have it.
-        for force, parameter_id in self._get_system_forces_parameters(system):
-            force_lambda = force.getGlobalParameterDefaultValue(parameter_id)
-            if force_lambda != self.lambda_restraints:
-                err_msg = 'Consistency check failed: system {}, state {}'
-                raise RestraintStateError(err_msg.format(force_lambda, self._lambda_restraints))
-
-    def apply_to_context(self, context):
-        """Put the restraint in the `Context` into this state.
-
-        Parameters
-        ----------
-        context : simtk.openmm.Context
-            The context to set.
-
-        Raises
-        ------
-        RestraintStateError
-            If the context does not have the required lambda global variables.
-
-        """
-        try:
-            context.setParameter('lambda_restraints', self._lambda_restraints)
-        except Exception:
-            raise RestraintStateError('The context does not have a restraint.')
-
-    def _standardize_system(self, system):
-        """Standardize the given system.
-
-        Set lambda_restraints of the system to 1.0.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-            The system to standardize.
-
-        Raises
-        ------
-        RestraintStateError
-            If the system is not consistent with this state.
-
-        """
-        # Set lambda_restraints to 1.0 in all forces that have it.
-        for force, parameter_id in self._get_system_forces_parameters(system):
-            force.setGlobalParameterDefaultValue(parameter_id, 1.0)
-
-    def _on_setattr(self, standard_system, attribute_name):
-        """Check if the standard system needs changes after a state attribute is set.
-
-        Parameters
-        ----------
-        standard_system : simtk.openmm.System
-            The standard system before setting the attribute.
-        attribute_name : str
-            The name of the attribute that has just been set or retrieved.
-
-        Returns
-        -------
-        need_changes : bool
-            True if the standard system has to be updated, False if no change
-            occurred.
-
-        """
-        # There are no attributes that can be set that can alter the standard system.
-        return False
-
-    def _find_force_groups_to_update(self, context, current_context_state, memo):
-        """Find the force groups whose energy must be recomputed after applying self.
-
-        Parameters
-        ----------
-        context : Context
-            The context, currently in `current_context_state`, that will
-            be moved to this state.
-        current_context_state : ThermodynamicState
-            The full thermodynamic state of the given context. This is
-            guaranteed to be compatible with self.
-        memo : dict
-            A dictionary that can be used by the state for memoization
-            to speed up consecutive calls on the same context.
-
-        Returns
-        -------
-        force_groups_to_update : set of int
-            The indices of the force groups whose energy must be computed
-            again after applying this state, assuming the context to be in
-            `current_context_state`.
-        """
-        # Check if lambda_restraints will change.
-        if self.lambda_restraints == current_context_state.lambda_restraints:
-            return set()
-
-        # Update memo if this is the first call for this context.
-        if len(memo) == 0:
-            system = context.getSystem()
-            for force, _ in self._get_system_forces_parameters(system):
-                memo['lambda_restraints'] = force.getForceGroup()
-        return {memo['lambda_restraints']}
-
-    @staticmethod
-    def _get_system_forces_parameters(system):
-        """Yields the system's forces having a ``lambda_restraints`` parameter.
-
-        Yields
-        ------
-        A tuple force, ``parameter_index`` for each force with ``lambda_restraints``.
-
-        """
-        found_restraint = False
-
-        # Retrieve all the forces with global supported parameters.
-        for force_index in range(system.getNumForces()):
-            force = system.getForce(force_index)
-            try:
-                n_global_parameters = force.getNumGlobalParameters()
-            except AttributeError:
-                continue
-            for parameter_id in range(n_global_parameters):
-                parameter_name = force.getGlobalParameterName(parameter_id)
-                if parameter_name == 'lambda_restraints':
-                    found_restraint = True
-                    yield force, parameter_id
-                    break
-
-        # Raise error if the system doesn't have a restraint.
-        if found_restraint is False:
-            raise RestraintStateError('The system does not have a restraint.')
-
-    def __getstate__(self):
-        return dict(lambda_restraints=self._lambda_restraints)
-
-    def __setstate__(self, serialization):
-        self.lambda_restraints = serialization['lambda_restraints']
+    @lambda_restraints.validator
+    def lambda_restraints(self, instance, new_value):
+        if new_value is None:
+            return None
+        if not (0.0 <= new_value <= 1.0):
+            raise ValueError('lambda_restraints must be between 0.0 and 1.0')
+        return float(new_value)
 
 
 # ==============================================================================
