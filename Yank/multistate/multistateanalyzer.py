@@ -923,6 +923,10 @@ class PhaseAnalyzer(ABC):
             else:
                 log_z = self._reporter.read_online_analysis_data(slice(0, None), "logZ")["logZ"]
             log_z = np.moveaxis(log_z, 0, -1)
+
+        # We don't want logZ to be a masked array
+        log_z = np.array(log_z)
+                    
         return log_z
 
     def get_effective_energy_timeseries(self, energies=None, replica_state_indices=None):
