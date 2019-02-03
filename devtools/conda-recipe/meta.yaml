@@ -35,7 +35,7 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - cerberus ==1.1.*
+    - cerberus >=1.2 # requires >= 1.2 for py37 builds
     - matplotlib
     - jupyter
     - pdbfixer
