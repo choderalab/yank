@@ -26,7 +26,7 @@ requirements:
     - libnetcdf >=4.6.2 # workaround for libssl issues
     - openmm >=7.3
     - mdtraj >=1.7.2
-    - openmmtools >=0.15.0
+    - openmmtools >=0.17.0
     - pymbar
     - ambermini >=16.16.0
     - docopt
