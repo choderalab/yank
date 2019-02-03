@@ -13,8 +13,27 @@ build:
 requirements:
   build:
     - python
+    - pandas
+    - numpy >=1.14
+    - scipy
     - cython
-    - setuptools
+    - netcdf4 >=1.4.2 # after bugfix: "always return masked array by default, even if there are no masked values"
+    - libnetcdf >=4.6.2 # workaround for libssl issues
+    - openmm >=7.3
+    - mdtraj >=1.7.2
+    - openmmtools >=0.17.0
+    - pymbar
+    - ambermini >=16.16.0
+    - docopt
+    - openmoltools >=0.7.5
+    - mpi4py
+    - pyyaml
+    - clusterutils
+    - sphinxcontrib-bibtex
+    - cerberus >=1.2 # requires >= 1.2 for py37 builds
+    - matplotlib
+    - jupyter
+    - pdbfixer
 
   run:
     - python
