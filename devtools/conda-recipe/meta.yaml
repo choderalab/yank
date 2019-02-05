@@ -30,7 +30,7 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - cerberus >=1.2 # requires >= 1.2 for py37 builds
+    - cerberus ==1.1 # yank uses buggy cerberus 1.1 behavior as a feature ¯\_(ツ)_/¯
     - matplotlib
     - jupyter
     - pdbfixer
@@ -54,7 +54,7 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - cerberus >=1.2 # requires >= 1.2 for py37 builds
+    - cerberus ==1.1 # yank uses buggy cerberus 1.1 behavior as a feature ¯\_(ツ)_/¯
     - matplotlib
     - jupyter
     - pdbfixer
