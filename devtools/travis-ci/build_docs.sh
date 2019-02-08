@@ -5,11 +5,11 @@ set -ev
 
 # Install the built package
 conda create --yes -n docenv python=$CONDA_PY
-conda activate docenv
-conda install -yq --use-local yank-dev
+source activate docenv
+conda install -yq --use-local yank-dev --file docs/requirements.txt
 
 # Install doc requirements
-conda install -yq --file docs/requirements.txt
+#conda install -yq --file docs/requirements.txt
 
 # Install packages with no conda recipe.
 pip install -I msmb_theme
