@@ -5,7 +5,7 @@ set -ev
 
 # Install the built package
 conda create --yes -n docenv python=$CONDA_PY
-source activate docenv
+conda activate docenv
 conda install -yq --use-local yank-dev
 
 # Install doc requirements
