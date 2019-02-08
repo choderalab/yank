@@ -41,13 +41,13 @@ script:
   # Install the package
   - conda install -c $HOME/miniconda/envs/test/conda-bld/ --quiet --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --with-coverage --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 37 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - cd devtools && nosetests $PACKAGENAME --with-coverage --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.7 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
-    - python=3.6 CONDA_PY=36
-    - python=3.7 CONDA_PY=37
-    - python=3.7 CONDA_PY=37 DEVOMNIA=true
+    - python=3.6 CONDA_PY=3.6
+    - python=3.7 CONDA_PY=3.7
+    - python=3.7 CONDA_PY=3.7 DEVOMNIA=true
 
   global:
     - ORGNAME="omnia"
