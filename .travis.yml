@@ -41,7 +41,7 @@ script:
   # Install the package
   - conda install -c $HOME/miniconda/envs/test/conda-bld/ --quiet --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --with-coverage --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.7 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - cd devtools && nosetests $PACKAGENAME --with-coverage --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.6 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
