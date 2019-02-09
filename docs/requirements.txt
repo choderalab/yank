@@ -1,10 +1,4 @@
 sphinx
 sphinx_rtd_theme
-#matplotlib
-#boto
-#ipython-notebook
 jinja2
 runipy
-#openmm
-#pytables
-#scikit-learn
