@@ -1,6 +1,6 @@
 package:
   name: yank-dev
-  version: !!str 0.0.0
+  version: 0.0.0
 
 source:
   path: ../..
@@ -13,17 +13,13 @@ build:
 requirements:
   build:
     - python
-    - cython
-    - setuptools
-
-  run:
-    - python
     - pandas
-    - numpy >=1.11
+    - numpy >=1.14
     - scipy
     - cython
-    - netcdf4 ==1.3.1  # TODO: Fix this right after bugfix: "always return masked array by default, even if there are no masked values"
-    - openmm >=7.1
+    - netcdf4 >=1.4.2 # after bugfix: "always return masked array by default, even if there are no masked values"
+    - libnetcdf >=4.6.2 # workaround for libssl issues
+    - openmm >=7.3
     - mdtraj >=1.7.2
     - openmmtools >=0.17.0
     - pymbar
@@ -34,21 +30,35 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - cerberus ==1.1.*
+    - cerberus ==1.1 # yank uses buggy cerberus 1.1 behavior as a feature ¯\_(ツ)_/¯
     - matplotlib
     - jupyter
     - pdbfixer
-    - libnetcdf >=4.6.0
 
-test:
-  requires:
-    - nose
-    - nose-timer
-  imports:
-    - yank
-  commands:
-    - yank --help
+  run:
+    - python
+    - pandas
+    - numpy >=1.14
+    - scipy
+    - cython
+    - netcdf4 >=1.4.2 # after bugfix: "always return masked array by default, even if there are no masked values"
+    - libnetcdf >=4.6.2 # workaround for libssl issues
+    - openmm >=7.3
+    - mdtraj >=1.7.2
+    - openmmtools >=0.17.0
+    - pymbar
+    - ambermini >=16.16.0
+    - docopt
+    - openmoltools >=0.7.5
+    - mpi4py
+    - pyyaml
+    - clusterutils
+    - sphinxcontrib-bibtex
+    - cerberus ==1.1 # yank uses buggy cerberus 1.1 behavior as a feature ¯\_(ツ)_/¯
+    - matplotlib
+    - jupyter
+    - pdbfixer
 
 about:
   home: https://github.com/choderalab/yank
-  license: MIT License
+  license: MIT
