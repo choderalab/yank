@@ -1,9 +1,4 @@
-matplotlib
-boto
-ipython-notebook
+sphinx
+sphinx_rtd_theme
 jinja2
 runipy
-openmm
-pytables
-scikit-learn
-
