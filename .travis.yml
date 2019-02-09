@@ -67,7 +67,7 @@ env:
 
 matrix:
   allow_failures:
-  - env: python=3.7 CONDA_PY=37 DEVOMNIA=true
+  - env: python=3.7 CONDA_PY=3.7 DEVOMNIA=true
 
 deploy:
     - provider: s3
