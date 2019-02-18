@@ -17,7 +17,7 @@ import os
 import textwrap
 import subprocess
 
-import openmoltools as omt
+import openmmtools as mmtools
 
 from yank import utils
 
@@ -122,7 +122,7 @@ def test_script_yaml():
                 type: FlatBottom
         """.format(lysozyme_path, pxylene_path)
 
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
         with open(yaml_file_path, 'w') as f:
             f.write(textwrap.dedent(yaml_content))
@@ -133,8 +133,8 @@ def test_script_yaml():
 
 def test_script_yaml_status():
     """Check that 'yank script --yaml --status' works."""
-    host_path = openmmtools.testsystems.get_data_filename('cb7-b2/cb7_am1-bcc.mol2')
-    guest_path = openmmtools.testsystems.get_data_filename('cb7-b2/b2_am1-bcc.mol2')
+    host_path = mmtools.testsystems.get_data_filename('cb7-b2/cb7_am1-bcc.mol2')
+    guest_path = mmtools.testsystems.get_data_filename('cb7-b2/b2_am1-bcc.mol2')
     yaml_content = """\
         ---
         options:
@@ -201,7 +201,7 @@ def test_script_yaml_status():
                 type: Harmonic
         """.format(host_path, guest_path)
 
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
         with open(yaml_file_path, 'w') as f:
             f.write(textwrap.dedent(yaml_content))
