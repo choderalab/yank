@@ -62,3 +62,4 @@ requirements:
 about:
   home: https://github.com/choderalab/yank
   license: MIT
+  license_file: LICENSE

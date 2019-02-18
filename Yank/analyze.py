@@ -330,6 +330,12 @@ class ExperimentAnalyzer(object):
         self._free_energy_run = False
         self._serialized_data = {'yank_version': version.version, 'phase_names': self.phase_names}
 
+    def __del__(self):
+        # Explicitly close storage
+        for phase, analyzer in self.analyzers.items():
+            if analyzer is not None:
+                del analyzer
+
     @_copyout
     def get_general_simulation_data(self):
         """
@@ -744,15 +750,6 @@ def get_analyzer(file_base_path, **analyzer_kwargs):
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
     reporter = multistate.MultiStateReporter(file_base_path, open_mode='r')
-    """
-    storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
-    metadata = storage.metadata
-    sampler_class = metadata['sampler_full_name']
-    module_name, cls_name = sampler_full_name.rsplit('.', 1)
-    module = importlib.import_module(module_name)
-    cls = getattr(module, cls_name)
-    reporter = cls.create_reporter('complex.nc')
-    """
     # Eventually change this to auto-detect simulation from reporter:
     if True:
         analyzer = YankReplicaExchangeAnalyzer(reporter, **analyzer_kwargs)
@@ -784,8 +781,9 @@ def analyze_directory(source_directory, **analyzer_kwargs):
     auto_experiment_analyzer = ExperimentAnalyzer(source_directory, **analyzer_kwargs)
     analysis_data = auto_experiment_analyzer.auto_analyze()
     print_analysis_data(analysis_data)
+    # Clean up analyzer, forcing NetCDF file to close.
+    del auto_experiment_analyzer
     return analysis_data
-
 
 @mpi.on_single_node(0)
 def print_analysis_data(analysis_data, header=None):

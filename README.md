@@ -29,9 +29,10 @@ git clone https://github.com/choderalab/yank-examples.git
 Maintainers
 -----------
 
-* Levi N. Naden `<levi.naden@choderalab.org>` (MSKCC)
 * Andrea Rizzi `<andrea.rizzi@choderalab.org>` (WCMC)
+* Hannah Bruce Macdonald `<hannah.brucemacdonald>` (MSKCC)
 * John D. Chodera `<john.chodera@choderalab.org>` (MSKCC)
+* Levi N. Naden `<levi.naden@choderalab.org>` (MSKCC)
 
 Contributors
 ------------

@@ -17,7 +17,7 @@ import os
 import textwrap
 import subprocess
 
-import openmoltools as omt
+import openmmtools as mmtools
 
 from yank import utils
 
@@ -122,7 +122,7 @@ def test_script_yaml():
                 type: FlatBottom
         """.format(lysozyme_path, pxylene_path)
 
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
         with open(yaml_file_path, 'w') as f:
             f.write(textwrap.dedent(yaml_content))
@@ -130,3 +130,87 @@ def test_script_yaml():
 
         # Test option overriding.
         run_cli('script --yaml={} -o options:resume_simulation:yes'.format(yaml_file_path))
+
+def test_script_yaml_status():
+    """Check that 'yank script --yaml --status' works."""
+    host_path = mmtools.testsystems.get_data_filename('data/cb7-b2/cb7_am1-bcc.mol2')
+    guest_path = mmtools.testsystems.get_data_filename('data/cb7-b2/b2_am1-bcc.mol2')
+    yaml_content = """\
+        ---
+        options:
+            output_dir: 'output'
+            resume_setup: yes
+            resume_simulation: no
+            minimize: no
+            verbose: no
+            switch_experiment_interval: 20
+
+        molecules:
+            host:
+                filepath: {}
+                antechamber:
+                    charge_method: null
+            guest:
+                filepath: {}
+                antechamber:
+                    charge_method: null
+
+        mcmc_moves:
+            langevin:
+                type: LangevinSplittingDynamicsMove
+                timestep: 4.0*femtosecond
+                collision_rate: 1.0/picosecond
+                reassign_velocities: yes
+                splitting: 'V R O R V'
+                n_steps: 10
+                n_restart_attempts: 4
+
+        samplers:
+            repex:
+                type: ReplicaExchangeSampler
+                mcmc_moves: langevin
+                number_of_iterations: 40
+
+        solvents:
+            vacuum:
+                nonbonded_method: NoCutoff
+
+        protocols:
+            absolute-binding:
+                complex:
+                    alchemical_path:
+                        lambda_restraints: [0.0, 1.0]
+                        lambda_electrostatics: [1.0, 0.0]
+                        lambda_sterics: [1.0, 0.0]
+                solvent:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.0]
+                        lambda_sterics: [1.0, 0.0]
+        systems:
+            system:
+                receptor: host
+                ligand: guest
+                solvent: vacuum
+                leap:
+                    parameters: [leaprc.gaff, oldff/leaprc.ff14SB]
+        experiments:
+            system: system
+            sampler: repex
+            protocol: absolute-binding
+            restraint:
+                type: Harmonic
+        """.format(host_path, guest_path)
+
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
+        with open(yaml_file_path, 'w') as f:
+            f.write(textwrap.dedent(yaml_content))
+        # Test status output.
+        run_cli('script --yaml={} --status'.format(yaml_file_path))
+        # Ensure pickle file is found
+        output_path = os.path.join(tmp_dir, 'output', 'experiments')
+        filenames = os.listdir(output_path)
+        if 'status.pkl' not in filenames:
+            msg = 'Status file not found in experiment directory\n'
+            msg += 'contents: {}'.format(filenames)
+            raise Exception(msg)
