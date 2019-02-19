@@ -11,7 +11,7 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.23.8"  # Primary base version of the build
+VERSION = "0.24.0"  # Primary base version of the build
 DEVBUILD = 0  # Dev build status, Either None or Integer
 ISRELEASED = None  # Are we releasing this as a full cut?
 __version__ = VERSION

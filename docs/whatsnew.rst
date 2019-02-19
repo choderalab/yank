@@ -6,11 +6,19 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.24.0 Adds support for status files
-------------------------------------
+0.24.0 Adds experimental support for status files
+-------------------------------------------------
 
 - Added an experimental feature that allows ``--status`` to be provided with ``yank script`` invocations to emit a ``status.pkl`` file in the experiment directory at the conclusion of each experiment switch interval (`#1135 <https://github.com/choderalab/yank/pull/1135>`_). This feature is experimental, and its invocation may be changed in a future release.
 - This release requires OpenMMTools >= 0.17.0, which includes a much faster way of implementing exact treatment of PME during alchemical calculations (`#1136 <https://github.com/choderalab/yank/pull/1136>`_).
+- Some NetCDF robustness improvements
+- SAMS improvements
+  * SAMS now properly restores `t0` and `stage`, which should correctly persist the stage across phase switches and resumes
+  * Added SAMS `logZ_history` plot to notebook reports
+  * SAMS `self._stage` is now an integer to more easily store this in storage (0 is initial, 1 is asymptotic phase)
+  * Suppress some verbose outputs
+  * If an asymptotically optimal stage is present in a SAMS simulation, the initial stage is discarded to equilibration and automatic equilibration detection is applied to the asymptotically optimal weight adjustment region only.
+  * Jupyter notebook reports now show SAMS weight convergence if present
 
 0.23.7 Bugfix release
 ---------------------
