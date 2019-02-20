@@ -19,6 +19,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
   * Suppress some verbose outputs
   * If an asymptotically optimal stage is present in a SAMS simulation, the initial stage is discarded to equilibration and automatic equilibration detection is applied to the asymptotically optimal weight adjustment region only.
   * Jupyter notebook reports now show SAMS weight convergence if present
+- The ``yank.multistate`` package was deprecated. In the future, this package will be available in OpenMMTools (`#1146 <https://github.com/choderalab/yank/pull/1146>`_).
 
 0.23.7 Bugfix release
 ---------------------

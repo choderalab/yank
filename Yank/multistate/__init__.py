@@ -61,6 +61,11 @@ This code is licensed under the latest available version of the MIT License.
 
 """
 
+import warnings
+warnings.warn("The yank.multistate package is deprecated and it will be "
+              "available as openmmtools.multistate with openmmtools >= 0.18",
+              DeprecationWarning, stacklevel=2)
+
 from .multistatesampler import MultiStateSampler
 from .multistatereporter import MultiStateReporter
 from .replicaexchange import ReplicaExchangeSampler, ReplicaExchangeAnalyzer
