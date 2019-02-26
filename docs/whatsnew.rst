@@ -6,8 +6,8 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.24.0 Adds experimental support for status files
--------------------------------------------------
+0.24.0 Experimental support for online status files
+---------------------------------------------------
 
 - Added an experimental feature that allows ``--status`` to be provided with ``yank script`` invocations to emit a ``status.pkl`` file in the experiment directory at the conclusion of each experiment switch interval (`#1135 <https://github.com/choderalab/yank/pull/1135>`_). This feature is experimental, and its invocation may be changed in a future release.
 - This release requires OpenMMTools >= 0.17.0, which includes a much faster way of implementing exact treatment of PME during alchemical calculations (`#1136 <https://github.com/choderalab/yank/pull/1136>`_).
@@ -20,6 +20,14 @@ The full release history can be viewed `at the GitHub yank releases page <https:
   * If an asymptotically optimal stage is present in a SAMS simulation, the initial stage is discarded to equilibration and automatic equilibration detection is applied to the asymptotically optimal weight adjustment region only.
   * Jupyter notebook reports now show SAMS weight convergence if present
 - The ``yank.multistate`` package was deprecated. In the future, this package will be available in OpenMMTools (`#1146 <https://github.com/choderalab/yank/pull/1146>`_).
+
+Known issues
+^^^^^^^^^^^^
+- The use of more than one process per experiment via MPI has known issues that are being debugged (`#1130 <https://github.com/choderalab/yank/issues/1130>`_).
+- Simulations restored from a checkpoint file have their velocities reset to zero (`#1115 <https://github.com/choderalab/yank/issues/1115>`_).
+- Forward and backward convergence analysis free energy traces in the Jupter notebook are incorrect (`#971 <https://github.com/choderalab/yank/issues/971>`_).
+- Peptide ligands are not currently supported (`#376 <https://github.com/choderalab/yank/issues/376>`_).
+- Setup will fail if .mol2 atom substructure ID matches filename (`#703 <https://github.com/choderalab/yank/issues/703>`_).
 
 0.23.7 Bugfix release
 ---------------------
