@@ -1990,7 +1990,8 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
         ``lambda_sterics``) and a list specifying the initial and final
         values for the path.
     checkpoint_path : str
-        The path to the experiment directory.
+        The path to the trailblaze checkpoint file. In none exisits,
+        one will be created.
     std_energy_threshold : float
         The threshold that determines how to separate the states between
         each others.
