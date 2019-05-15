@@ -2155,7 +2155,7 @@ class ExperimentBuilder(object):
         return self._get_experiment_file_name(experiment_path) + '.log'
 
     def _get_experiment_trailblaze_path(self, experiment_path):
-        """Return the path for the experiment log file."""
+        """Return the path for the experiment trailblaze checkpoint file."""
         return self._get_experiment_file_name(experiment_path) + '_trailblaze.yaml'
 
     # --------------------------------------------------------------------------
