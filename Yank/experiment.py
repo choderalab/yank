@@ -2154,6 +2154,10 @@ class ExperimentBuilder(object):
         """Return the path for the experiment log file."""
         return self._get_experiment_file_name(experiment_path) + '.log'
 
+    def _get_experiment_trailblaze_path(self, experiment_path):
+        """Return the path for the experiment log file."""
+        return self._get_experiment_file_name(experiment_path) + '_trailblaze.yaml'
+
     # --------------------------------------------------------------------------
     # Resuming
     # --------------------------------------------------------------------------
@@ -2581,9 +2585,11 @@ class ExperimentBuilder(object):
                                                       restrained_atoms, sigma=3.0*unit.angstroms)
 
             # Find protocol.
+            trailblaze_checkpoint_path = self._get_experiment_trailblaze_path(experiment_path)
+
             alchemical_path = pipeline.trailblaze_alchemical_protocol(thermodynamic_state, sampler_state,
                                                                       mcmc_move, state_parameters,
-                                                                      **kwargs)
+                                                                      trailblaze_checkpoint_path, **kwargs)
             optimal_protocols[phase_name] = alchemical_path
 
         # Generate yaml script with updated protocol.
