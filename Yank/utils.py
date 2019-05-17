@@ -1601,7 +1601,7 @@ class TLeap:
                              "cubic" or "truncated_octahedral".')
 
         self.add_commands('{} {} {} {} iso'.format(solvate_command, unit_name,
-                                                   solvent_model, str(clearance)))
+                                                   solvent_model, str(clearance.value_in_unit(unit.angstroms))))
 
     @_sanitize_tleap_unit_name
     def save_unit(self, unit_name, output_path):
