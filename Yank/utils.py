@@ -1575,7 +1575,7 @@ class TLeap:
             self.add_commands('addIons2 {} {} {}'.format(unit_name, ion, num_ions))
 
     @_sanitize_tleap_unit_name
-    def solvate(self, unit_name, solvent_model, clearance):
+    def solvate(self, unit_name, solvent_model, clearance, box_geometry="cubic"):
         """
         Solvate a unit in LEaP isometrically
 
@@ -1589,9 +1589,19 @@ class TLeap:
             LEaP recognized name of the solvent model to use, e.g. "TIP3PBOX"
         clearance : float
             Add solvent up to clearance distance away from the unit_name (radial)
+        box_geometry : "cubic" or "truncated_octahedral"
+            Shape of the box to be solvated (Default is "cubic").
         """
-        self.add_commands('solvateBox {} {} {} iso'.format(unit_name, solvent_model,
-                                                           str(clearance)))
+        if box_geometry=="cubic":
+            solvate_command='solvateBox'
+        elif box_geometry=="truncated_octahedral":
+            solvate_command='solvateOct'
+        else:
+            raise ValueError('The argument box_geometry must take one of the following values: \
+                             "cubic" or "truncated_octahedral".')
+
+        self.add_commands('{} {} {} {} iso'.format(solvate_command, unit_name,
+                                                   solvent_model, str(clearance)))
 
     @_sanitize_tleap_unit_name
     def save_unit(self, unit_name, output_path):
