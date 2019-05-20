@@ -13,6 +13,7 @@ import abc
 import textwrap
 
 import openmoltools as omt
+from simtk import openmm, unit
 
 from nose import tools
 from yank.utils import * # TODO: Don't use 'import *'
@@ -290,12 +291,12 @@ def test_TLeap_script():
     tleap.load_unit(unit_name='ligand', file_path='path/to/ligand.gaff.mol2')
     tleap.transform('ligand', np.array([[1, 0, 0, 6], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
     tleap.combine('complex', '5receptor', 'ligand')
-    tleap.solvate(unit_name='complex', solvent_model='TIP3PBOX', clearance=10.0)
+    tleap.solvate(unit_name='complex', solvent_model='TIP3PBOX', clearance=10.0*unit.angstrom)
     tleap.add_commands('check complex', 'charge complex')
     tleap.new_section('New section')
     tleap.save_unit(unit_name='complex', output_path='complex.prmtop')
     tleap.save_unit(unit_name='complex', output_path='complex.pdb')
-    tleap.solvate(unit_name='ligand', solvent_model='TIP3PBOX', clearance=10.0)
+    tleap.solvate(unit_name='ligand', solvent_model='TIP3PBOX', clearance=10.0*unit.angstrom)
     tleap.save_unit(unit_name='ligand', output_path='solvent.inpcrd')
     tleap.save_unit(unit_name='ligand', output_path='solvent.pdb')
 

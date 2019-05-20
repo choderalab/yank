@@ -1587,8 +1587,8 @@ class TLeap:
             Name of the existing LEaP unit which will be solvated
         solvent_model : str
             LEaP recognized name of the solvent model to use, e.g. "TIP3PBOX"
-        clearance : float
-            Add solvent up to clearance distance away from the unit_name (radial)
+        clearance : simtk.unit.Quantity
+            Add solvent up to clearance distance away (units of length) from the unit_name (radial)
         box_geometry : "cubic" or "truncated_octahedral"
             Shape of the box to be solvated (Default is "cubic").
         """
