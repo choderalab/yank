@@ -747,9 +747,11 @@ class ExperimentBuilder(object):
         # Initialize and configure database with molecules, solvents and systems
         setup_dir = os.path.join(self._options['output_dir'], self._options['setup_dir'])
         self._db = pipeline.SetupDatabase(setup_dir=setup_dir)
-        self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
-        self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
-        self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
+        # These sections can contain entries that point to relative file paths
+        with moltools.utils.temporary_cd(self._script_dir):
+            self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
+            self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
+            self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
 
         # Validate protocols
         self._mcmc_moves = self._validate_mcmc_moves(yaml_content)
