@@ -753,7 +753,7 @@ def test_validation_correct_systems():
 
 
 def test_validation_wrong_systems():
-    """YAML validation raises exception with wrong experiments specification."""
+    """YAML validation raises exception with wrong systems specification."""
     data_paths = examples_paths()
     exp_builder = ExperimentBuilder()
     basic_script = """
@@ -779,10 +779,10 @@ def test_validation_wrong_systems():
         ("regions\(s\) clashing",
             {'receptor': 'rec_region', 'ligand': 'lig_region', 'solvent': 'solv'}),
 
-        ("ligand: \[must be of string type\]",
+        ("ligand:\n- must be of string type",
             {'receptor': 'rec', 'ligand': 1, 'solvent': 'solv'}),
 
-        ("solvent: \[must be of string type\]",
+        ("solvent:\n- must be of string type",
             {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']}),
 
         ("unallowed value unknown",
@@ -792,11 +792,11 @@ def test_validation_wrong_systems():
             {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv4',
              'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}}),
 
-        ("parameters: \[unknown field\]",
+        ("parameters:\n- unknown field",
             {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv3',
              'parameters': 'leaprc.ff14SB'}),
 
-        ("phase1_path: \[must be of list type\]",
+        ("phase1_path:\n- must be of list type",
             {'phase1_path': data_paths['bentol-complex'][0],
              'phase2_path': data_paths['bentol-solvent'],
              'ligand_dsl': 'resname BEN', 'solvent': 'solv'}),
@@ -806,7 +806,7 @@ def test_validation_wrong_systems():
             'phase2_path': data_paths['bentol-solvent'],
             'ligand_dsl': 'resname BEN', 'solvent': 'solv'}),
 
-        ("ligand_dsl: \[must be of string type\]",
+        ("ligand_dsl:\n- must be of string type",
             {'phase1_path': data_paths['bentol-complex'],
              'phase2_path': data_paths['bentol-solvent'],
              'ligand_dsl': 3.4, 'solvent': 'solv'}),
@@ -828,7 +828,7 @@ def test_validation_wrong_systems():
         ("''ligand'' must not be present with ''solute''",
             {'ligand': 'lig', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'}),
 
-        ("leap: \[must be of dict type\]",
+        ("leap:\n- must be of dict type",
             {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv', 'leap': 'leaprc.gaff'})
     ]
     for regexp, system in systems:
@@ -852,10 +852,10 @@ def test_validation_correct_mcmc_moves():
 
 
 def test_validation_wrong_mcmc_moves():
-    """YAML validation raises exception with wrong experiments specification."""
+    """YAML validation raises exception with wrong mcmc move specification."""
     # Each test case is a pair (regexp_error, mcmc_move_description).
     mcmc_moves = [
-        ("The expression 2.0 must be\s+ a string",
+        ("The expression 2.0 must be a string",
             {'type': 'LangevinSplittingDynamicsMove', 'timestep': 2.0}),
         ("Could not find class UnknownMoveClass",
             {'type': 'UnknownMoveClass'}),
