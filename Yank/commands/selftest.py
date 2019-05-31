@@ -98,7 +98,7 @@ def dispatch(args):
             # OETests.run_test_suite([])  # Disabled for now as its slow
             # Check that the required tools work
             from ..utils import is_openeye_installed
-            complete_tool_set = set('oechem', 'oequacpac', 'oeiupac', 'oeomega')
+            complete_tool_set = set(['oechem', 'oequacpac', 'oeiupac', 'oeomega'])
             unlicensed_tools = complete_tool_set.copy()
             for tool in complete_tool_set:
                 if is_openeye_installed(oetools=(tool,)):
