@@ -1852,7 +1852,7 @@ class SetupDatabase:
                                                       _OPENMM_LEAP_SOLVENT_FILES_MAP[solvent_model]))
                 logger.warning(solvent_warning)
             leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
-            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
+            clearance = solvent['clearance']
             tleap.solvate(unit_name=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
             # First, determine how many ions we need to add for the ionic strength.
