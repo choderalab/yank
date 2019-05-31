@@ -368,6 +368,12 @@ class MultiStateReporter(object):
                 logger.debug('Attempt {}/{} to open {} failed. Retrying '
                              'in {} seconds'.format(i+1, n_attempts, sleep_time))
                 time.sleep(sleep_time)
+
+        # At the very last attempt, we try setting the environment variable
+        # controlling the locking mechanism of HDF5 (see choderalab/yank#1165).
+        if n_attempts > 1:
+            os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+
         # Last attempt finally raises any error.
         return netcdf.Dataset(*args, **kwargs)
 

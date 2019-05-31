@@ -6,6 +6,14 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.24.1 Bugfix release
+---------------------
+
+Bugfixes
+^^^^^^^^
+- Improve the robustness of opening the netcdf file on resuming of the multi-state samplers by setting the environment variable ``HDF5_USE_FILE_LOCKING`` to ``'FALSE'`` after 4 failed attempts (`#1168 <https://github.com/choderalab/yank/pull/1168>`_).
+- Fixed a bug causing a crash during exception handling (`#1168 <https://github.com/choderalab/yank/pull/1168>`_).
+
 0.24.0 Experimental support for online status files
 ---------------------------------------------------
 
