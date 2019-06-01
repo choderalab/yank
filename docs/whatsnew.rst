@@ -11,8 +11,16 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 Bugfixes
 ^^^^^^^^
+- Fixed import of ``logsumexp()`` which was moved from ``scipy.misc`` to ``scipy.special`` (`#1162 <https://github.com/choderalab/yank/pull/1162>`_).
+- Fixed a bug in which validation of molecules and system file paths did not consider paths relative to the YAML script path (`#1164 <https://github.com/choderalab/yank/pull/1164>`_).
 - Improve the robustness of opening the netcdf file on resuming of the multi-state samplers by setting the environment variable ``HDF5_USE_FILE_LOCKING`` to ``'FALSE'`` after 4 failed attempts (`#1168 <https://github.com/choderalab/yank/pull/1168>`_).
 - Fixed a bug causing a crash during exception handling (`#1168 <https://github.com/choderalab/yank/pull/1168>`_).
+- Fixed a bug causing a crash in selftest.py when loading OpenEye (`#1170 <https://github.com/choderalab/yank/pull/1170>`_).
+
+Enhancements
+^^^^^^^^^^^^
+- The class ``yank.utils.TLeap`` can now create octahedral boxes. This is not exposed in the YAML script yet, however (`#1160 <https://github.com/choderalab/yank/pull/1160>`_).
+
 
 0.24.0 Experimental support for online status files
 ---------------------------------------------------
