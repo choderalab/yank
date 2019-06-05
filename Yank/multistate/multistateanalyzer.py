@@ -1669,6 +1669,18 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         restraint_force = copy.deepcopy(restraint_force)
         is_periodic = restraint_force.usesPeriodicBoundaryConditions()
 
+        # Store the indices of the restrained atoms in the reduced system.
+        analysis_indices = self._reporter.analysis_particle_indices
+
+        mapped_restrained_indices1 = restraint_force.restrained_atom_indices1
+        mapped_restrained_indices2 = restraint_force.restrained_atom_indices2
+
+        mapped_restrained_indices1 = [analysis_indices.index(index) for index in mapped_restrained_indices1]
+        mapped_restrained_indices2 = [analysis_indices.index(index) for index in mapped_restrained_indices2]
+
+        mapped_restrained_indices = (mapped_restrained_indices1 +
+                                     mapped_restrained_indices2)
+
         # Create new system with only solute and restraint forces.
         reduced_system = openmm.System()
         for weight in weights_group1 + weights_group2:
@@ -1676,15 +1688,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Adapt the restraint force atom indices to the reduced system.
         n_atoms1 = len(weights_group1)
         n_atoms = n_atoms1 + len(weights_group2)
-
-        # Store the indices of the restrained atoms in the reduced system.
-        reduced_restrained_atom_indices1 = list(range(n_atoms1))
-        reduced_restrained_atom_indices2 = list(range(n_atoms1, n_atoms))
-        reduced_restrained_atom_indices = (reduced_restrained_atom_indices1 +
-                                           reduced_restrained_atom_indices2)
-
-        restraint_force.restrained_atom_indices1 = reduced_restrained_atom_indices1
-        restraint_force.restrained_atom_indices2 = reduced_restrained_atom_indices
+        restraint_force.restrained_atom_indices1 = list(range(n_atoms1))
+        restraint_force.restrained_atom_indices2 = list(range(n_atoms1, n_atoms))
         reduced_system.addForce(restraint_force)
 
         # If we need to image the molecule, we need an MDTraj trajectory.
@@ -1701,7 +1706,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             trajectory = mdtraj.Trajectory(xyz=np.zeros((topology.n_atoms, 3)), topology=topology)
 
         # Create context used to compute the energies.
-        integrator = openmm.VerletIntegrator(1.0*units.femtosecond)
+        integrator = openmm.VerletIntegrator(1.0 * units.femtosecond)
         platform = openmm.Platform.getPlatformByName('CPU')
         context = openmm.Context(reduced_system, integrator, platform)
 
@@ -1727,7 +1732,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                                                                 analysis_particles_only=True)
 
             for replica_idx, sampler_state in enumerate(sampler_states):
-                sliced_sampler_state = sampler_state[reduced_restrained_atom_indices]
+                sliced_sampler_state = sampler_state[mapped_restrained_indices]
                 sliced_sampler_state.apply_to_context(context)
                 potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
                 self._restraint_energies[iteration][replica_idx] = potential_energy / _OPENMM_ENERGY_UNIT
@@ -1744,11 +1749,11 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
                                                                    dtype=np.float32)
                             trajectory.image_molecules(inplace=True, anchor_molecules=anchor_molecules,
                                                        other_molecules=imaged_molecules)
-                            positions_group1 = trajectory.xyz[0][reduced_restrained_atom_indices1]
-                            positions_group2 = trajectory.xyz[0][reduced_restrained_atom_indices2]
+                            positions_group1 = trajectory.xyz[0][mapped_restrained_indices1]
+                            positions_group2 = trajectory.xyz[0][mapped_restrained_indices2]
                         else:
-                            positions_group1 = sampler_state.positions[reduced_restrained_atom_indices1]
-                            positions_group2 = sampler_state.positions[reduced_restrained_atom_indices2]
+                            positions_group1 = sampler_state.positions[mapped_restrained_indices1]
+                            positions_group2 = sampler_state.positions[mapped_restrained_indices2]
                             positions_group1 /= _MDTRAJ_DISTANCE_UNIT
                             positions_group2 /= _MDTRAJ_DISTANCE_UNIT
 
