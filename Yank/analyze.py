@@ -27,11 +27,12 @@ import mdtraj
 import pickle
 import logging
 from functools import wraps
+
 import numpy as np
 import simtk.unit as units
 import openmmtools as mmtools
 from pymbar import timeseries
-from . import multistate
+
 from . import version
 from . import utils
 from . import mpi
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================================
 
 # Extend registry to support standard_state_correction
-yank_registry = multistate.default_observables_registry
+yank_registry = mmtools.multistate.default_observables_registry
 yank_registry.register_phase_observable('standard_state_correction')
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
@@ -55,7 +56,7 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 # =============================================================================================
 
 
-class YankPhaseAnalyzer(multistate.PhaseAnalyzer):
+class YankPhaseAnalyzer(mmtools.multistate.PhaseAnalyzer):
 
     def __init__(self, *args, registry=yank_registry, **kwargs):
         super().__init__(*args, registry=registry, **kwargs)
@@ -73,7 +74,7 @@ class YankPhaseAnalyzer(multistate.PhaseAnalyzer):
         raise NotImplementedError()
 
 
-class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPhaseAnalyzer):
+class YankMultiStateSamplerAnalyzer(mmtools.multistate.MultiStateSamplerAnalyzer, YankPhaseAnalyzer):
 
     def get_standard_state_correction(self):
         """
@@ -157,11 +158,11 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
         return data
 
 
-class YankReplicaExchangeAnalyzer(multistate.ReplicaExchangeAnalyzer, YankMultiStateSamplerAnalyzer):
+class YankReplicaExchangeAnalyzer(mmtools.multistate.ReplicaExchangeAnalyzer, YankMultiStateSamplerAnalyzer):
     pass
 
 
-class YankParallelTemperingAnalyzer(multistate.ParallelTemperingAnalyzer, YankMultiStateSamplerAnalyzer):
+class YankParallelTemperingAnalyzer(mmtools.multistate.ParallelTemperingAnalyzer, YankMultiStateSamplerAnalyzer):
     pass
 
 
@@ -448,7 +449,7 @@ class ExperimentAnalyzer(object):
 
                 self.u_ns[phase_name] = analyzer.get_effective_energy_timeseries()[1:]
                 # Timeseries statistics
-                i_t, g_i, n_effective_i = multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
+                i_t, g_i, n_effective_i = mmtools.multistate.get_equilibration_data_per_sample(self.u_ns[phase_name])
                 n_effective_max = n_effective_i.max()
                 i_max = n_effective_i.argmax()
                 n_equilibration = i_t[i_max] + t0
@@ -749,7 +750,7 @@ def get_analyzer(file_base_path, **analyzer_kwargs):
         Analyzer for the specific phase.
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
-    reporter = multistate.MultiStateReporter(file_base_path, open_mode='r')
+    reporter = mmtools.multistate.MultiStateReporter(file_base_path, open_mode='r')
     # Eventually change this to auto-detect simulation from reporter:
     if True:
         analyzer = YankReplicaExchangeAnalyzer(reporter, **analyzer_kwargs)
@@ -1082,7 +1083,7 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
     # Import simulation data
     reporter = None
     try:
-        reporter = multistate.MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
+        reporter = mmtools.multistate.MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
         metadata = reporter.read_dict('metadata')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
         topography = mmtools.utils.deserialize(metadata['topography'])

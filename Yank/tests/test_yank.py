@@ -26,9 +26,9 @@ import os
 
 import nose
 from openmmtools import testsystems, states
+from openmmtools.multistate import ReplicaExchangeSampler
 
 import yank.restraints
-from yank.multistate import ReplicaExchangeSampler
 from yank.yank import *
 
 # Quiet down some of the global citations for tests

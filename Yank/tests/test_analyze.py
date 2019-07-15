@@ -21,11 +21,12 @@ import openmmtools as mmtools
 import pymbar
 from pymbar.utils import ParameterError
 from simtk import unit
+from openmmtools.multistate import (MultiStateReporter, MultiStateSampler,
+                                    ReplicaExchangeSampler, SAMSSampler, utils)
 
 from yank.yank import Topography
 from yank.restraints import RestraintState
-from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, SAMSSampler, utils
-import yank.analyze as analyze
+from yank import analyze
 from .test_experiment import solvation_stock
 
 # ==============================================================================
@@ -326,7 +327,7 @@ class TestMultiPhaseAnalyzer(object):
         discard = 1  # The analysis discards the minimization frame.
         # Generate mbar semi-manually, use phases's static methods
         n_eq, g_t, Neff_max = pymbar.timeseries.detectEquilibration(u_n[discard:])
-        u_sampled_sub = analyze.multistate.remove_unequilibrated_data(u_sampled, n_eq, -1)
+        u_sampled_sub = mmtools.multistate.remove_unequilibrated_data(u_sampled, n_eq, -1)
         # Make sure output from discarding iterations is what we expect.
         assert u_sampled_sub.shape == (self.n_replicas, self.n_states, phase.n_iterations + 1 - n_eq)
 

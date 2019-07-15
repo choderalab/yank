@@ -34,7 +34,7 @@ import yaml
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 
-from . import utils, pipeline, mpi, restraints, schema, multistate
+from . import utils, pipeline, mpi, restraints, schema
 from .yank import AlchemicalPhase, Topography
 
 logger = logging.getLogger(__name__)
@@ -293,8 +293,9 @@ class AlchemicalPhaseFactory(object):
             else:
                 solute_atoms = ()
             # We don't allow checkpoint file overwriting in YAML file
-            reporter = multistate.MultiStateReporter(self.storage, checkpoint_interval=checkpoint_interval,
-                                                     analysis_particle_indices=solute_atoms)
+            reporter = mmtools.multistate.MultiStateReporter(
+                self.storage, checkpoint_interval=checkpoint_interval,
+                analysis_particle_indices=solute_atoms)
             create_kwargs['storage'] = reporter
             self.storage = reporter
 
@@ -474,7 +475,7 @@ class Experiment(object):
                 iterations_to_run = min(iterations_left[phase_id], switch_phase_interval)
                 try:
                     alchemical_phase.run(n_iterations=iterations_to_run)
-                except multistate.SimulationNaNError:
+                except mmtools.multistate.SimulationNaNError:
                     # Simulation has NaN'd, this experiment is done, flag phases as done and send error up stack
                     self._are_phases_completed = [True] * len(self._are_phases_completed)
                     raise
@@ -3156,7 +3157,7 @@ class ExperimentBuilder(object):
         # Trap a NaN'd simulation by capturing only the error we can handle, let all others raise normally
         try:
             built_experiment.run(n_iterations=switch_experiment_interval)
-        except multistate.SimulationNaNError:
+        except mmtools.multistate.SimulationNaNError:
             # Print out to critical logger.
             nan_warning_string = ('\n\n'  # Initial blank line for spacing.
                                   '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'

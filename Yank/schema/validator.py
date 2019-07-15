@@ -11,7 +11,7 @@ import simtk.unit as unit
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2
 
-from .. import utils, restraints, multistate
+from .. import utils, restraints
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +311,7 @@ def call_mcmc_move_constructor(constructor_description, **default_kwargs):
 def call_sampler_constructor(constructor_description):
     special_conversions = {'number_of_iterations': to_integer_or_infinity_coercer,
                            'online_analysis_interval': to_none_int_or_checkpoint}
-    return call_constructor(multistate.MultiStateSampler, constructor_description,
+    return call_constructor(mmtools.multistate.MultiStateSampler, constructor_description,
                             special_conversions=special_conversions)
 
 

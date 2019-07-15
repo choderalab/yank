@@ -27,7 +27,7 @@ from nose.tools import assert_raises, assert_equal, assert_raises_regexp
 from yank.experiment import *
 
 # silence the citations at a global level
-multistate.MultiStateSampler._global_citation_silence = True
+mmtools.multistate.MultiStateSampler._global_citation_silence = True
 
 
 # ==============================================================================
@@ -2865,7 +2865,7 @@ def test_run_solvation_experiment():
         assert os.path.isdir(output_dir)
         for solvent in ['solvent1.nc', 'solvent2.nc']:
             solvent_path = os.path.join(output_dir, solvent)
-            reporter = multistate.MultiStateReporter(solvent_path, open_mode=None)
+            reporter = mmtools.multistate.MultiStateReporter(solvent_path, open_mode=None)
             assert reporter.storage_exists()
             del reporter
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
