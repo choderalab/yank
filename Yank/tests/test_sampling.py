@@ -22,6 +22,7 @@ import pickle
 import sys
 from io import StringIO
 
+import mpiplus
 import numpy as np
 import openmmtools as mmtools
 import scipy.integrate
@@ -31,7 +32,6 @@ from nose.tools import assert_raises
 from openmmtools import testsystems
 from simtk import openmm, unit
 
-from yank import mpi
 from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler, SAMSSampler
 from yank.multistate import ReplicaExchangeAnalyzer, SAMSAnalyzer
 from yank.multistate.multistatereporter import _DictYamlLoader
@@ -797,7 +797,7 @@ class TestMultiStateSampler(object):
         It makes it possible to run tests on multiple nodes with MPI.
 
         """
-        mpicomm = mpi.get_mpicomm()
+        mpicomm = mpiplus.get_mpicomm()
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             if mpicomm is not None:
@@ -807,7 +807,7 @@ class TestMultiStateSampler(object):
     @staticmethod
     def get_node_replica_ids(tot_n_replicas):
         """Return the indices of the replicas that this node is responsible for."""
-        mpicomm = mpi.get_mpicomm()
+        mpicomm = mpiplus.get_mpicomm()
         if mpicomm is None or mpicomm.rank == 0:
             return set(range(tot_n_replicas))
         else:
@@ -866,7 +866,7 @@ class TestMultiStateSampler(object):
                                      sampler_states, unsampled_states)
 
             # Check that reporter has reporter only if rank 0.
-            mpicomm = mpi.get_mpicomm()
+            mpicomm = mpiplus.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
                 assert sampler._reporter.is_open()
             else:
@@ -1006,7 +1006,7 @@ class TestMultiStateSampler(object):
                 check_thermodynamic_states_equality(original_us, restored_us)
 
                 # The reporter of the restored simulation must be open only in node 0.
-                mpicomm = mpi.get_mpicomm()
+                mpicomm = mpiplus.get_mpicomm()
                 if mpicomm is None or mpicomm.rank == 0:
                     assert sampler._reporter.is_open()
                 else:
@@ -1091,7 +1091,7 @@ class TestMultiStateSampler(object):
             sampler_states[0].positions += displacement_vector
             sampler.sampler_states = sampler_states
 
-            mpicomm = mpi.get_mpicomm()
+            mpicomm = mpiplus.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
                 reporter.close()
                 reporter = self.REPORTER(storage_path, open_mode='r')
@@ -1192,7 +1192,7 @@ class TestMultiStateSampler(object):
                 self._compute_energies_independently(thermodynamic_states, sampler_states, unsampled_states)
 
             # Only node 0 has all the energies.
-            mpicomm = mpi.get_mpicomm()
+            mpicomm = mpiplus.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
                 for replica_index in range(n_replicas):
                     neighborhood = sampler._neighborhoods[replica_index,:]
@@ -1345,7 +1345,7 @@ class TestMultiStateSampler(object):
                         assert sequence_move.move_list[move_id].n_proposed == sampled_states.count(state_index)
 
                 # The MCMCMoves statistics in the storage are updated.
-                mpicomm = mpi.get_mpicomm()
+                mpicomm = mpiplus.get_mpicomm()
                 if mpicomm is None or mpicomm.rank == 0:
                     reporter.close()
                     reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=1)

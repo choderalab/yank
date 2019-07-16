@@ -28,6 +28,7 @@ import pickle
 import logging
 from functools import wraps
 
+import mpiplus
 import numpy as np
 import simtk.unit as units
 import openmmtools as mmtools
@@ -35,7 +36,6 @@ from pymbar import timeseries
 
 from . import version
 from . import utils
-from . import mpi
 from .experiment import ExperimentBuilder
 
 logger = logging.getLogger(__name__)
@@ -786,7 +786,7 @@ def analyze_directory(source_directory, **analyzer_kwargs):
     del auto_experiment_analyzer
     return analysis_data
 
-@mpi.on_single_node(0)
+@mpiplus.on_single_node(0)
 def print_analysis_data(analysis_data, header=None):
     """
     Helper function of printing the analysis data payload from a :func:`ExperimentAnalyzer.auto_analyze` call
@@ -910,9 +910,9 @@ class MultiExperimentAnalyzer(object):
                 # Traps both YAML content as string, and YAML content as dict
                 serial_data_path = os.path.join('.', serial_ending)
 
-        analysis_serials = mpi.distribute(self._run_analysis,
-                                          self.paths,
-                                          **analyzer_kwargs)
+        analysis_serials = mpiplus.distribute(self._run_analysis,
+                                              self.paths,
+                                              **analyzer_kwargs)
         output = {}
         for path, analysis in zip(self.paths, analysis_serials):
             name = os.path.split(path)[-1]  # Get the name of the experiment

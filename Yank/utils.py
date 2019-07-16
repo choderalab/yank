@@ -21,7 +21,6 @@ Provides many helper functions and common operations used by the various YANK su
 
 import os
 import re
-import abc
 import copy
 import glob
 import shutil
@@ -42,8 +41,6 @@ import numpy as np
 from simtk import unit
 
 import openmmtools as mmtools
-
-from . import mpi
 
 
 # ========================================================================================
@@ -131,7 +128,8 @@ def config_root_logger(verbose, log_file_path=None):
             root_logger.removeHandler(root_logger.handlers[0])
 
     # If this is a worker node, don't save any log file
-    mpicomm = mpi.get_mpicomm()
+    import mpiplus
+    mpicomm = mpiplus.get_mpicomm()
     if mpicomm:
         rank = mpicomm.rank
     else:
