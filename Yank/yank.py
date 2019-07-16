@@ -34,7 +34,6 @@ from simtk import unit, openmm
 
 from . import pipeline
 from .restraints import RestraintState, RestraintParameterError, V0
-from .fire import FIREMinimizationIntegrator
 
 logger = logging.getLogger(__name__)
 
@@ -1416,7 +1415,7 @@ class AlchemicalPhase(object):
         sampler_state = sampler_states[sampler_state_id]
 
         # Use the FIRE minimizer
-        integrator = FIREMinimizationIntegrator(tolerance=tolerance)
+        integrator = mmtools.integrators.FIREMinimizationIntegrator(tolerance=tolerance)
 
         # Create context
         context = thermodynamic_state.create_context(integrator)
