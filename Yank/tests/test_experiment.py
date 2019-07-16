@@ -540,7 +540,7 @@ def test_processes_per_experiment():
     ]
 
     for i, (exp, mpicomm_size, expected_result) in enumerate(test_cases):
-        with mpi._simulated_mpi_environment(size=mpicomm_size):
+        with mpiplus._simulated_mpi_environment(size=mpicomm_size):
             result = exp_builder._get_experiment_mpi_group_size(exp)
             err_msg = ('experiments: {}\nMPICOMM size: {}\nexpected result: {}'
                        '\nresult: {}').format(*test_cases[i], result)
@@ -552,7 +552,7 @@ def test_processes_per_experiment():
         exp_builder._options['processes_per_experiment'] = processes_per_experiment
         # Serial execution is always None.
         assert exp_builder._get_experiment_mpi_group_size(experiments) is None
-        with mpi._simulated_mpi_environment(size=5):
+        with mpiplus._simulated_mpi_environment(size=5):
             assert exp_builder._get_experiment_mpi_group_size(experiments[:-1]) == processes_per_experiment
             # When there are SAMS sampler, it's always 1.
             assert exp_builder._get_experiment_mpi_group_size(experiments) == 1

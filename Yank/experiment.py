@@ -25,6 +25,7 @@ import gc
 import logging
 import os
 
+import mpiplus
 import numpy as np
 import cerberus
 import cerberus.errors
@@ -34,7 +35,7 @@ import yaml
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 
-from . import utils, pipeline, mpi, restraints, schema
+from . import utils, pipeline, restraints, schema
 from .yank import AlchemicalPhase, Topography
 
 logger = logging.getLogger(__name__)
@@ -799,11 +800,11 @@ class ExperimentBuilder(object):
                     for exp_index, exp in enumerate(all_experiments):
                         completed[exp_index] = self._run_experiment(exp, write_status=write_status)
                 else:
-                    completed = mpi.distribute(self._run_experiment,
-                                               distributed_args=all_experiments,
-                                               group_size=group_size,
-                                               send_results_to='all',
-                                               write_status=write_status)
+                    completed = mpiplus.distribute(self._run_experiment,
+                                                   distributed_args=all_experiments,
+                                                   group_size=group_size,
+                                                   send_results_to='all',
+                                                   write_status=write_status)
 
                 # Remove any completed experiments, releasing possible parallel resources
                 # to be reused. Evaluate in reverse order to avoid shuffling indices.
@@ -2196,7 +2197,7 @@ class ExperimentBuilder(object):
 
         return False
 
-    @mpi.on_single_node(0, sync_nodes=True)
+    @mpiplus.on_single_node(0, sync_nodes=True)
     def _check_resume(self, check_setup=True, check_experiments=True):
         """Perform dry run to check if we are going to overwrite files.
 
@@ -2353,7 +2354,7 @@ class ExperimentBuilder(object):
         # Use only a single CPU thread if we are using the CPU platform.
         # TODO: Since there is an environment variable that can control this,
         # TODO: we may want to avoid doing this.
-        mpicomm = mpi.get_mpicomm()
+        mpicomm = mpiplus.get_mpicomm()
         if platform_name == 'CPU' and mpicomm is not None:
             logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
             platform.setPropertyDefaultValue('CpuThreads', '1')
@@ -2457,9 +2458,9 @@ class ExperimentBuilder(object):
                 self._generate_yaml(experiment, script_filepath)
 
         # Parallelize generation of all protocols among nodes.
-        mpi.distribute(self._generate_experiment_protocol,
-                       distributed_args=experiments_to_generate,
-                       send_results_to=None, group_size=1, sync_nodes=True)
+        mpiplus.distribute(self._generate_experiment_protocol,
+                           distributed_args=experiments_to_generate,
+                           send_results_to=None, group_size=1, sync_nodes=True)
 
     def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
                                       n_equilibration_iterations=None, **kwargs):
@@ -2596,7 +2597,7 @@ class ExperimentBuilder(object):
             protocol[phase_name]['alchemical_path'] = alchemical_path
         self._generate_yaml(experiment, script_path, overwrite_protocol=protocol)
 
-    @mpi.on_single_node(rank=0, sync_nodes=True)
+    @mpiplus.on_single_node(rank=0, sync_nodes=True)
     def _generate_yaml(self, experiment, file_path, overwrite_protocol=None):
         """Generate the minimum YAML file needed to reproduce the experiment.
 
@@ -2774,11 +2775,11 @@ class ExperimentBuilder(object):
         Returns
         -------
         groups_size : list of integers
-            The MPI processes groups to pass to mpi.distribute(). group_size[i]
+            The MPI processes groups to pass to mpiplus.distribute(). group_size[i]
             is the number of MPI processes assigned to experiments[i].
 
         """
-        mpicomm = mpi.get_mpicomm()
+        mpicomm = mpiplus.get_mpicomm()
         n_experiments = len(experiments)
         processes_per_experiment = self._options['processes_per_experiment']
 
@@ -3090,7 +3091,7 @@ class ExperimentBuilder(object):
 
         # Dump analysis script
         results_dir = self._get_experiment_dir(experiment_path)
-        mpi.run_single_node(0, self._save_analysis_script, results_dir, phase_names)
+        mpiplus.run_single_node(0, self._save_analysis_script, results_dir, phase_names)
 
         # Return new Experiment object.
         number_of_iterations = self._get_experiment_number_of_iterations(experiment)
@@ -3100,7 +3101,7 @@ class ExperimentBuilder(object):
     # Experiment run
     # --------------------------------------------------------------------------
 
-    @mpi.on_single_node(rank=0)
+    @mpiplus.on_single_node(rank=0)
     def _write_status_file(self, experiment_path):
         """Write status file for the given experiment in the storage directory
 

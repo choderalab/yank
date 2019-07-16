@@ -26,6 +26,7 @@ import itertools
 import collections
 
 import mdtraj
+import mpiplus
 import numpy as np
 import openmmtools as mmtools
 import openmoltools as moltools
@@ -34,7 +35,7 @@ from simtk import openmm, unit
 from simtk.openmm.app import PDBFile
 
 
-from . import utils, mpi
+from . import utils
 
 logger = logging.getLogger(__name__)
 
@@ -1377,9 +1378,9 @@ class SetupDatabase:
         molecules_to_setup.sort()
 
         # Parallelize generation of all molecules among nodes.
-        mpi.distribute(self._setup_molecules,
-                       distributed_args=molecules_to_setup,
-                       send_results_to=None, group_size=1, sync_nodes=True)
+        mpiplus.distribute(self._setup_molecules,
+                           distributed_args=molecules_to_setup,
+                           send_results_to=None, group_size=1, sync_nodes=True)
 
         # Find all systems that need to be set up.
         systems_to_setup = []
@@ -1389,9 +1390,9 @@ class SetupDatabase:
         systems_to_setup.sort()
 
         # Parallelize generation of all systems among nodes.
-        mpi.distribute(self.get_system,
-                       distributed_args=systems_to_setup,
-                       send_results_to=None, group_size=1, sync_nodes=True)
+        mpiplus.distribute(self.get_system,
+                           distributed_args=systems_to_setup,
+                           send_results_to=None, group_size=1, sync_nodes=True)
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule using the OpenEye toolkit from name or smiles.
