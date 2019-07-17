@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.25.0 Current development
+--------------------------
+- The ``yank.mpi`` module and the objects in the ``yank.multistate`` package, which were deprecated in 0.24.0, have now
+  been removed, and they can be found in the ``mpiplus`` and ``openmmtools`` libraries respectively.
+
 0.24.1 Bugfix release
 ---------------------
 
