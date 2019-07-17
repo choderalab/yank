@@ -13,7 +13,6 @@ from . import utils
 from . import restraints
 from . import pipeline
 from . import experiment
-from . import fire
 from .yank import Topography, AlchemicalPhase
 
 __version__ = version.version
