@@ -1963,7 +1963,7 @@ class SetupDatabase:
 # ==============================================================================
 
 def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-                                   checkpoint_path, std_energy_threshold=0.5, threshold_tolerance=0.05,
+                                   checkpoint_path=None, std_energy_threshold=0.5, threshold_tolerance=0.05,
                                    n_samples_per_state=100):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
@@ -1984,14 +1984,14 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
         The sampler states including initial positions and box vectors.
     mcmc_move : openmmtools.mcmc.MCMCMove
         The MCMCMove to use for propagation.
-    state_parameters : list of tuples (str, [float, float])
+    state_parameters : List[Tuple[str, List[float]]]
         Each element of this list is a tuple containing first the name
         of the parameter to be modified (e.g. ``lambda_electrostatics``,
         ``lambda_sterics``) and a list specifying the initial and final
         values for the path.
-    checkpoint_path : str
-        The path to the trailblaze checkpoint file. In none exisits,
-        one will be created.
+    checkpoint_path : str, optional
+        The path to the trailblaze checkpoint file. If given and the checkpoint,
+        files don't exist, they will be created.
     std_energy_threshold : float
         The threshold that determines how to separate the states between
         each others.
@@ -2012,29 +2012,30 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
     # Make sure that the state parameters to optimize have a clear order.
     assert (isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
 
-    # Check to see whether a trailblazing algorthim is already in
-    # progress, and if so, restore to the previously checkpointed
-    # state.
-    if not os.path.isfile(checkpoint_path):
-        # If no checkpoint is found, initialize it to the default
-        # values.
-        optimal_protocol = {}
-        for parameter, values in state_parameters:
-            setattr(thermodynamic_state, parameter, values[0])
-            optimal_protocol[parameter] = [values[0]]
+    # Make sure that thermodynamic_state is in correct state
+    # and initialize protocol with the starting value.
+    optimal_protocol = {}
+    for parameter, values in state_parameters:
+        setattr(thermodynamic_state, parameter, values[0])
+        optimal_protocol[parameter] = [values[0]]
 
-        with open(checkpoint_path, 'w') as file_stream:
-            yaml.dump(optimal_protocol, file_stream)
+    # Check to see whether a trailblazing algorthim is already in progress,
+    # and if so, restore to the previously checkpointed state.
+    if checkpoint_path is not None:
 
-    # Load the checkpoint file from disk.
-    with open(checkpoint_path, 'r') as file_stream:
-        # Parse the previously calculated optimal_protocol dict.
-        optimal_protocol = yaml.load(file_stream, Loader=yaml.FullLoader)
+        if not os.path.isfile(checkpoint_path):
+            # Check if we need to create a new checkpoint file.
+            with open(checkpoint_path, 'w') as file_stream:
+                yaml.dump(optimal_protocol, file_stream)
+        else:
+            # Load the checkpoint file from disk.
+            with open(checkpoint_path, 'r') as file_stream:
+                # Parse the previously calculated optimal_protocol dict.
+                optimal_protocol = yaml.load(file_stream, Loader=yaml.FullLoader)
 
-        for state_parameter in optimal_protocol:
-            # Make sure that thermodynamic_state is in correct state
-            # and initialize protocol with the starting value.
-            setattr(thermodynamic_state, state_parameter, optimal_protocol[state_parameter][-1])
+            # Make sure that thermodynamic_state is in the last explored state.
+            for state_parameter in optimal_protocol:
+                setattr(thermodynamic_state, state_parameter, optimal_protocol[state_parameter][-1])
 
     # We change only one parameter at a time.
     for state_parameter, values in state_parameters:
@@ -2113,8 +2114,9 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
                 optimal_protocol[par_name].append(protocol_value)
 
             # Save the updated checkpoint file to disk.
-            with open(checkpoint_path, 'w') as file_stream:
-                yaml.dump(optimal_protocol, file_stream)
+            if checkpoint_path is not None:
+                with open(checkpoint_path, 'w') as file_stream:
+                    yaml.dump(optimal_protocol, file_stream)
 
     logger.debug('Alchemical path found: {}'.format(optimal_protocol))
     return optimal_protocol
