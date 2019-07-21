@@ -1167,7 +1167,7 @@ class ExperimentBuilder(object):
                 coerce: single_str_to_list
                 schema:
                     type: string
-    """)
+    """, Loader=yaml.FullLoader)
 
     @classmethod
     def _validate_options(cls, options, validate_general_options):
