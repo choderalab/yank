@@ -2878,13 +2878,21 @@ def test_run_solvation_experiment():
 
 
 def test_automatic_alchemical_path():
-    """Test automatic alchemical path."""
+    """Test automatic alchemical path through the trailblaze algorithm."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
+        # Setup only 1 hydration free energy system in implicit solvent and vacuum.
         yaml_script['systems']['hydration-system']['solvent1'] = 'GBSA-OBC2'
+        yaml_script['systems'] = {'hydration-system': yaml_script['systems']['hydration-system']}
         yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = 'auto'
         yaml_script['experiments']['system'] = 'hydration-system'
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
+        # Make the generation of the trailblaze samples inexpensive.
+        yaml_script['mcmc_moves']['single']['n_steps'] = 1
+        yaml_script['mcmc_moves']['single']['timestep'] = '0.5*femtosecond'
+        yaml_script['samplers']['repex']['mcmc_moves'] = 'single'
+        yaml_script['experiments']['sampler'] = 'repex'
+        yaml_script['options']['platform'] = 'CPU'
         yaml_script['options']['resume_setup'] = False
         yaml_script['options']['resume_simulation'] = False
 

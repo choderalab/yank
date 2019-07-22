@@ -1978,6 +1978,11 @@ def trailblaze_alchemical_protocol(
     Two states are chosen for the protocol if their standard deviation is
     within ``std_energy_threshold +- threshold_tolerance``.
 
+    The function is capable of resuming when interrupted if ``checkpoint_dir_path``
+    is specified. This will create two files called 'protocol.yaml' and
+    'coordinates.dcd' storing the protocol and initial positions and box
+    vectors for each state that are generated while running the algorithm.
+
     Parameters
     ----------
     thermodynamic_state : openmmtools.states.CompoundThermodynamicState
@@ -2042,7 +2047,7 @@ def trailblaze_alchemical_protocol(
 
         # Check if there's an existing positions file.
         try:
-            trajectory_file = mdtraj.formats.DCDTrajectoryFile(positions_file_path)
+            trajectory_file = mdtraj.formats.DCDTrajectoryFile(positions_file_path, 'r')
         except (IOError, FileNotFoundError):
             len_trajectory = 0
         else:
