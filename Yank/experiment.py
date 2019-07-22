@@ -2471,7 +2471,7 @@ class ExperimentBuilder(object):
                        distributed_args=experiments_to_generate,
                        send_results_to=None, group_size=1, sync_nodes=True)
 
-    def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
+    def _generate_experiment_protocol(self, experiment, constrain_receptor=False,
                                       n_equilibration_iterations=None, **kwargs):
         """Generate auto alchemical paths for the given experiment.
 
@@ -2483,7 +2483,7 @@ class ExperimentBuilder(object):
             A tuple with the experiment path and the experiment description.
         constrain_receptor : bool, optional
             If True, the receptor in a receptor-ligand system will have its
-            CA atoms constrained during optimization (default is True).
+            CA atoms constrained during optimization (default is False).
         n_equilibration_iterations : None or int
             The number of equilibration iterations to perform before running
             the path search. If None, the function will determine the number
@@ -2598,14 +2598,14 @@ class ExperimentBuilder(object):
 
             # Restrain the receptor heavy atoms to avoid drastic
             # conformational changes (possibly after equilibration).
-            if len(phase.topography.receptor_atoms) != 0 and constrain_receptor:
-                receptor_atoms_set = set(phase.topography.receptor_atoms)
+            if len(phase_factory.topography.receptor_atoms) != 0 and constrain_receptor:
+                receptor_atoms_set = set(phase_factory.topography.receptor_atoms)
                 # Check first if there are alpha carbons. If not, restrain all carbons.
-                restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                restrained_atoms = [atom.index for atom in phase_factory.topography.topology.atoms
                                     if atom.name is 'CA' and atom.index in receptor_atoms_set]
                 if len(restrained_atoms) == 0:
                     # Select all carbon atoms of the receptor.
-                    restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                    restrained_atoms = [atom.index for atom in phase_factory.topography.topology.atoms
                                         if atom.element.symbol is 'C' and atom.index in receptor_atoms_set]
                 mmtools.forcefactories.restrain_atoms(thermodynamic_state, sampler_state,
                                                       restrained_atoms, sigma=3.0*unit.angstroms)
