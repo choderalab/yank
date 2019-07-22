@@ -705,7 +705,7 @@ def test_validation_correct_systems():
         solv3: {{nonbonded_method: PME, clearance: 10*angstroms}}
         solv4: {{nonbonded_method: PME}}
     """.format(data_paths['lysozyme'])
-    basic_script = yaml.load(textwrap.dedent(basic_script))
+    basic_script = yaml.load(textwrap.dedent(basic_script), Loader=yaml.FullLoader)
 
     systems = [
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
@@ -769,7 +769,7 @@ def test_validation_wrong_systems():
         solv3: {{nonbonded_method: PME, clearance: 10*angstroms}}
         solv4: {{nonbonded_method: PME}}
     """.format(data_paths['lysozyme'])
-    basic_script = yaml.load(textwrap.dedent(basic_script))
+    basic_script = yaml.load(textwrap.dedent(basic_script), Loader=yaml.FullLoader)
 
     # Each test case is a pair (regexp_error, system_description).
     systems = [
@@ -926,7 +926,7 @@ def test_order_phases():
     # Find order of phases for which normal parsing is not ordered or the test is useless
     for ordered_phases in itertools.permutations(['athirdphase', 'complex', 'solvent']):
         yaml_content = yaml_content_template.format(*ordered_phases)
-        parsed = yaml.load(textwrap.dedent(yaml_content))
+        parsed = yaml.load(textwrap.dedent(yaml_content), Loader=yaml.FullLoader)
         if tuple(parsed['absolute-binding'].keys()) != ordered_phases:
             break
 
@@ -2515,13 +2515,13 @@ def test_yaml_creation():
 
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
-        experiment_dict = yaml.load(experiment)
+        experiment_dict = yaml.load(experiment, Loader=yaml.FullLoader)
         exp_builder._db.get_system(experiment_dict['system'])
 
         generated_yaml_path = os.path.join(tmp_dir, 'experiment.yaml')
         exp_builder._generate_yaml(experiment_dict, generated_yaml_path)
         with open(generated_yaml_path, 'r') as f:
-            assert yaml.load(f) == yank_load(expected_yaml_content)
+            assert yaml.load(f, Loader=yaml.FullLoader) == yank_load(expected_yaml_content)
 
 
 def test_yaml_extension():
@@ -2607,12 +2607,12 @@ def test_yaml_extension():
         exp_builder.update_yaml(yaml_extension)
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
-        experiment_dict = yaml.load(experiment)
+        experiment_dict = yaml.load(experiment, Loader=yaml.FullLoader)
         exp_builder._db.get_system(experiment_dict['system'])
         generated_yaml_path = os.path.join(tmp_dir, 'experiment.yaml')
         exp_builder._generate_yaml(experiment_dict, generated_yaml_path)
         with open(generated_yaml_path, 'r') as f:
-            assert yaml.load(f) == yank_load(expected_yaml_content)
+            assert yaml.load(f, Loader=yaml.FullLoader) == yank_load(expected_yaml_content)
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2644,7 +2644,7 @@ def test_run_experiment_from_amber_files():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2678,7 +2678,7 @@ def test_run_experiment_from_gromacs_files():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2708,7 +2708,7 @@ def test_run_experiment_from_xml_files():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2812,7 +2812,7 @@ def test_run_experiment():
             # Analysis script is correct
             analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
             with open(analysis_script_path, 'r') as f:
-                assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+                assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
         # Now we can't run the experiment again with resume_simulation: no
         exp_builder._options['resume_simulation'] = False
@@ -2874,7 +2874,7 @@ def test_run_solvation_experiment():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['solvent1', 1], ['solvent2', -1]]
 
 
 def test_automatic_alchemical_path():

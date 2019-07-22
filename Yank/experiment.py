@@ -1278,7 +1278,7 @@ class ExperimentBuilder(object):
                     - type: integer
                       min: 0
         '''
-        regions_schema = yaml.load(regions_schema_yaml)
+        regions_schema = yaml.load(regions_schema_yaml, Loader=yaml.FullLoader)
         # Define the LEAP schema
         leap_schema = cls._LEAP_PARAMETERS_DEFAULT_SCHEMA
         # Setup the common schema across ALL molecules
@@ -1333,7 +1333,10 @@ class ExperimentBuilder(object):
             'schema': epik_schema
             }
         }
-        small_molecule_schema = {**yaml.load(small_molecule_schema_yaml), **epik_schema, **common_molecules_schema}
+        small_molecule_schema = {
+            **yaml.load(small_molecule_schema_yaml, Loader=yaml.FullLoader),
+            **epik_schema, **common_molecules_schema
+        }
 
         # Peptide schema has some keys excluded from small_molecule checks
         peptide_schema_yaml = """
@@ -1356,7 +1359,10 @@ class ExperimentBuilder(object):
             required: no
             dependencies: filepath
         """
-        peptide_schema = {**yaml.load(peptide_schema_yaml), **common_molecules_schema}
+        peptide_schema = {
+            **yaml.load(peptide_schema_yaml, Loader=yaml.FullLoader),
+            **common_molecules_schema
+        }
 
         validated_molecules = molecules_description.copy()
         # Schema validation
@@ -1864,7 +1870,7 @@ class ExperimentBuilder(object):
             excludes: [receptor, ligand]
         """
         # Load the YAML into a schema into dict format
-        system_schema = yaml.load(systems_schema_yaml)
+        system_schema = yaml.load(systems_schema_yaml, Loader=yaml.FullLoader)
         # Add the LEAP schema
         leap_schema = self._LEAP_PARAMETERS_DEFAULT_SCHEMA
         # Handle dependencies
@@ -1927,7 +1933,7 @@ class ExperimentBuilder(object):
                 keyschema:
                     type: string
         """
-        mcmc_move_schema = yaml.load(mcmc_move_schema)
+        mcmc_move_schema = yaml.load(mcmc_move_schema, Loader=yaml.FullLoader)
 
         mcmc_move_validator = schema.YANKCerberusValidator(mcmc_move_schema)
         if mcmc_move_validator.validate({'mcmc_moves': mcmc_move_descriptions}):
@@ -1956,7 +1962,7 @@ class ExperimentBuilder(object):
                         type: string
                         allowed: {MCMC_MOVE_IDS}
         """.format(MCMC_MOVE_IDS=list(self._mcmc_moves.keys()))
-        sampler_schema = yaml.load(sampler_schema)
+        sampler_schema = yaml.load(sampler_schema, Loader=yaml.FullLoader)
 
         # Special case for "checkpoint" in online analysis
         # Handle 1-case where its set by user to something other than checkpoint and exclude it, then process if not it
@@ -2059,7 +2065,7 @@ class ExperimentBuilder(object):
                 type: string
         """
 
-        experiment_schema = yaml.load(experiment_schema_yaml)
+        experiment_schema = yaml.load(experiment_schema_yaml, Loader=yaml.FullLoader)
         # Populate valid types
         experiment_schema['system']['allowed'] = [str(key) for key in self._db.systems.keys()]
         experiment_schema['protocol']['allowed'] = [str(key) for key in self._protocols.keys()]
