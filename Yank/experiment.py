@@ -2534,8 +2534,8 @@ class ExperimentBuilder(object):
 
             # Determine the path (i.e. end states of the different lambdas).
             state_parameters = []
-            # We may need to slowly turn on a Boresch restraint.
-            if isinstance(phase_factory.restraint, restraints.BoreschLike):
+            # First, turn on the restraint if there are any.
+            if phase_factory.restraint is not None:
                 state_parameters.append(('lambda_restraints', [0.0, 1.0]))
             # We support only lambda sterics and electrostatics for now.
             if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
