@@ -2943,6 +2943,10 @@ def test_automatic_alchemical_path():
         assert experiment.phases[0].protocol == yaml_script['protocols']['hydration-protocol']['solvent1']['alchemical_path']
         assert experiment.phases[1].protocol == expected_generated_protocol
 
+        # YANK takes advantage of the samples generated during the trailblaze.
+        assert isinstance(experiment.phases[0].sampler_states, mmtools.states.SamplerState)
+        assert len(experiment.phases[1].sampler_states) == 2
+
         # Resuming fails at this point because we have
         # generated the YAML file containing the protocol.
         with assert_raises(YamlParseError):

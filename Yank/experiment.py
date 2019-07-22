@@ -3065,6 +3065,22 @@ class ExperimentBuilder(object):
                 positions_file_path, parameters_file_path, system_options,
                 gromacs_include_dir=gromacs_include_dir)
 
+            # If we have generated samples with trailblaze, we start the
+            # simulation from those samples. Also, we can turn off minimization
+            # as it has been already performed before trailblazing.
+            trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
+                experiment_path, phase_name)
+            try:
+                sampler_state = pipeline.read_trailblaze_checkpoint_coordinates(
+                    trailblaze_checkpoint_dir_path)
+            except FileNotFoundError:
+                # Just keep the sampler state read from the inpcrd file.
+                pass
+            else:
+                # If this is SAMS, just use the sampler state associated
+                # to the initial thermodynamic state.
+                sampler_state = sampler_state[0]
+
             # Identify system components. There is a ligand only in the complex phase.
             if phase_idx == 0:
                 ligand_atoms = ligand_dsl
