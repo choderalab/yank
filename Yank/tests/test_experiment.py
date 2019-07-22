@@ -93,8 +93,25 @@ def yank_load(script):
     return yaml.load(textwrap.dedent(script), Loader=YankLoader)
 
 
-def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=False):
-    """Return a YAML template script as a dict."""
+def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=False,
+                        systems='all'):
+    """Return a YAML template script as a dict.
+
+    Parameters
+    ----------
+    output_dir : str, optional
+        The YANK output directory to set in the YAML options.
+    keep_schrodinger : bool, optional
+        If False, removes the molecules that depend on the Schrodinger
+        toolkit. Default is False.
+    keep_openeye : bool, optional
+        If False, removes the molecules that depend on the OpenEye
+        toolkit. Default is False.
+    systems : List[str], optional
+        Limits the systems in the YAML to those identified by the given
+        IDs. If 'all', all systems are included in the script, which means
+        that the setup pipeline will build them all.
+    """
     paths = examples_paths()
     template_script = """
     ---
@@ -229,6 +246,12 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
     # Remove molecules.
     for molecule_id in molecules_to_remove:
         del script_dict['molecules'][molecule_id]
+
+    # Remove systems.
+    if systems != 'all':
+        systems_to_remove = [s for s in script_dict['systems'] if s not in systems]
+        for system_id in systems_to_remove:
+            del script_dict['systems'][system_id]
 
     return script_dict
 
@@ -411,14 +434,9 @@ def test_online_reads_checkpoint():
     """Test that online analysis reads the checkpoint correctly in all cases"""
     current_log_level = logger.level
     logger.setLevel(logging.ERROR)  # Temporarily suppress some of the logging output
-    raw_template_script = get_template_script()
+    raw_template_script = get_template_script(systems=['explicit-system'])
+
     # Pair down the processing
-    popables = []
-    for system in raw_template_script['systems'].keys():
-        if system != 'explicit-system':
-            popables.append(system)
-    for popable in popables:
-        raw_template_script['systems'].pop(popable)
     allowed_molecules = [raw_template_script['systems']['explicit-system']['receptor'],
                          raw_template_script['systems']['explicit-system']['ligand']]
     popables = []
@@ -427,6 +445,7 @@ def test_online_reads_checkpoint():
             popables.append(molecule)
     for popable in popables:
         raw_template_script['molecules'].pop(popable)
+
     raw_template_script.pop('samplers')
     sampler_entry = {'type': 'SAMSSampler'}
     sampler = {'samplers': {'sams': sampler_entry}}
@@ -2880,18 +2899,21 @@ def test_run_solvation_experiment():
 def test_automatic_alchemical_path():
     """Test automatic alchemical path through the trailblaze algorithm."""
     with mmtools.utils.temporary_directory() as tmp_dir:
-        yaml_script = get_template_script(tmp_dir)
         # Setup only 1 hydration free energy system in implicit solvent and vacuum.
+        yaml_script = get_template_script(tmp_dir, systems=['hydration-system'])
         yaml_script['systems']['hydration-system']['solvent1'] = 'GBSA-OBC2'
-        yaml_script['systems'] = {'hydration-system': yaml_script['systems']['hydration-system']}
+
+        # We run trailblaze only for the phase in vacuum.
         yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = 'auto'
         yaml_script['experiments']['system'] = 'hydration-system'
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
+
         # Make the generation of the trailblaze samples inexpensive.
         yaml_script['mcmc_moves']['single']['n_steps'] = 1
         yaml_script['mcmc_moves']['single']['timestep'] = '0.5*femtosecond'
         yaml_script['samplers']['repex']['mcmc_moves'] = 'single'
         yaml_script['experiments']['sampler'] = 'repex'
+
         yaml_script['options']['platform'] = 'CPU'
         yaml_script['options']['resume_setup'] = False
         yaml_script['options']['resume_simulation'] = False
