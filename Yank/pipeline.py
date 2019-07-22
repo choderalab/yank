@@ -1962,9 +1962,11 @@ class SetupDatabase:
 # FUNCTIONS FOR ALCHEMICAL PATH OPTIMIZATION
 # ==============================================================================
 
-def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-                                   checkpoint_path=None, std_energy_threshold=0.5, threshold_tolerance=0.05,
-                                   n_samples_per_state=100):
+def trailblaze_alchemical_protocol(
+        thermodynamic_state, sampler_state, mcmc_move, state_parameters,
+        checkpoint_dir_path=None, std_energy_threshold=0.5,
+        threshold_tolerance=0.05, n_samples_per_state=100
+):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
 
@@ -1989,9 +1991,12 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
         of the parameter to be modified (e.g. ``lambda_electrostatics``,
         ``lambda_sterics``) and a list specifying the initial and final
         values for the path.
-    checkpoint_path : str, optional
-        The path to the trailblaze checkpoint file. If given and the checkpoint,
-        files don't exist, they will be created.
+    checkpoint_dir_path : str, optional
+        The path to the directory used to store the trailblaze information.
+        If this is given and the files exist, the algorithm will use this
+        information to resume in case it was previously interrupted. If
+        ``None``, no information is stored and it won't be possible to
+        resume. Default is ``None``.
     std_energy_threshold : float
         The threshold that determines how to separate the states between
         each others.
@@ -2012,30 +2017,74 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
     # Make sure that the state parameters to optimize have a clear order.
     assert (isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
 
-    # Make sure that thermodynamic_state is in correct state
-    # and initialize protocol with the starting value.
-    optimal_protocol = {}
-    for parameter, values in state_parameters:
-        setattr(thermodynamic_state, parameter, values[0])
-        optimal_protocol[parameter] = [values[0]]
+    # Initialize protocol with the starting value.
+    optimal_protocol = {par: [values[0]] for par, values in state_parameters}
 
     # Check to see whether a trailblazing algorthim is already in progress,
     # and if so, restore to the previously checkpointed state.
-    if checkpoint_path is not None:
+    if checkpoint_dir_path is not None:
+        # We save the protocol in a YAML file and the positions in netcdf.
+        protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+        positions_file_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
 
-        if not os.path.isfile(checkpoint_path):
-            # Check if we need to create a new checkpoint file.
-            with open(checkpoint_path, 'w') as file_stream:
-                yaml.dump(optimal_protocol, file_stream)
-        else:
-            # Load the checkpoint file from disk.
-            with open(checkpoint_path, 'r') as file_stream:
-                # Parse the previously calculated optimal_protocol dict.
+        # Create the directory, if it doesn't exist.
+        os.makedirs(checkpoint_dir_path, exist_ok=True)
+
+        # Create/load protocol checkpoint file.
+        try:
+            # Parse the previously calculated optimal_protocol dict.
+            with open(protocol_file_path, 'r') as file_stream:
                 optimal_protocol = yaml.load(file_stream, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            # The checkpoint doesn't exist. Create one.
+            with open(protocol_file_path, 'w') as file_stream:
+                yaml.dump(optimal_protocol, file_stream)
 
-            # Make sure that thermodynamic_state is in the last explored state.
-            for state_parameter in optimal_protocol:
-                setattr(thermodynamic_state, state_parameter, optimal_protocol[state_parameter][-1])
+        # Check if there's an existing positions file.
+        try:
+            trajectory_file = mdtraj.formats.DCDTrajectoryFile(positions_file_path)
+        except (IOError, FileNotFoundError):
+            len_trajectory = 0
+        else:
+            try:
+                positions, cell_lengths, cell_angles = trajectory_file.read()
+            finally:
+                trajectory_file.close()
+            len_trajectory = positions.shape[0]
+
+        # Raise an error if the algorithm was interrupted *during*
+        # writing on disk. We store only the states that we simulated
+        # so there should be one less here.
+        if len_trajectory < len(optimal_protocol[state_parameters[0][0]])-1:
+            err_msg = ("The trailblaze algorithm was interrupted while "
+                       "writing the checkpoint file and it is now unable "
+                       "to resume. Please delete the files "
+                       f"in {checkpoint_dir_path} and restart.")
+            raise RuntimeError(err_msg)
+
+        # When this is resumed, but the trajectory is already completed,
+        # the frame of the final end state has been already written, but
+        # we don't want to add it twice at the end of this function.
+        len_trajectory = len(optimal_protocol[state_parameters[0][0]])-1
+
+        # Whether the file exist or not, MDTraj doesn't support appending
+        # files so we need to partially rewrite it from scratch.
+        trajectory_file = mdtraj.formats.DCDTrajectoryFile(positions_file_path, 'w',
+                                                           force_overwrite=True)
+        if len_trajectory > 0:
+            for i in range(len_trajectory):
+                trajectory_file.write(positions[i], cell_lengths[i], cell_angles[i])
+            # Make sure the next search starts from the last saved position
+            # unless the previous calculation was interrupted before the
+            # first position could be saved.
+            sampler_state.positions = positions[-1] * unit.nanometer
+            sampler_state.box_vectors = mdtraj.utils.lengths_and_angles_to_box_vectors(
+                *cell_lengths[-1], *cell_angles[-1]) * unit.nanometer
+
+    # Make sure that thermodynamic_state is in the last explored
+    # state, whether the algorithm was resumed or not.
+    for state_parameter in optimal_protocol:
+        setattr(thermodynamic_state, state_parameter, optimal_protocol[state_parameter][-1])
 
     # We change only one parameter at a time.
     for state_parameter, values in state_parameters:
@@ -2114,9 +2163,24 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
                 optimal_protocol[par_name].append(protocol_value)
 
             # Save the updated checkpoint file to disk.
-            if checkpoint_path is not None:
-                with open(checkpoint_path, 'w') as file_stream:
+            if checkpoint_dir_path is not None:
+                # Update protocol.
+                with open(protocol_file_path, 'w') as file_stream:
                     yaml.dump(optimal_protocol, file_stream)
+
+                # Update positions of the state that we just simulated.
+                a, b, c, alpha, beta, gamma = mdtraj.utils.box_vectors_to_lengths_and_angles(
+                    *(sampler_state.box_vectors / unit.nanometer))
+                trajectory_file.write(sampler_state.positions / unit.nanometer,
+                                      (a, b, c), (alpha, beta, gamma))
+
+    if checkpoint_dir_path is not None:
+        # We haven't simulated the last state so we just set the positions of the second to last.
+        a, b, c, alpha, beta, gamma = mdtraj.utils.box_vectors_to_lengths_and_angles(
+            *(sampler_state.box_vectors / unit.nanometer))
+        trajectory_file.write(sampler_state.positions / unit.nanometer,
+                              (a, b, c), (alpha, beta, gamma))
+        trajectory_file.close()
 
     logger.debug('Alchemical path found: {}'.format(optimal_protocol))
     return optimal_protocol

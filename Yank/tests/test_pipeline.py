@@ -88,9 +88,27 @@ def test_pack_transformation():
 
 def test_trailblaze_checkpoint():
     """Test that trailblaze algorithm can resume if interrupted."""
-    from openmmtools.states import GlobalParameterState, SamplerState, ThermodynamicState, CompoundThermodynamicState
+    from openmmtools.states import (GlobalParameterState, ThermodynamicState,
+                                    CompoundThermodynamicState, SamplerState)
 
     par_name = 'testsystems_HarmonicOscillator_x0'
+
+    def _check_checkpoint_files(checkpoint_dir_path, expected_protocol, n_atoms):
+
+        checkpoint_protocol_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+        checkpoint_positions_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
+
+        # The protocol on the checkpoint file is correct.
+        with open(checkpoint_protocol_path, 'r') as f:
+            checkpoint_protocol = yaml.load(f, Loader=yaml.FullLoader)
+        assert checkpoint_protocol == expected_protocol
+
+        # The positions and box vectors have the correct dimension.
+        expected_n_states = len(expected_protocol[par_name])
+        trajectory_file = mdtraj.formats.DCDTrajectoryFile(checkpoint_positions_path, 'r')
+        xyz, cell_lengths, cell_angles = trajectory_file.read()
+        assert (xyz.shape[0], xyz.shape[1]) == (expected_n_states, n_atoms)
+        assert cell_lengths.shape[0] == expected_n_states
 
     # Create composable state that control offset of harmonic oscillator.
     class X0State(GlobalParameterState):
@@ -111,31 +129,26 @@ def test_trailblaze_checkpoint():
     )
 
     with mmtools.utils.temporary_directory() as checkpoint_dir_path:
-        checkpoint_dir_path = os.path.join(checkpoint_dir_path, 'temp.yaml')
 
         # Running with a checkpoint path creates checkpoint files.
         first_protocol = trailblaze_alchemical_protocol(
             compound_state, sampler_state, mcmc_move,
-            checkpoint_path=checkpoint_dir_path,
+            checkpoint_dir_path=checkpoint_dir_path,
             state_parameters=[(par_name, [0.0, 1.0])]
         )
 
-        # The path on the checkpoint files is correct.
-        with open(checkpoint_dir_path, 'r') as f:
-            checkpoint_protocol = yaml.load(f, Loader=yaml.FullLoader)
-        assert checkpoint_protocol == first_protocol
+        # The info in the checkpoint files is correct.
+        _check_checkpoint_files(checkpoint_dir_path, first_protocol, len(oscillator.positions))
 
         # Running a second time (with different final state) should
         # start from the previous alchemical protocol.
         second_protocol = trailblaze_alchemical_protocol(
             compound_state, sampler_state, mcmc_move,
-            checkpoint_path=checkpoint_dir_path,
+            checkpoint_dir_path=checkpoint_dir_path,
             state_parameters=[(par_name, [0.0, 2.0])]
         )
         len_first_protocol = len(first_protocol[par_name])
         assert second_protocol[par_name][:len_first_protocol] == first_protocol[par_name]
 
-        # The path on the checkpoint is correct.
-        with open(checkpoint_dir_path, 'r') as f:
-            checkpoint_protocol = yaml.load(f, Loader=yaml.FullLoader)
-        assert checkpoint_protocol == second_protocol
+        # The info in the checkpoint files is correct.
+        _check_checkpoint_files(checkpoint_dir_path, second_protocol, len(oscillator.positions))
