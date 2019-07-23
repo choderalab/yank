@@ -2897,7 +2897,7 @@ def test_run_solvation_experiment():
 
 
 def test_automatic_alchemical_path():
-    """Test automatic alchemical path through the trailblaze algorithm."""
+    """Test automatic alchemical path found through the trailblaze algorithm."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         # Setup only 1 hydration free energy system in implicit solvent and vacuum.
         yaml_script = get_template_script(tmp_dir, systems=['hydration-system'])
