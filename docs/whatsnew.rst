@@ -8,6 +8,12 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 0.25.0 Current development
 --------------------------
+
+API-breaking changes
+^^^^^^^^^^^^^^^^^^^^
+- The ``yank.mpi`` module and the objects in the ``yank.multistate`` package, which were deprecated in 0.24.0, have now
+  been removed, and they can be found in the ``mpiplus`` and ``openmmtools`` libraries respectively.
+
 New features
 ^^^^^^^^^^^^
 - The trailblaze algorithm used for the authomatic generation of the alchemical path is now capable of resuming after an unexpected interruption or crash. The samples generated during the process are used to initialize the replicas of the replica exchange or SAMS free energy calculation (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).

@@ -27,7 +27,7 @@ from nose.tools import assert_raises, assert_equal, assert_raises_regexp
 from yank.experiment import *
 
 # silence the citations at a global level
-multistate.MultiStateSampler._global_citation_silence = True
+mmtools.multistate.MultiStateSampler._global_citation_silence = True
 
 
 # ==============================================================================
@@ -559,7 +559,7 @@ def test_processes_per_experiment():
     ]
 
     for i, (exp, mpicomm_size, expected_result) in enumerate(test_cases):
-        with mpi._simulated_mpi_environment(size=mpicomm_size):
+        with mpiplus.mpiplus._simulated_mpi_environment(size=mpicomm_size):
             result = exp_builder._get_experiment_mpi_group_size(exp)
             err_msg = ('experiments: {}\nMPICOMM size: {}\nexpected result: {}'
                        '\nresult: {}').format(*test_cases[i], result)
@@ -571,7 +571,7 @@ def test_processes_per_experiment():
         exp_builder._options['processes_per_experiment'] = processes_per_experiment
         # Serial execution is always None.
         assert exp_builder._get_experiment_mpi_group_size(experiments) is None
-        with mpi._simulated_mpi_environment(size=5):
+        with mpiplus.mpiplus._simulated_mpi_environment(size=5):
             assert exp_builder._get_experiment_mpi_group_size(experiments[:-1]) == processes_per_experiment
             # When there are SAMS sampler, it's always 1.
             assert exp_builder._get_experiment_mpi_group_size(experiments) == 1
@@ -2884,7 +2884,7 @@ def test_run_solvation_experiment():
         assert os.path.isdir(output_dir)
         for solvent in ['solvent1.nc', 'solvent2.nc']:
             solvent_path = os.path.join(output_dir, solvent)
-            reporter = multistate.MultiStateReporter(solvent_path, open_mode=None)
+            reporter = mmtools.multistate.MultiStateReporter(solvent_path, open_mode=None)
             assert reporter.storage_exists()
             del reporter
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
