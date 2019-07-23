@@ -17,6 +17,7 @@ from matplotlib import gridspec
 from pymbar import MBAR
 import seaborn as sns
 from simtk import unit as units
+from openmmtools import multistate
 
 from .. import analyze
 
@@ -595,18 +596,18 @@ class HealthReportData(analyze.ExperimentAnalyzer):
                     u_n = analyzer.get_effective_energy_timeseries(energies=energy_sub,
                                                                    replica_state_indices=state_sub)
 
-                    i_t, g_i, n_effective_i = analyze.multistate.get_equilibration_data_per_sample(u_n)
+                    i_t, g_i, n_effective_i = multistate.get_equilibration_data_per_sample(u_n)
                     i_max = n_effective_i.argmax()
                     number_equilibrated = i_t[i_max]
                     g_t = g_i[i_max]
                     if not self.use_full_trajectory:
-                        energy_sub = analyze.multistate.utils.remove_unequilibrated_data(energy_sub,
+                        energy_sub = multistate.utils.remove_unequilibrated_data(energy_sub,
                                                                                          number_equilibrated,
                                                                                          -1)
-                        state_sub = analyze.multistate.utils.remove_unequilibrated_data(state_sub,
+                        state_sub = multistate.utils.remove_unequilibrated_data(state_sub,
                                                                                         number_equilibrated, -1)
-                        energy_sub = analyze.multistate.utils.subsample_data_along_axis(energy_sub, g_t, -1)
-                        state_sub = analyze.multistate.utils.subsample_data_along_axis(state_sub, g_t, -1)
+                        energy_sub = multistate.utils.subsample_data_along_axis(energy_sub, g_t, -1)
+                        state_sub = multistate.utils.subsample_data_along_axis(state_sub, g_t, -1)
                     samples_per_state = np.zeros([n_states], dtype=int)
                     unique_sampled_states, counts = np.unique(state_sub, return_counts=True)
                     # Assign those counts to the correct range of states

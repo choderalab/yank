@@ -207,6 +207,14 @@ class RestraintState(GlobalParameterState):
             raise ValueError('lambda_restraints must be between 0.0 and 1.0')
         return float(new_value)
 
+    def __setstate__(self, serialization):
+        try:
+            super().__setstate__(serialization)
+        except KeyError:
+            # Backwards compatibility with YANK < 0.24.
+            lambda_restraints = serialization['lambda_restraints']
+            self._initialize(parameters_name_suffix=None, lambda_restraints=lambda_restraints)
+
 
 # ==============================================================================
 # Atom selector tool

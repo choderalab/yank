@@ -26,9 +26,9 @@ import os
 
 import nose
 from openmmtools import testsystems, states
+from openmmtools.multistate import ReplicaExchangeSampler
 
 import yank.restraints
-from yank.multistate import ReplicaExchangeSampler
 from yank.yank import *
 
 # Quiet down some of the global citations for tests
@@ -229,7 +229,7 @@ class TestAlchemicalPhase(object):
         It makes it possible to run tests on multiple nodes with MPI.
 
         """
-        mpicomm = mpi.get_mpicomm()
+        mpicomm = mpiplus.get_mpicomm()
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             if mpicomm is not None:

@@ -104,7 +104,7 @@ def dispatch(args):
 
     import os
     import pickle
-    from .. import utils, analyze, mpi
+    from .. import utils, analyze
 
     utils.config_root_logger(args['--verbose'])
 
@@ -136,7 +136,8 @@ def dispatch(args):
             analyze.print_analysis_data(data, header="######## EXPERIMENT: {} ########".format(exp_name))
 
     else:
-        @mpi.on_single_node(0)
+        import mpiplus
+        @mpiplus.on_single_node(0)
         def single_run():
             # Helper to ensure case someone does MPI on a single diretory
             output = analyze.analyze_directory(args['--store'], **analyzer_kwargs)

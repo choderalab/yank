@@ -26,14 +26,14 @@ import time
 from typing import Union, Tuple, List, Set
 
 import mdtraj
+import mpiplus
 import numpy as np
 import openmmtools as mmtools
 import pandas
 from simtk import unit, openmm
 
-from . import pipeline, mpi, multistate
+from . import pipeline
 from .restraints import RestraintState, RestraintParameterError, V0
-from .fire import FIREMinimizationIntegrator
 
 logger = logging.getLogger(__name__)
 
@@ -1122,9 +1122,9 @@ class AlchemicalPhase(object):
 
         # Distribute minimization across nodes.
         minimized_sampler_states_ids = list(similar_sampler_states.keys())
-        minimized_positions = mpi.distribute(self._minimize_sampler_state, minimized_sampler_states_ids,
-                                             sampler_states, reference_state, tolerance, max_iterations,
-                                             send_results_to='all')
+        minimized_positions = mpiplus.distribute(self._minimize_sampler_state, minimized_sampler_states_ids,
+                                                 sampler_states, reference_state, tolerance, max_iterations,
+                                                 send_results_to='all')
 
         # Update all sampler states.
         for sampler_state_id, minimized_pos in zip(minimized_sampler_states_ids, minimized_positions):
@@ -1173,8 +1173,8 @@ class AlchemicalPhase(object):
 
         # Randomize all sampler states.
         sampler_states = self._sampler.sampler_states
-        ligand_positions = mpi.distribute(self._randomize_ligand, sampler_states, topography,
-                                          sigma_multiplier, close_cutoff, send_results_to='all')
+        ligand_positions = mpiplus.distribute(self._randomize_ligand, sampler_states, topography,
+                                              sigma_multiplier, close_cutoff, send_results_to='all')
 
         # Update sampler states with randomized positions.
         for sampler_state, ligand_pos in zip(sampler_states, ligand_positions):
@@ -1236,7 +1236,7 @@ class AlchemicalPhase(object):
         """Retrieve the MultiStateSampler class used from the storage."""
         # Handle str and Reporter argument value.
         if isinstance(storage, str):
-            reporter = multistate.MultiStateReporter(storage)
+            reporter = mmtools.multistate.MultiStateReporter(storage)
         else:
             reporter = storage
 
@@ -1349,9 +1349,9 @@ class AlchemicalPhase(object):
         # In periodic systems, we alchemically modify the ligand/solute
         # counterions to make sure that the solvation box is always neutral.
         if system.usesPeriodicBoundaryConditions():
-            alchemical_counterions = mpi.run_single_node(0, pipeline.find_alchemical_counterions,
-                                                         system, topography, alchemical_region_name,
-                                                         broadcast_result=True)
+            alchemical_counterions = mpiplus.run_single_node(0, pipeline.find_alchemical_counterions,
+                                                             system, topography, alchemical_region_name,
+                                                             broadcast_result=True)
             alchemical_atoms += alchemical_counterions
 
             # Sort them by index for safety. We don't want to
@@ -1415,7 +1415,7 @@ class AlchemicalPhase(object):
         sampler_state = sampler_states[sampler_state_id]
 
         # Use the FIRE minimizer
-        integrator = FIREMinimizationIntegrator(tolerance=tolerance)
+        integrator = mmtools.integrators.FIREMinimizationIntegrator(tolerance=tolerance)
 
         # Create context
         context = thermodynamic_state.create_context(integrator)

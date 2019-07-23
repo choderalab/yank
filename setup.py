@@ -2,17 +2,15 @@
 YANK is a testbed for experimenting with algorithms for the efficient computation of small molecule binding free energies to biomolecular targets using alchemical methods.
 YANK is built on OpenMM, the API for molecular simulation, and uses its GPU-accelerated library implementation for hardware acceleration.
 """
-import distutils.extension
 from setuptools import setup
 import os
 from os.path import relpath, join
 import subprocess
-from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.24.2"  # Primary base version of the build
-DEVBUILD = 0  # Dev build status, Either None or Integer
+VERSION = "0.25.0"  # Primary base version of the build
+DEVBUILD = None  # Dev build status, Either None or Integer
 ISRELEASED = False  # Are we releasing this as a full cut?
 __version__ = VERSION
 ########################
@@ -116,9 +114,6 @@ def find_package_data(data_root, package_root):
 # SETUP
 ################################################################################
 
-mixing_ext = distutils.extension.Extension("yank.multistate.mixing._mix_replicas",
-                                           ['./Yank/multistate/mixing/_mix_replicas.pyx'])
-
 write_version_py()
 setup(
     name='yank',
@@ -134,14 +129,12 @@ setup(
     package_dir={'yank': 'Yank'},
     # Helper line which did not work reliably for the packages key
     # + ['yank.{}'.format(package) for package in find_packages('yank')],
-    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.reports", "yank.schema",
-              'yank.multistate', 'yank.multistate.mixing'],
+    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.reports", "yank.schema"],
 
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },
     zip_safe=False,
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     # This has been removed in favor of the conda meta.yaml file dependencies
     # install_requires=[],
-    ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})

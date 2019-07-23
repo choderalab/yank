@@ -18,16 +18,14 @@ import math
 import copy
 
 import numpy as np
-import netCDF4 as netcdf
 from simtk import openmm, unit
 import openmmtools as mmtools
-from openmmtools import testsystems, states
+from openmmtools import testsystems, states, multistate
 import nose
 from nose.plugins.attrib import attr
 
 import yank.restraints
 from yank import experiment, Topography
-import yank.multistate as multistate
 from yank.analyze import YankMultiStateSamplerAnalyzer
 
 from yank.utils import get_data_filename
