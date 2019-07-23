@@ -3080,6 +3080,9 @@ class ExperimentBuilder(object):
                 # If this is SAMS, just use the sampler state associated
                 # to the initial thermodynamic state.
                 sampler_state = sampler_state[0]
+                # Also, these states have been already minimized so we
+                # can skip a second minimization.
+                phase_opts['minimize'] = False
 
             # Identify system components. There is a ligand only in the complex phase.
             if phase_idx == 0:
