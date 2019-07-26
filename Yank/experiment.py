@@ -1169,7 +1169,7 @@ class ExperimentBuilder(object):
                 coerce: single_str_to_list
                 schema:
                     type: string
-    """)
+    """, Loader=yaml.FullLoader)
 
     @classmethod
     def _validate_options(cls, options, validate_general_options):
@@ -1280,7 +1280,7 @@ class ExperimentBuilder(object):
                     - type: integer
                       min: 0
         '''
-        regions_schema = yaml.load(regions_schema_yaml)
+        regions_schema = yaml.load(regions_schema_yaml, Loader=yaml.FullLoader)
         # Define the LEAP schema
         leap_schema = cls._LEAP_PARAMETERS_DEFAULT_SCHEMA
         # Setup the common schema across ALL molecules
@@ -1335,7 +1335,10 @@ class ExperimentBuilder(object):
             'schema': epik_schema
             }
         }
-        small_molecule_schema = {**yaml.load(small_molecule_schema_yaml), **epik_schema, **common_molecules_schema}
+        small_molecule_schema = {
+            **yaml.load(small_molecule_schema_yaml, Loader=yaml.FullLoader),
+            **epik_schema, **common_molecules_schema
+        }
 
         # Peptide schema has some keys excluded from small_molecule checks
         peptide_schema_yaml = """
@@ -1358,7 +1361,10 @@ class ExperimentBuilder(object):
             required: no
             dependencies: filepath
         """
-        peptide_schema = {**yaml.load(peptide_schema_yaml), **common_molecules_schema}
+        peptide_schema = {
+            **yaml.load(peptide_schema_yaml, Loader=yaml.FullLoader),
+            **common_molecules_schema
+        }
 
         validated_molecules = molecules_description.copy()
         # Schema validation
@@ -1866,7 +1872,7 @@ class ExperimentBuilder(object):
             excludes: [receptor, ligand]
         """
         # Load the YAML into a schema into dict format
-        system_schema = yaml.load(systems_schema_yaml)
+        system_schema = yaml.load(systems_schema_yaml, Loader=yaml.FullLoader)
         # Add the LEAP schema
         leap_schema = self._LEAP_PARAMETERS_DEFAULT_SCHEMA
         # Handle dependencies
@@ -1929,7 +1935,7 @@ class ExperimentBuilder(object):
                 keyschema:
                     type: string
         """
-        mcmc_move_schema = yaml.load(mcmc_move_schema)
+        mcmc_move_schema = yaml.load(mcmc_move_schema, Loader=yaml.FullLoader)
 
         mcmc_move_validator = schema.YANKCerberusValidator(mcmc_move_schema)
         if mcmc_move_validator.validate({'mcmc_moves': mcmc_move_descriptions}):
@@ -1958,7 +1964,7 @@ class ExperimentBuilder(object):
                         type: string
                         allowed: {MCMC_MOVE_IDS}
         """.format(MCMC_MOVE_IDS=list(self._mcmc_moves.keys()))
-        sampler_schema = yaml.load(sampler_schema)
+        sampler_schema = yaml.load(sampler_schema, Loader=yaml.FullLoader)
 
         # Special case for "checkpoint" in online analysis
         # Handle 1-case where its set by user to something other than checkpoint and exclude it, then process if not it
@@ -2061,7 +2067,7 @@ class ExperimentBuilder(object):
                 type: string
         """
 
-        experiment_schema = yaml.load(experiment_schema_yaml)
+        experiment_schema = yaml.load(experiment_schema_yaml, Loader=yaml.FullLoader)
         # Populate valid types
         experiment_schema['system']['allowed'] = [str(key) for key in self._db.systems.keys()]
         experiment_schema['protocol']['allowed'] = [str(key) for key in self._protocols.keys()]
@@ -2158,9 +2164,10 @@ class ExperimentBuilder(object):
         """Return the path for the experiment log file."""
         return self._get_experiment_file_name(experiment_path) + '.log'
 
-    def _get_trailblaze_checkpoint_path(self, experiment_path, phase_name):
-        """Return the path for the experiment trailblaze checkpoint file."""
-        return self._get_experiment_file_name(experiment_path) + '_{}_trailblaze.yaml'.format(phase_name)
+    def _get_trailblaze_checkpoint_dir_path(self, experiment_path, phase_name):
+        """Return the path for the experiment trailblaze checkpoint directory."""
+        experiment_dir = self._get_experiment_dir(experiment_path)
+        return os.path.join(experiment_dir, 'trailblaze', phase_name)
 
     # --------------------------------------------------------------------------
     # Resuming
@@ -2439,7 +2446,7 @@ class ExperimentBuilder(object):
         return phases_to_generate
 
     def _generate_experiments_protocols(self):
-        """Go through all experiments and generate auto alchemical paths."""
+        """Go through all experiments and generate 'auto' alchemical paths."""
         # Find all experiments that have at least one phase whose
         # alchemical path needs to be generated automatically.
         experiments_to_generate = []
@@ -2466,7 +2473,7 @@ class ExperimentBuilder(object):
                            distributed_args=experiments_to_generate,
                            send_results_to=None, group_size=1, sync_nodes=True)
 
-    def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
+    def _generate_experiment_protocol(self, experiment, constrain_receptor=False,
                                       n_equilibration_iterations=None, **kwargs):
         """Generate auto alchemical paths for the given experiment.
 
@@ -2474,11 +2481,11 @@ class ExperimentBuilder(object):
 
         Parameters
         ----------
-        experiment : tuple (str, dict)
+        experiment : Tuple[str, dict]
             A tuple with the experiment path and the experiment description.
         constrain_receptor : bool, optional
             If True, the receptor in a receptor-ligand system will have its
-            CA atoms constrained during optimization (default is True).
+            CA atoms constrained during optimization (default is False).
         n_equilibration_iterations : None or int
             The number of equilibration iterations to perform before running
             the path search. If None, the function will determine the number
@@ -2511,61 +2518,78 @@ class ExperimentBuilder(object):
         protocol = self._protocols[experiment['protocol']]
         phases_to_generate = self._find_automatic_protocol_phases(protocol)
 
-        # Build experiment. Use a dummy protocol for building since it hasn't been generated yet.
-        exp = self._build_experiment(experiment_path, experiment, use_dummy_protocol=True)
+        # We build the experiment normally so that we can run trailblaze
+        # on a thermodynamic state and MCMC move that are identical to the
+        # actual experiment. Use a dummy protocol for building since it
+        # hasn't been generated yet.
+        exp = self._build_experiment(experiment_path, experiment,
+                                     use_dummy_protocol=True)
 
-        # Generate protocols.
+        # Generate protocols for all the required phases.
         optimal_protocols = collections.OrderedDict.fromkeys(phases_to_generate)
         for phase_idx, phase_name in enumerate(phases_to_generate):
+
             logger.debug('Generating alchemical path for {}.{}'.format(experiment_path, phase_name))
-            phase = exp.phases[phase_idx]
+            phase_factory = exp.phases[phase_idx]
+            is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
+                         len(phase_factory.topography.solvent_atoms) == 0)
+
+            # Determine the path (i.e. end states of the different lambdas).
             state_parameters = []
-            is_vacuum = len(phase.topography.receptor_atoms) == 0 and len(phase.topography.solvent_atoms) == 0
-
-            # We may need to slowly turn on a Boresch restraint.
-            if isinstance(phase.restraint, restraints.BoreschLike):
+            # First, turn on the restraint if there are any.
+            if phase_factory.restraint is not None:
                 state_parameters.append(('lambda_restraints', [0.0, 1.0]))
-
             # We support only lambda sterics and electrostatics for now.
-            if is_vacuum and not phase.alchemical_regions.annihilate_electrostatics:
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
                 state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
             else:
                 state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
-            if is_vacuum and not phase.alchemical_regions.annihilate_sterics:
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
                 state_parameters.append(('lambda_sterics', [1.0, 1.0]))
             else:
                 state_parameters.append(('lambda_sterics', [1.0, 0.0]))
-
             # Turn the RMSD restraints off slowly at the end
-            if isinstance(phase.restraint, restraints.RMSD):
+            if isinstance(phase_factory.restraint, restraints.RMSD):
                 state_parameters.append(('lambda_restraints', [1.0, 0.0]))
 
-            # We only need to create a single state.
-            phase.protocol = {par[0]: [par[1][0]] for par in state_parameters}
-
-            # Remove unsampled state that we don't need for the optimization.
-            phase.options['anisotropic_dispersion_correction'] = False
-
-            # If default argument is used, determine number of equilibration iterations.
-            # TODO automatic equilibration?
-            if n_equilibration_iterations is None:
-                if is_vacuum:  # Vacuum or small molecule in implicit solvent.
-                    n_equilibration_iterations = 0
-                elif len(phase.topography.receptor_atoms) == 0:  # Explicit solvent phase.
-                    n_equilibration_iterations = 250
-                elif len(phase.topography.solvent_atoms) == 0:  # Implicit complex phase.
-                    n_equilibration_iterations = 500
-                else:  # Explicit complex phase
-                    n_equilibration_iterations = 1000
-
-            # Set number of equilibration iterations.
-            phase.options['number_of_equilibration_iterations'] = n_equilibration_iterations
-
+            # Now we let PhaseFactory and AlchemicalState initialize an initial
+            # thermodynamic state and sampler state for the trailblaze.
             # Use a reporter that doesn't write anything to save time.
-            phase.storage = DummyReporter(phase.storage)
+            phase_factory.storage = DummyReporter(phase_factory.storage)
+
+            # If default argument is used, determine number of equilibration
+            # iterations to relax the system before restraining the receptor
+            # atoms and start trailblazing. We don't need to do any minimization
+            # or equilibration if we're resuming.
+            trailblaze_dir_path = self._get_trailblaze_checkpoint_dir_path(
+                experiment_path, phase_name)
+
+            if not os.path.isfile(os.path.join(trailblaze_dir_path, 'protocol.yaml')):
+                # TODO automatic equilibration?
+                if n_equilibration_iterations is None:
+                    if is_vacuum:  # Vacuum or small molecule in implicit solvent.
+                        n_equilibration_iterations = 0
+                    elif len(phase_factory.topography.receptor_atoms) == 0:  # Explicit solvent phase.
+                        n_equilibration_iterations = 250
+                    elif len(phase_factory.topography.solvent_atoms) == 0:  # Implicit complex phase.
+                        n_equilibration_iterations = 500
+                    else:  # Explicit complex phase
+                        n_equilibration_iterations = 1000
+
+                # Set number of equilibration iterations.
+                phase_factory.options['number_of_equilibration_iterations'] = n_equilibration_iterations
+            else:
+                # Minimization/equilibration have been already performed.
+                phase_factory.options['minimize'] = False
+                phase_factory.options['number_of_equilibration_iterations'] = 0
+
+            # We only need to create a single thermo state to initialize trailblaze.
+            phase_factory.protocol = {par[0]: [par[1][0]] for par in state_parameters}
+            # We don't need to create unsampled states either.
+            phase_factory.options['anisotropic_dispersion_correction'] = False
 
             # Create the thermodynamic state exactly as AlchemicalPhase would make it.
-            alchemical_phase = phase.initialize_alchemical_phase()
+            alchemical_phase = phase_factory.initialize_alchemical_phase()
 
             # Get sampler and thermodynamic state and delete alchemical phase.
             thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
@@ -2576,24 +2600,22 @@ class ExperimentBuilder(object):
 
             # Restrain the receptor heavy atoms to avoid drastic
             # conformational changes (possibly after equilibration).
-            if len(phase.topography.receptor_atoms) != 0 and constrain_receptor:
-                receptor_atoms_set = set(phase.topography.receptor_atoms)
+            if len(phase_factory.topography.receptor_atoms) != 0 and constrain_receptor:
+                receptor_atoms_set = set(phase_factory.topography.receptor_atoms)
                 # Check first if there are alpha carbons. If not, restrain all carbons.
-                restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                restrained_atoms = [atom.index for atom in phase_factory.topography.topology.atoms
                                     if atom.name is 'CA' and atom.index in receptor_atoms_set]
                 if len(restrained_atoms) == 0:
                     # Select all carbon atoms of the receptor.
-                    restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                    restrained_atoms = [atom.index for atom in phase_factory.topography.topology.atoms
                                         if atom.element.symbol is 'C' and atom.index in receptor_atoms_set]
                 mmtools.forcefactories.restrain_atoms(thermodynamic_state, sampler_state,
                                                       restrained_atoms, sigma=3.0*unit.angstroms)
 
             # Find protocol.
-            trailblaze_checkpoint_path = self._get_trailblaze_checkpoint_path(experiment_path, phase_name)
-
-            alchemical_path = pipeline.trailblaze_alchemical_protocol(thermodynamic_state, sampler_state,
-                                                                      mcmc_move, state_parameters,
-                                                                      trailblaze_checkpoint_path, **kwargs)
+            alchemical_path = pipeline.trailblaze_alchemical_protocol(
+                thermodynamic_state, sampler_state, mcmc_move, state_parameters,
+                checkpoint_dir_path=trailblaze_dir_path, **kwargs)
             optimal_protocols[phase_name] = alchemical_path
 
         # Generate yaml script with updated protocol.
@@ -3088,6 +3110,26 @@ class ExperimentBuilder(object):
             else:
                 mc_atoms = []
             sampler = self._create_experiment_sampler(experiment, mc_atoms)
+
+            # If we have generated samples with trailblaze, we start the
+            # simulation from those samples. Also, we can turn off minimization
+            # as it has been already performed before trailblazing.
+            trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
+                experiment_path, phase_name)
+            try:
+                sampler_state = pipeline.read_trailblaze_checkpoint_coordinates(
+                    trailblaze_checkpoint_dir_path)
+            except FileNotFoundError:
+                # Just keep the sampler state read from the inpcrd file.
+                pass
+            else:
+                # If this is SAMS, just use the sampler state associated
+                # to the initial thermodynamic state.
+                if isinstance(sampler, mmtools.multistate.SAMSSampler):
+                    sampler_state = sampler_state[0]
+                # Also, these states have been already minimized so we
+                # can skip a second minimization.
+                phase_opts['minimize'] = False
 
             # Create phases.
             phases[phase_idx] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,

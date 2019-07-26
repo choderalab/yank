@@ -93,8 +93,25 @@ def yank_load(script):
     return yaml.load(textwrap.dedent(script), Loader=YankLoader)
 
 
-def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=False):
-    """Return a YAML template script as a dict."""
+def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=False,
+                        systems='all'):
+    """Return a YAML template script as a dict.
+
+    Parameters
+    ----------
+    output_dir : str, optional
+        The YANK output directory to set in the YAML options.
+    keep_schrodinger : bool, optional
+        If False, removes the molecules that depend on the Schrodinger
+        toolkit. Default is False.
+    keep_openeye : bool, optional
+        If False, removes the molecules that depend on the OpenEye
+        toolkit. Default is False.
+    systems : List[str], optional
+        Limits the systems in the YAML to those identified by the given
+        IDs. If 'all', all systems are included in the script, which means
+        that the setup pipeline will build them all.
+    """
     paths = examples_paths()
     template_script = """
     ---
@@ -229,6 +246,12 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
     # Remove molecules.
     for molecule_id in molecules_to_remove:
         del script_dict['molecules'][molecule_id]
+
+    # Remove systems.
+    if systems != 'all':
+        systems_to_remove = [s for s in script_dict['systems'] if s not in systems]
+        for system_id in systems_to_remove:
+            del script_dict['systems'][system_id]
 
     return script_dict
 
@@ -411,14 +434,9 @@ def test_online_reads_checkpoint():
     """Test that online analysis reads the checkpoint correctly in all cases"""
     current_log_level = logger.level
     logger.setLevel(logging.ERROR)  # Temporarily suppress some of the logging output
-    raw_template_script = get_template_script()
+    raw_template_script = get_template_script(systems=['explicit-system'])
+
     # Pair down the processing
-    popables = []
-    for system in raw_template_script['systems'].keys():
-        if system != 'explicit-system':
-            popables.append(system)
-    for popable in popables:
-        raw_template_script['systems'].pop(popable)
     allowed_molecules = [raw_template_script['systems']['explicit-system']['receptor'],
                          raw_template_script['systems']['explicit-system']['ligand']]
     popables = []
@@ -427,6 +445,7 @@ def test_online_reads_checkpoint():
             popables.append(molecule)
     for popable in popables:
         raw_template_script['molecules'].pop(popable)
+
     raw_template_script.pop('samplers')
     sampler_entry = {'type': 'SAMSSampler'}
     sampler = {'samplers': {'sams': sampler_entry}}
@@ -705,7 +724,7 @@ def test_validation_correct_systems():
         solv3: {{nonbonded_method: PME, clearance: 10*angstroms}}
         solv4: {{nonbonded_method: PME}}
     """.format(data_paths['lysozyme'])
-    basic_script = yaml.load(textwrap.dedent(basic_script))
+    basic_script = yaml.load(textwrap.dedent(basic_script), Loader=yaml.FullLoader)
 
     systems = [
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
@@ -769,7 +788,7 @@ def test_validation_wrong_systems():
         solv3: {{nonbonded_method: PME, clearance: 10*angstroms}}
         solv4: {{nonbonded_method: PME}}
     """.format(data_paths['lysozyme'])
-    basic_script = yaml.load(textwrap.dedent(basic_script))
+    basic_script = yaml.load(textwrap.dedent(basic_script), Loader=yaml.FullLoader)
 
     # Each test case is a pair (regexp_error, system_description).
     systems = [
@@ -926,7 +945,7 @@ def test_order_phases():
     # Find order of phases for which normal parsing is not ordered or the test is useless
     for ordered_phases in itertools.permutations(['athirdphase', 'complex', 'solvent']):
         yaml_content = yaml_content_template.format(*ordered_phases)
-        parsed = yaml.load(textwrap.dedent(yaml_content))
+        parsed = yaml.load(textwrap.dedent(yaml_content), Loader=yaml.FullLoader)
         if tuple(parsed['absolute-binding'].keys()) != ordered_phases:
             break
 
@@ -2515,13 +2534,13 @@ def test_yaml_creation():
 
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
-        experiment_dict = yaml.load(experiment)
+        experiment_dict = yaml.load(experiment, Loader=yaml.FullLoader)
         exp_builder._db.get_system(experiment_dict['system'])
 
         generated_yaml_path = os.path.join(tmp_dir, 'experiment.yaml')
         exp_builder._generate_yaml(experiment_dict, generated_yaml_path)
         with open(generated_yaml_path, 'r') as f:
-            assert yaml.load(f) == yank_load(expected_yaml_content)
+            assert yaml.load(f, Loader=yaml.FullLoader) == yank_load(expected_yaml_content)
 
 
 def test_yaml_extension():
@@ -2607,12 +2626,12 @@ def test_yaml_extension():
         exp_builder.update_yaml(yaml_extension)
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
-        experiment_dict = yaml.load(experiment)
+        experiment_dict = yaml.load(experiment, Loader=yaml.FullLoader)
         exp_builder._db.get_system(experiment_dict['system'])
         generated_yaml_path = os.path.join(tmp_dir, 'experiment.yaml')
         exp_builder._generate_yaml(experiment_dict, generated_yaml_path)
         with open(generated_yaml_path, 'r') as f:
-            assert yaml.load(f) == yank_load(expected_yaml_content)
+            assert yaml.load(f, Loader=yaml.FullLoader) == yank_load(expected_yaml_content)
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2644,7 +2663,7 @@ def test_run_experiment_from_amber_files():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2678,7 +2697,7 @@ def test_run_experiment_from_gromacs_files():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2708,7 +2727,7 @@ def test_run_experiment_from_xml_files():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -2812,7 +2831,7 @@ def test_run_experiment():
             # Analysis script is correct
             analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
             with open(analysis_script_path, 'r') as f:
-                assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+                assert yaml.load(f, Loader=yaml.FullLoader) == [['complex', 1], ['solvent', -1]]
 
         # Now we can't run the experiment again with resume_simulation: no
         exp_builder._options['resume_simulation'] = False
@@ -2874,17 +2893,28 @@ def test_run_solvation_experiment():
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
+            assert yaml.load(f, Loader=yaml.FullLoader) == [['solvent1', 1], ['solvent2', -1]]
 
 
 def test_automatic_alchemical_path():
-    """Test automatic alchemical path."""
+    """Test automatic alchemical path found through the trailblaze algorithm."""
     with mmtools.utils.temporary_directory() as tmp_dir:
-        yaml_script = get_template_script(tmp_dir)
+        # Setup only 1 hydration free energy system in implicit solvent and vacuum.
+        yaml_script = get_template_script(tmp_dir, systems=['hydration-system'])
         yaml_script['systems']['hydration-system']['solvent1'] = 'GBSA-OBC2'
+
+        # We run trailblaze only for the phase in vacuum.
         yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = 'auto'
         yaml_script['experiments']['system'] = 'hydration-system'
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
+
+        # Make the generation of the trailblaze samples inexpensive.
+        yaml_script['mcmc_moves']['single']['n_steps'] = 1
+        yaml_script['mcmc_moves']['single']['timestep'] = '0.5*femtosecond'
+        yaml_script['samplers']['repex']['mcmc_moves'] = 'single'
+        yaml_script['experiments']['sampler'] = 'repex'
+
+        yaml_script['options']['platform'] = 'CPU'
         yaml_script['options']['resume_setup'] = False
         yaml_script['options']['resume_simulation'] = False
 
@@ -2912,6 +2942,10 @@ def test_automatic_alchemical_path():
         }
         assert experiment.phases[0].protocol == yaml_script['protocols']['hydration-protocol']['solvent1']['alchemical_path']
         assert experiment.phases[1].protocol == expected_generated_protocol
+
+        # YANK takes advantage of the samples generated during the trailblaze.
+        assert isinstance(experiment.phases[0].sampler_states, mmtools.states.SamplerState)
+        assert len(experiment.phases[1].sampler_states) == 2
 
         # Resuming fails at this point because we have
         # generated the YAML file containing the protocol.

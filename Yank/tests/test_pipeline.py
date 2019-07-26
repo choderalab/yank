@@ -81,3 +81,74 @@ def test_pack_transformation():
         min_dist, max_dist = compute_min_max_dist(mol1, mol2)
         assert CLASH_DIST <= min_dist and max_dist <= BOX_SIZE
 
+
+# ==============================================================================
+# TRAILBLAZE
+# ==============================================================================
+
+def test_trailblaze_checkpoint():
+    """Test that trailblaze algorithm can resume if interrupted."""
+    from openmmtools.states import (GlobalParameterState, ThermodynamicState,
+                                    CompoundThermodynamicState, SamplerState)
+
+    par_name = 'testsystems_HarmonicOscillator_x0'
+
+    def _check_checkpoint_files(checkpoint_dir_path, expected_protocol, n_atoms):
+
+        checkpoint_protocol_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+        checkpoint_positions_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
+
+        # The protocol on the checkpoint file is correct.
+        with open(checkpoint_protocol_path, 'r') as f:
+            checkpoint_protocol = yaml.load(f, Loader=yaml.FullLoader)
+        assert checkpoint_protocol == expected_protocol
+
+        # The positions and box vectors have the correct dimension.
+        expected_n_states = len(expected_protocol[par_name])
+        trajectory_file = mdtraj.formats.DCDTrajectoryFile(checkpoint_positions_path, 'r')
+        xyz, cell_lengths, cell_angles = trajectory_file.read()
+        assert (xyz.shape[0], xyz.shape[1]) == (expected_n_states, n_atoms)
+        assert cell_lengths.shape[0] == expected_n_states
+
+    # Create composable state that control offset of harmonic oscillator.
+    class X0State(GlobalParameterState):
+        testsystems_HarmonicOscillator_x0 = GlobalParameterState.GlobalParameter(par_name, 1.0)
+
+    # Create a harmonic oscillator thermo state.
+    oscillator = mmtools.testsystems.HarmonicOscillator(K=1.0*unit.kilocalories_per_mole/unit.nanometer**2)
+    sampler_state = SamplerState(positions=oscillator.positions)
+    thermo_state = ThermodynamicState(oscillator.system, temperature=300*unit.kelvin)
+    x0_state = X0State(testsystems_HarmonicOscillator_x0=0.0)
+    compound_state = CompoundThermodynamicState(thermo_state, composable_states=[x0_state])
+
+    # Run trailblaze to find path of x0 from 0 to 1 nm.
+    platform = platform=openmm.Platform.getPlatformByName('CPU')
+    mcmc_move = mmtools.mcmc.LangevinDynamicsMove(
+        timestep=1.0*unit.femtosecond, n_steps=1,
+        context_cache=mmtools.cache.ContextCache(platform=platform)
+    )
+
+    with mmtools.utils.temporary_directory() as checkpoint_dir_path:
+
+        # Running with a checkpoint path creates checkpoint files.
+        first_protocol = trailblaze_alchemical_protocol(
+            compound_state, sampler_state, mcmc_move,
+            checkpoint_dir_path=checkpoint_dir_path,
+            state_parameters=[(par_name, [0.0, 1.0])]
+        )
+
+        # The info in the checkpoint files is correct.
+        _check_checkpoint_files(checkpoint_dir_path, first_protocol, len(oscillator.positions))
+
+        # Running a second time (with different final state) should
+        # start from the previous alchemical protocol.
+        second_protocol = trailblaze_alchemical_protocol(
+            compound_state, sampler_state, mcmc_move,
+            checkpoint_dir_path=checkpoint_dir_path,
+            state_parameters=[(par_name, [0.0, 2.0])]
+        )
+        len_first_protocol = len(first_protocol[par_name])
+        assert second_protocol[par_name][:len_first_protocol] == first_protocol[par_name]
+
+        # The info in the checkpoint files is correct.
+        _check_checkpoint_files(checkpoint_dir_path, second_protocol, len(oscillator.positions))

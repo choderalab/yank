@@ -533,9 +533,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         @_validate_atoms.register(str)
         def _validate_atoms_string(self, restrained_atoms):
-            warn_string = self._CENTROID_COMPUTE_STRING.format("a string for", self._atoms_type)
-            warn_string += 'but you MUST run "determine_missing_parameters" to process the string'
-            logger.warning(warn_string)
+            msg = self._CENTROID_COMPUTE_STRING.format("a string for", self._atoms_type)
+            msg += 'after calling "determine_missing_parameters()" to process the string'
+            logger.debug(msg)
             return restrained_atoms
 
         @_validate_atoms.register(int)
@@ -1418,9 +1418,9 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         Extends `_RestrainedAtomsProperty` to handle single integers and strings.
         """
 
-        _MUST_COMPUTE_STRING = ('You are specifying {} {} atoms, '
-                                'the final atoms will be chosen at from this set but you MUST '
-                                'run "determine_missing_parameters"')
+        _DEBUG_MSG = ('You are specifying {} {} atoms, '
+                      'the final atoms will be chosen at from this set '
+                      'after calling "determine_missing_parameters()"')
 
         @methoddispatch
         def _validate_atoms(self, restrained_atoms):
@@ -1429,12 +1429,12 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
                 raise ValueError('At least three {} atoms are required to impose a '
                                  'Boresch-style restraint.'.format(self._atoms_type))
             elif len(restrained_atoms) > 3:
-                logger.warning(self._MUST_COMPUTE_STRING.format("more than three", self._atoms_type))
+                logger.debug(self._DEBUG_MSG.format("more than three", self._atoms_type))
             return restrained_atoms
 
         @_validate_atoms.register(str)
         def _cast_atom_string(self, restrained_atoms):
-            logger.warning(self._MUST_COMPUTE_STRING.format("a string for", self._atoms_type))
+            logger.debug(self._DEBUG_MSG.format("a string for", self._atoms_type))
             return restrained_atoms
 
     restrained_receptor_atoms = _BoreschRestrainedAtomsProperty('receptor')
@@ -2484,9 +2484,9 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
         Extension allows individual atom lists to be defined as empty through the ``allowed_empty`` boolean
         """
 
-        _MUST_COMPUTE_STRING = ('You are specifying {} {} atoms, '
-                                'the final atoms will be chosen at from this set but you MUST '
-                                'run "determine_missing_parameters"')
+        _DEBUG_MSG = ('You are specifying {} {} atoms, '
+                      'the final atoms will be chosen at from this set '
+                      'after calling "determine_missing_parameters"')
 
         def __init__(self, atoms_type, allowed_empty=False):
             self._allowed_empty = allowed_empty
@@ -2503,7 +2503,7 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
 
         @_validate_atoms.register(str)
         def _cast_atom_string(self, restrained_atoms):
-            logger.warning(self._MUST_COMPUTE_STRING.format("a string for", self._atoms_type))
+            logger.debug(self._DEBUG_MSG.format("a string for", self._atoms_type))
             return restrained_atoms
 
     restrained_receptor_atoms = _RMSDRestrainedAtomsProperty('receptor', allowed_empty=True)

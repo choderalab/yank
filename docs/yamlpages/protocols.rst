@@ -114,14 +114,20 @@ Automatic Path Determination
          alchemical_path: auto
 
 
-YANK can automatically determine the parameters for ``lambda_X`` for you. YANK will distribute states between the fully
+YANK can automatically determine the sequence of values for the ``lambda_X`` values using an algorithm we called
+"thermodynamic trailblazing". YANK will distribute states between the fully
 coupled and fully decoupled states for you based on the restraint scheme, class of transformation, and input system.
-States are distributed such that the standard deviation of potential energy differences between the states is equal,
+The intermediate states are distributed such that the standard deviation of potential energy differences between the states is equal,
 which should improve replica mixing between the states over placing the states yourself.
 
 Specifying the option ``auto`` for your ``alchemical_path`` will start the process as shown in the example. The process
-may take a while, but the final path is saved as a new `.yaml` file in your
-:ref:`output_dir/experiments <yaml_options_output_dir>`, and immediately used as the input for your simulation.
+may take a while, but the algorithm is capable of resuming if it gets unexpectedly interrupted, and the final path is
+saved as a new `.yaml` file in your :ref:`output_dir/experiments <yaml_options_output_dir>`, and immediately used as
+the input for your simulation.
+
+During the calculation, The algorithm generates some snapshot for all intermediate states  samples that are generated during
+the path determination are used to seed the replicas of Hamiltonian replica exchange or SAMS calculations. If ``minimize``
+in the ``options`` section is set to ``yes``, this is the stage where the minimization of the input structure occurs.
 
 
 .. _yaml_protocols_thermodynamic_variables:
