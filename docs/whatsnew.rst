@@ -22,6 +22,11 @@ New features
 - Added a ``--setup-only`` flag in the ``yank script`` CLI command to run the automatic setup pipeline without running
   the free energy calculation (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
 
+Bugfixes
+^^^^^^^^
+- Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unkown experiment name would
+  fail silently without error (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
+
 Enhancements
 ^^^^^^^^^^^^
 - By default, the automatic determination of the alchemical path now starts with the harmonic/flat-bottom restraint turned off and activate it in intermediate states instead of keeping the restraint activated throughout the calculation and reweighting in the analysis stage (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
