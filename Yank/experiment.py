@@ -2031,15 +2031,17 @@ class ExperimentBuilder(object):
         # if we run multiple experiments in parallel, we won't have
         # multiple processes running the same one.
         try:
-            if isinstance(yaml_content['experiments'], list):
-                combinatorial_trees = [(exp_name, utils.CombinatorialTree(yaml_content[exp_name]))
-                                       for exp_name in yaml_content['experiments']]
-            else:
-                combinatorial_trees = [('experiments', utils.CombinatorialTree(yaml_content['experiments']))]
-            self._experiments = collections.OrderedDict(combinatorial_trees)
+            experiments_section = yaml_content['experiments']
         except KeyError:
             self._experiments = collections.OrderedDict()
             return
+
+        if isinstance(experiments_section, list):
+            combinatorial_trees = [(exp_name, utils.CombinatorialTree(yaml_content[exp_name]))
+                                   for exp_name in experiments_section]
+        else:
+            combinatorial_trees = [('experiments', utils.CombinatorialTree(experiments_section))]
+        self._experiments = collections.OrderedDict(combinatorial_trees)
 
         # Experiments Schema
         experiment_schema_yaml = """

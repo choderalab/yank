@@ -23,7 +23,7 @@ usage = """
 YANK script
 
 Usage:
-  yank script (-y FILEPATH | --yaml=FILEPATH) [--jobid=INTEGER] [--njobs=INTEGER] [-o OVERRIDE] [--status] ...
+  yank script (-y FILEPATH | --yaml=FILEPATH) [--setup-only] [--jobid=INTEGER] [--njobs=INTEGER] [-o OVERRIDE] [--status] ...
 
 Description:
   Set up and run free energy calculations from a YAML script. All options can be specified in the YAML script.
@@ -32,6 +32,8 @@ Required Arguments:
   -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
 
 Optional Arguments:
+  --setup-only                  If given, only the automatic setup pipeline is run without running the free energy
+                                calculation.
   --jobid=INTEGER               You can run only a subset of the experiments by specifying jobid and njobs, where
                                 1 <= job_id <= n_jobs. In this case, njobs must be specified as well and YANK will
                                 run only 1/n_jobs of the experiments. This can be used to run several separate YANK
@@ -145,7 +147,12 @@ def dispatch(args):
         yaml_builder = ExperimentBuilder(script=yaml_path, job_id=job_id, n_jobs=n_jobs)
         if override:  # Parse the string present.
             yaml_builder.update_yaml(override)
-        yaml_builder.run_experiments(write_status=write_status)
+
+        # Check if we need to run only the automatic setup pipeline or also the experiments.
+        if args['--setup-only']:
+            yaml_builder.setup_experiments()
+        else:
+            yaml_builder.run_experiments(write_status=write_status)
         return True
 
     return False

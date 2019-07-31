@@ -16,7 +16,16 @@ API-breaking changes
 
 New features
 ^^^^^^^^^^^^
-- The trailblaze algorithm used for the authomatic generation of the alchemical path is now capable of resuming after an unexpected interruption or crash. The samples generated during the process are used to initialize the replicas of the replica exchange or SAMS free energy calculation (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
+- The trailblaze algorithm used for the authomatic generation of the alchemical path is now capable of resuming after an
+  unexpected interruption or crash. The samples generated during the process are used to initialize the replicas of the
+  replica exchange or SAMS free energy calculation (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
+- Added a ``--setup-only`` flag in the ``yank script`` CLI command to run the automatic setup pipeline without running
+  the free energy calculation (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
+
+Bugfixes
+^^^^^^^^
+- Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unkown experiment name would
+  fail silently without error (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
 
 Enhancements
 ^^^^^^^^^^^^
