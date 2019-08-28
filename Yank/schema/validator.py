@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 import cerberus
 import cerberus.errors
 import simtk.unit as unit
+from simtk.openmm import app
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2
 
@@ -15,6 +16,21 @@ from .. import utils, restraints
 
 logger = logging.getLogger(__name__)
 
+
+# ==============================================================================
+# GLOBAL VARIABLES
+# ==============================================================================
+
+_NONBONDED_METHODS_STR = ['NoCutoff', 'CutoffPeriodic', 'CutoffNonPeriodic', 'Ewald', 'PME']
+_NONBONDED_METHODS_APP = [getattr(app, nm) for nm in _NONBONDED_METHODS_STR]
+_CUTOFF_NONBONDED_METHODS_STR = _NONBONDED_METHODS_STR[1:]
+_CUTOFF_NONBONDED_METHODS_APP = _NONBONDED_METHODS_APP[1:]
+
+
+
+# ==============================================================================
+# YANK CUSTOM VALIDATOR CLASS FOR CERBERUS
+# ==============================================================================
 
 class YANKCerberusValidator(cerberus.Validator):
     """
@@ -29,6 +45,16 @@ class YANKCerberusValidator(cerberus.Validator):
     def _normalize_default_setter_no_parameters(self, document):
         return dict(parameters=list())
 
+    def _normalize_default_setter_tip4pew_or_none(self, document):
+        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_APP:
+            return 'tip4pew'
+        return None
+
+    def _normalize_default_setter_0_molar_or_none(self, document):
+        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_APP:
+            return 0.0*unit.molar
+        return None
+
     # ====================================================
     # DATA COERCION
     # ====================================================
@@ -36,6 +62,24 @@ class YANKCerberusValidator(cerberus.Validator):
     def _normalize_coerce_single_str_to_list(self, value):
         """Cast a single string to a list of string"""
         return [value] if isinstance(value, str) else value
+
+    def _normalize_coerce_str_to_openmm_app(self, value):
+        """Convert a string to the openmm.app object with that name unless the value is None."""
+        if value is None:
+            return None
+        return to_openmm_app_coercer(value)
+
+    def _normalize_coerce_str_to_distance_unit(self, value):
+        """Convert a string to a Quantity with units compatible with Angstrom unless the value is None."""
+        if value is None:
+            return None
+        return to_unit_coercer(unit.angstrom)(value)
+
+    def _normalize_coerce_str_to_molar_unit(self, value):
+        """Convert a string to a Quantity with units compatible with molar unless the value is None."""
+        if value is None:
+            return None
+        return to_unit_coercer(unit.molar)(value)
 
     # ====================================================
     # DATA VALIDATORS
@@ -73,7 +117,7 @@ class YANKCerberusValidator(cerberus.Validator):
         if value != 'all' and not isinstance(value, int):
             self._error(field, "{} must be an int or the string 'all'".format(value))
 
-    def _validator_supported_system_files(self, field, file_paths):
+    def _validator_supported_system_file_format(self, field, file_paths):
         """Ensure the input system files are supported."""
         # Obtain the extension of the system files.
         file_extensions = {os.path.splitext(file_path)[1][1:] for file_path in file_paths}
@@ -99,6 +143,36 @@ class YANKCerberusValidator(cerberus.Validator):
 
         logger.debug('Correctly recognized {}files ({}) as {} '
                      'files'.format(field, file_paths, file_extension_type))
+
+    def _validator_is_valid_nonbonded_method(self, field, nonbonded_method):
+        """Ensure the given nonbonded method is valid."""
+        if nonbonded_method not in _NONBONDED_METHODS_APP:
+            self._error(field, f'{field} must be one of {_NONBONDED_METHODS_STR}')
+
+    def _validator_mandatory_with_cutoff(self, field, value):
+        """Ensure the value is specified if the nonbonded method has a cutoff.
+
+        The validator assumes that the document has a 'nonbonded_method' field.
+        """
+        if (self.document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_APP and
+                value is None):
+            self._error(field, f'{field} must be specified with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
+
+    def _validator_only_with_cutoff(self, field, value):
+        """Ensure the value is different than None only if the nonbonded method has a cutoff.
+
+        The validator assumes that the document has a 'nonbonded_method' field.
+        """
+        if value is not None and self.document['nonbonded_method'] not in _CUTOFF_NONBONDED_METHODS_APP:
+            self._error(field, f'{field} can be specified only with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
+
+    def _validator_only_with_no_cutoff(self, field, value):
+        """Ensure the value is different than None only if the nonbonded method has no cutoff.
+
+        The validator assumes that the document has a 'nonbonded_method' field.
+        """
+        if value is not None and self.document['nonbonded_method'] != app.NoCutoff:
+            self._error(field, f'{field} can be specified only if nonbonded method is NoCutoff')
 
     def _validator_is_restraint_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
@@ -138,6 +212,23 @@ class YANKCerberusValidator(cerberus.Validator):
 # ==============================================================================
 # STATIC VALIDATORS/COERCERS
 # ==============================================================================
+
+def to_openmm_app_coercer(input_string):
+    """
+    Converter function to be used with :func:`yank.utils.validate_parameters`.
+
+    Parameters
+    ----------
+    input_string : str
+        Method name of openmm.app to fetch
+
+    Returns
+    -------
+    method : Method of openmm.app
+        Returns openmm.app.{input_string}
+    """
+    return getattr(app, input_string)
+
 
 def to_unit_coercer(compatible_units):
     """Function generator to test unit bearing strings with Cerberus."""

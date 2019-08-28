@@ -696,13 +696,13 @@ def test_validation_wrong_solvents():
     """YAML validation raises exception with wrong solvents."""
     # Each test case is a pair (regexp_error, solvent_description).
     solvents = [
-        ("nonbonded_cutoff:\n- 'depends on these values: {''nonbonded_method'': \[CutoffPeriodic, CutoffNonPeriodic,\n  Ewald, PME\]}'",
+        ("nonbonded_cutoff can be specified only with the following nonbonded methods \['CutoffPeriodic',\n  'CutoffNonPeriodic', 'Ewald', 'PME'\]",
             {'nonbonded_cutoff': '3*nanometers'}),
-        ("solvent_model:\n- unknown_solvent_model not in the known solvent models map!",
+        ("solvent_model:\n- unallowed value unknown_solvent_model",
             {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'}),
         ("leap:\n- must be of dict type",
             {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'}),
-        ("implicit_solvent:\n- 'depends on these values: {''nonbonded_method'': \[NoCutoff\]}",
+        ("implicit_solvent can be specified only if nonbonded method is NoCutoff",
             {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'}),
         ("blabla:\n- unknown field",
             {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'}),
