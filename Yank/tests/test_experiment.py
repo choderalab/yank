@@ -694,17 +694,25 @@ def test_validation_correct_solvents():
 
 def test_validation_wrong_solvents():
     """YAML validation raises exception with wrong solvents."""
+    # Each test case is a pair (regexp_error, solvent_description).
     solvents = [
-        {'nonbonded_cutoff': '3*nanometers'},
-        {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'},
-        {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'},
-        {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'},
-        {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'},
-        {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBX2'},
-        {'implicit_solvent': 'OBC2', 'implicit_solvent_salt_conc': '1.0*angstrom'}
+        ("nonbonded_cutoff:\n- 'depends on these values: {''nonbonded_method'': \[CutoffPeriodic, CutoffNonPeriodic,\n  Ewald, PME\]}'",
+            {'nonbonded_cutoff': '3*nanometers'}),
+        ("solvent_model:\n- unknown_solvent_model not in the known solvent models map!",
+            {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'}),
+        ("leap:\n- must be of dict type",
+            {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'}),
+        ("implicit_solvent:\n- 'depends on these values: {''nonbonded_method'': \[NoCutoff\]}",
+            {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'}),
+        ("blabla:\n- unknown field",
+            {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'}),
+        ("''implicit_solvent'' cannot be coerced: module ''simtk.openmm.app'' has no\n  attribute ''OBX2'''",
+            {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBX2'}),
+        ("''implicit_solvent_salt_conc'' cannot be coerced: Units of 1.0\*angstrom",
+            {'implicit_solvent': 'OBC2', 'implicit_solvent_salt_conc': '1.0*angstrom'})
     ]
-    for solvent in solvents:
-        yield assert_raises, YamlParseError, ExperimentBuilder._validate_solvents, {'solv': solvent}
+    for regexp, solvent in solvents:
+        yield assert_raises_regexp, YamlParseError, regexp, ExperimentBuilder._validate_solvents, {'solv': solvent}
 
 
 def test_validation_correct_systems():
