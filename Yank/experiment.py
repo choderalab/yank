@@ -1224,7 +1224,7 @@ class ExperimentBuilder(object):
             valueschema:
                 anyof:
                     - type: list
-                      validator: positive_int_list
+                      check_with: positive_int_list
                     - type: string
                     - type: integer
                       min: 0
@@ -1248,7 +1248,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: [smiles, name]
             required: yes
-            validator: [is_small_molecule, file_exists]
+            check_with: [is_small_molecule, file_exists]
         openeye:
             required: no
             type: dict
@@ -1272,7 +1272,7 @@ class ExperimentBuilder(object):
         select:
             required: no
             dependencies: filepath
-            validator: int_or_all_string
+            check_with: int_or_all_string
         """
         # Build small molecule Epik by hand as dict since we are fetching from another source
         epik_schema = schema.generate_signature_schema(moltools.schrodinger.run_epik,
@@ -1294,11 +1294,11 @@ class ExperimentBuilder(object):
         filepath:
             required: yes
             type: string
-            validator: [is_peptide, file_exists]
+            check_with: [is_peptide, file_exists]
         select:
             required: no
             dependencies: filepath
-            validator: int_or_all_string
+            check_with: int_or_all_string
         strip_protons:
             required: no
             type: boolean
@@ -1400,13 +1400,13 @@ class ExperimentBuilder(object):
 
         # The nonbonded_cutoff keyword is accepted only if the nonbonded method has a cutoff.
         solvent_schema['nonbonded_cutoff'].update({
-            'validator': 'only_with_cutoff'
+            'check_with': 'only_with_cutoff'
         })
 
         # The implicit_solvent keyword should be accepted only with no cutoff.
         solvent_schema['implicit_solvent'].update({
             'coerce': 'str_to_openmm_app',
-            'validator': 'only_with_no_cutoff'
+            'check_with': 'only_with_no_cutoff'
         })
 
         # Add leap schema.
@@ -1418,36 +1418,36 @@ class ExperimentBuilder(object):
             required: yes
             default: NoCutoff
             coerce: str_to_openmm_app
-            validator: is_valid_nonbonded_method
+            check_with: is_valid_nonbonded_method
 
         # Explicit solvent schema. These keywords are valid
         # only if the nonbonded method has a cutoff.
         clearance:
             type: quantity
             coerce: str_to_distance_unit
-            validator: mandatory_with_cutoff
+            check_with: mandatory_with_cutoff
         solvent_model:
             required: no
             nullable: yes
             type: string
             allowed: [tip3p, tip3pfb, tip4pew, tip5p, spce]
             default_setter: tip4pew_or_none
-            validator: only_with_cutoff
+            check_with: only_with_cutoff
         positive_ion:
             required: no
             type: string
-            validator: only_with_cutoff
+            check_with: only_with_cutoff
         negative_ion:
             required: no
             type: string
-            validator: only_with_cutoff
+            check_with: only_with_cutoff
         ionic_strength:
             required: no
             nullable: yes
             type: quantity
             default_setter: 0_molar_or_none
             coerce: str_to_molar_unit
-            validator: only_with_cutoff
+            check_with: only_with_cutoff
 
         """, Loader=yaml.FullLoader))
 
@@ -1540,14 +1540,14 @@ class ExperimentBuilder(object):
                 # Use this to check the string value until Cerberus 1.2 for `oneof`
                 # Check string with validate_string_auto, pass other values to next validator
                 # Check the dict values with validate_required_entries_doct, ignore other values
-                'validator': [validate_string_auto, validate_required_entries_dict],
+                'check_with': [validate_string_auto, validate_required_entries_dict],
                 'keyschema': {  # Validate the keys of this sub-dictionary against this schema
                     'type': 'string'
                 },
                 'valueschema': {  # Validate the values of this sub-dictionary against this schema
                     'type': 'list',  # They must be a list (dont accept single values)
                     # Check if it has the `lambda_` string that its a float within [0,1]
-                    'validator': validate_lambda_min_max,
+                    'check_with': validate_lambda_min_max,
                     'schema': {
                         'type': ['float', 'quantity'],  # Ensure the output type is float or quantity
                         # Cast strings to quantity. Everything else had to validate down to this point
@@ -1677,21 +1677,21 @@ class ExperimentBuilder(object):
             type: list
             schema:
                 type: string
-                validator: file_exists
+                check_with: file_exists
             dependencies: phase2_path
-            validator: supported_system_file_format
+            check_with: supported_system_file_format
         phase2_path:
             required: no
             type: list
             schema:
                 type: string
-                validator: file_exists
-            validator: supported_system_file_format
+                check_with: file_exists
+            check_with: supported_system_file_format
         gromacs_include_dir:
             required: no
             type: string
             dependencies: [phase1_path, phase2_path]
-            validator: directory_exists
+            check_with: directory_exists
 
         # Solvents
         solvent:
@@ -1699,7 +1699,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: [solvent1, solvent2]
             allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
-            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_RECEPTOR
+            check_with: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_RECEPTOR
             oneof:
                 - dependencies: [phase1_path, phase2_path]
                 - dependencies: [receptor, ligand]
@@ -1708,7 +1708,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: solvent
             allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
-            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            check_with: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
             oneof:
                 - dependencies: [phase1_path, phase2_path, solvent2]
                 - dependencies: [solute, solvent2]
@@ -1717,7 +1717,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: solvent
             allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
-            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            check_with: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
             oneof:
                 - dependencies: [phase1_path, phase2_path, solvent1]
                 - dependencies: [solute, solvent1]
@@ -1729,7 +1729,7 @@ class ExperimentBuilder(object):
             dependencies: [ligand, solvent]
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             excludes: [solute, phase1_path, phase2_path]
-            validator: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
+            check_with: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
         ligand:
             required: no
             type: string
@@ -1746,7 +1746,7 @@ class ExperimentBuilder(object):
             type: string
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             dependencies: [solvent1, solvent2]
-            validator: REGION_CLASH_DETERMINED_AT_RUNTIME
+            check_with: REGION_CLASH_DETERMINED_AT_RUNTIME
             excludes: [receptor, ligand]
         """
         # Load the YAML into a schema into dict format
@@ -1772,16 +1772,16 @@ class ExperimentBuilder(object):
             new_schema = system_schema.copy()
             # Handle the validators
             # Spin up the region clash calculators
-            new_schema['receptor']['validator'] = generate_region_clash_validator(system_descr, 'ligand', 'receptor')
-            new_schema['solute']['validator'] = generate_region_clash_validator(system_descr, 'solute')
+            new_schema['receptor']['check_with'] = generate_region_clash_validator(system_descr, 'ligand', 'receptor')
+            new_schema['solute']['check_with'] = generate_region_clash_validator(system_descr, 'solute')
             # "solvent"
-            new_schema['solvent']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
-                                                                                                      'receptor')
+            new_schema['solvent']['check_with'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                       'receptor')
             # "solvent1" and "solvent2
-            new_schema['solvent1']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
-                                                                                                       'solute')
-            new_schema['solvent2']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
-                                                                                                       'solute')
+            new_schema['solvent1']['check_with'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                        'solute')
+            new_schema['solvent2']['check_with'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                        'solute')
             return new_schema
 
         validated_systems = systems_description.copy()
@@ -1809,7 +1809,7 @@ class ExperimentBuilder(object):
                 type: string
             valueschema:
                 type: dict
-                validator: is_mcmc_move_constructor
+                check_with: is_mcmc_move_constructor
                 keyschema:
                     type: string
         """
@@ -1835,7 +1835,7 @@ class ExperimentBuilder(object):
                 type: string
             valueschema:
                 type: dict
-                validator: is_sampler_constructor
+                check_with: is_sampler_constructor
                 allow_unknown: yes
                 schema:
                     mcmc_moves:
@@ -1942,7 +1942,7 @@ class ExperimentBuilder(object):
         restraint:
             required: no
             type: dict
-            validator: is_restraint_constructor
+            check_with: is_restraint_constructor
             keyschema:
                 type: string
         """

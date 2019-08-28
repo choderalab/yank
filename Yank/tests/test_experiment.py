@@ -696,13 +696,13 @@ def test_validation_wrong_solvents():
     """YAML validation raises exception with wrong solvents."""
     # Each test case is a pair (regexp_error, solvent_description).
     solvents = [
-        ("nonbonded_cutoff can be specified only with the following nonbonded methods \['CutoffPeriodic',\n  'CutoffNonPeriodic', 'Ewald', 'PME'\]",
+        ("nonbonded_cutoff:\n- can be specified only with the following nonbonded methods \['CutoffPeriodic', 'CutoffNonPeriodic',\n  'Ewald', 'PME'\]",
             {'nonbonded_cutoff': '3*nanometers'}),
         ("solvent_model:\n- unallowed value unknown_solvent_model",
             {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'}),
         ("leap:\n- must be of dict type",
             {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'}),
-        ("implicit_solvent can be specified only if nonbonded method is NoCutoff",
+        ("implicit_solvent:\n- can be specified only if nonbonded method is NoCutoff",
             {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'}),
         ("blabla:\n- unknown field",
             {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'}),
@@ -1206,9 +1206,9 @@ def test_clashing_atoms():
 
         exp_builder = ExperimentBuilder(yaml_content)
 
-        for system_id in [system_id + '_vacuum', system_id + '_PME']:
+        for sys_id in [system_id + '_vacuum', system_id + '_PME']:
             system_dir = os.path.dirname(
-                exp_builder._db.get_system(system_id)[0].position_path)
+                exp_builder._db.get_system(sys_id)[0].position_path)
 
             # Get positions of molecules in the final system
             prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
@@ -1226,8 +1226,8 @@ def test_clashing_atoms():
             assert min_dist >= pipeline.SetupDatabase.CLASH_THRESHOLD
 
             # For solvent we check that molecule is within the box
-            if system_id == system_id + '_PME':
-                assert max_dist <= yaml_content['solvents']['PME']['clearance']
+            if sys_id == system_id + '_PME':
+                assert max_dist <= exp_builder._db.solvents['PME']['clearance'].value_in_unit(unit.angstrom)
 
 
 @unittest.skipIf(not moltools.schrodinger.is_schrodinger_suite_installed(),

@@ -46,13 +46,15 @@ class YANKCerberusValidator(cerberus.Validator):
         return dict(parameters=list())
 
     def _normalize_default_setter_tip4pew_or_none(self, document):
-        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_APP:
+        # Default setting is before coercing so we need to check both strings and app objects.
+        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_STR + _CUTOFF_NONBONDED_METHODS_APP:
             return 'tip4pew'
         return None
 
     def _normalize_default_setter_0_molar_or_none(self, document):
-        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_APP:
-            return 0.0*unit.molar
+        # Default setting is before coercing so we need to check both strings and app objects.
+        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_STR + _CUTOFF_NONBONDED_METHODS_APP:
+            return '0.0*molar'
         return None
 
     # ====================================================
@@ -85,39 +87,39 @@ class YANKCerberusValidator(cerberus.Validator):
     # DATA VALIDATORS
     # ====================================================
 
-    def _validator_file_exists(self, field, filepath):
+    def _check_with_file_exists(self, field, filepath):
         """Assert that the file is in fact, a file!"""
         if not os.path.isfile(filepath):
             self._error(field, 'File path {} does not exist.'.format(filepath))
 
-    def _validator_directory_exists(self, field, directory_path):
+    def _check_with_directory_exists(self, field, directory_path):
         """Assert that the file is in fact, a file!"""
         if not os.path.isdir(directory_path):
             self._error(field, 'Directory {} does not exist.'.format(directory_path))
 
-    def _validator_is_peptide(self, field, filepath):
+    def _check_with_is_peptide(self, field, filepath):
         """Input file is a peptide."""
         extension = os.path.splitext(filepath)[1]
         if extension != '.pdb':
             self._error(field, "Not a .pdb file")
 
-    def _validator_is_small_molecule(self, field, filepath):
+    def _check_with_is_small_molecule(self, field, filepath):
         """Input file is a small molecule."""
         file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
         extension = os.path.splitext(filepath)[1][1:]
         if extension not in file_formats:
             self._error(field, 'File is not one of {}'.format(file_formats))
 
-    def _validator_positive_int_list(self, field, value):
+    def _check_with_positive_int_list(self, field, value):
         for p in value:
             if not isinstance(p, int) or not p >= 0:
                 self._error(field, "{} of must be a positive integer!".format(p))
 
-    def _validator_int_or_all_string(self, field, value):
+    def _check_with_int_or_all_string(self, field, value):
         if value != 'all' and not isinstance(value, int):
             self._error(field, "{} must be an int or the string 'all'".format(value))
 
-    def _validator_supported_system_file_format(self, field, file_paths):
+    def _check_with_supported_system_file_format(self, field, file_paths):
         """Ensure the input system files are supported."""
         # Obtain the extension of the system files.
         file_extensions = {os.path.splitext(file_path)[1][1:] for file_path in file_paths}
@@ -137,50 +139,50 @@ class YANKCerberusValidator(cerberus.Validator):
 
         # Verify we found a match.
         if file_extension_type is None:
-            self._error(field, '{} must have file extensions matching one of the '
-                               'following types: {}'.format(field, expected_extensions))
+            self._error(field, 'must have file extensions matching one of the '
+                               'following types: {}'.format(expected_extensions))
             return
 
         logger.debug('Correctly recognized {}files ({}) as {} '
                      'files'.format(field, file_paths, file_extension_type))
 
-    def _validator_is_valid_nonbonded_method(self, field, nonbonded_method):
+    def _check_with_is_valid_nonbonded_method(self, field, nonbonded_method):
         """Ensure the given nonbonded method is valid."""
         if nonbonded_method not in _NONBONDED_METHODS_APP:
-            self._error(field, f'{field} must be one of {_NONBONDED_METHODS_STR}')
+            self._error(field, f'must be one of {_NONBONDED_METHODS_STR}')
 
-    def _validator_mandatory_with_cutoff(self, field, value):
+    def _check_with_mandatory_with_cutoff(self, field, value):
         """Ensure the value is specified if the nonbonded method has a cutoff.
 
         The validator assumes that the document has a 'nonbonded_method' field.
         """
         if (self.document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_APP and
                 value is None):
-            self._error(field, f'{field} must be specified with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
+            self._error(field, f'must be specified with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
 
-    def _validator_only_with_cutoff(self, field, value):
+    def _check_with_only_with_cutoff(self, field, value):
         """Ensure the value is different than None only if the nonbonded method has a cutoff.
 
         The validator assumes that the document has a 'nonbonded_method' field.
         """
         if value is not None and self.document['nonbonded_method'] not in _CUTOFF_NONBONDED_METHODS_APP:
-            self._error(field, f'{field} can be specified only with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
+            self._error(field, f'can be specified only with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
 
-    def _validator_only_with_no_cutoff(self, field, value):
+    def _check_with_only_with_no_cutoff(self, field, value):
         """Ensure the value is different than None only if the nonbonded method has no cutoff.
 
         The validator assumes that the document has a 'nonbonded_method' field.
         """
         if value is not None and self.document['nonbonded_method'] != app.NoCutoff:
-            self._error(field, f'{field} can be specified only if nonbonded method is NoCutoff')
+            self._error(field, 'can be specified only if nonbonded method is NoCutoff')
 
-    def _validator_is_restraint_constructor(self, field, constructor_description):
+    def _check_with_is_restraint_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
 
-    def _validator_is_mcmc_move_constructor(self, field, constructor_description):
+    def _check_with_is_mcmc_move_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_mcmc_move_constructor, constructor_description)
 
-    def _validator_is_sampler_constructor(self, field, constructor_description):
+    def _check_with_is_sampler_constructor(self, field, constructor_description):
         # Check if the MCMCMove is defined (its validation is done in
         # is_mcmc_move_constructor). Don't modify original dictionary.
         constructor_description = copy.deepcopy(constructor_description)
