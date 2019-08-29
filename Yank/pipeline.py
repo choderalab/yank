@@ -2036,7 +2036,7 @@ def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
 
 def trailblaze_alchemical_protocol(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        checkpoint_dir_path=None, std_energy_threshold=0.5,
+        checkpoint_dir_path=None, std_potential_threshold=0.5,
         threshold_tolerance=0.05, n_samples_per_state=100
 ):
     """
@@ -2048,7 +2048,7 @@ def trailblaze_alchemical_protocol(
     between the two states at those configurations.
 
     Two states are chosen for the protocol if their standard deviation is
-    within ``std_energy_threshold +- threshold_tolerance``.
+    within ``std_potential_threshold +- threshold_tolerance``.
 
     The function is capable of resuming when interrupted if ``checkpoint_dir_path``
     is specified. This will create two files called 'protocol.yaml' and
@@ -2074,7 +2074,7 @@ def trailblaze_alchemical_protocol(
         information to resume in case it was previously interrupted. If
         ``None``, no information is stored and it won't be possible to
         resume. Default is ``None``.
-    std_energy_threshold : float
+    std_potential_threshold : float
         The threshold that determines how to separate the states between
         each others.
     threshold_tolerance : float
@@ -2181,12 +2181,12 @@ def trailblaze_alchemical_protocol(
                 sampler_states.append(copy.deepcopy(sampler_state))
 
             # Find first state that doesn't overlap with simulated one
-            # with std(du) within std_energy_threshold +- threshold_tolerance.
+            # with std(du) within std_potential_threshold +- threshold_tolerance.
             # We stop anyway if we reach the last value of the protocol.
             std_energy = 0.0
             current_parameter_value = optimal_protocol[state_parameter][-1]
-            while (abs(std_energy - std_energy_threshold) > threshold_tolerance and
-                   not (current_parameter_value == values[1] and std_energy < std_energy_threshold)):
+            while (abs(std_energy - std_potential_threshold) > threshold_tolerance and
+                   not (current_parameter_value == values[1] and std_energy < std_potential_threshold)):
                 # Determine next parameter value to compute.
                 if np.isclose(std_energy, 0.0):
                     # This is the first iteration or the two state overlap significantly
@@ -2198,7 +2198,7 @@ def trailblaze_alchemical_protocol(
                     derivative_std_energy = ((std_energy - old_std_energy) /
                                              (current_parameter_value - old_parameter_value))
                     old_parameter_value = current_parameter_value
-                    current_parameter_value += (std_energy_threshold - std_energy) / derivative_std_energy
+                    current_parameter_value += (std_potential_threshold - std_energy) / derivative_std_energy
 
                 # Keep current_parameter_value inside bound interval.
                 if search_direction * current_parameter_value > values[1]:

@@ -981,7 +981,21 @@ def test_validation_correct_protocols():
         modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
         yield ExperimentBuilder._validate_protocols, modified_protocol
 
-    # Phases
+    # Trailblazer options.
+    auto_protocol = copy.deepcopy(basic_protocol)
+    auto_protocol['absolute-binding']['complex']['alchemical_path'] = 'auto'
+    trailblazer_options = [
+        {'n_equilibration_iterations': 1000, 'n_samples_per_state': 100,
+         'std_potential_threshold': 0.5, 'threshold_tolerance': 0.05},
+        {'n_equilibration_iterations': 100, 'n_samples_per_state': 10},
+        {'std_potential_threshold': 1.0, 'threshold_tolerance': 0.5},
+    ]
+    for opts in trailblazer_options:
+        modified_protocol = copy.deepcopy(auto_protocol)
+        modified_protocol['absolute-binding']['complex']['trailblazer_options'] = opts
+        yield ExperimentBuilder._validate_protocols, modified_protocol
+
+    # Multiple phases.
     alchemical_path = copy.deepcopy(basic_protocol['absolute-binding']['complex'])
     protocols = [
         {'complex': alchemical_path, 'solvent': alchemical_path},
@@ -1022,6 +1036,18 @@ def test_validation_wrong_protocols():
         modified_protocol = copy.deepcopy(basic_protocol)
         modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
         yield assert_raises, YamlParseError, ExperimentBuilder._validate_protocols, modified_protocol
+
+    # Trailblazer options.
+    auto_protocol = copy.deepcopy(basic_protocol)
+    auto_protocol['absolute-binding']['complex']['alchemical_path'] = 'auto'
+    trailblazer_options = [
+        ("n_equilibration_iterations:\n  - must be of integer type",
+            {'n_equilibration_iterations': 'bla'}),
+    ]
+    for regex, opts in trailblazer_options:
+        modified_protocol = copy.deepcopy(auto_protocol)
+        modified_protocol['absolute-binding']['complex']['trailblazer_options'] = opts
+        yield assert_raises_regexp, YamlParseError, regex, ExperimentBuilder._validate_protocols, modified_protocol
 
     # Phases
     alchemical_path = copy.deepcopy(basic_protocol['absolute-binding']['complex'])

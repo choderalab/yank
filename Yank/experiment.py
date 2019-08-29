@@ -1487,6 +1487,26 @@ class ExperimentBuilder(object):
         """
 
         protocol_value_schema = yaml.load("""
+        trailblazer_options:
+            required: no
+            type: dict
+            schema:
+                n_equilibration_iterations:
+                    type: integer
+                    default: 1000
+                constrain_receptor:
+                    type: bool
+                    default: no
+                n_samples_per_state:
+                    type: integer
+                    default: 100
+                std_potential_threshold:
+                    type: float
+                    default: 0.5
+                threshold_tolerance:
+                    type: float
+                    default: 0.05
+
         alchemical_path:
             required: yes
 
@@ -2324,8 +2344,7 @@ class ExperimentBuilder(object):
                            distributed_args=experiments_to_generate,
                            send_results_to=None, group_size=1, sync_nodes=True)
 
-    def _generate_experiment_protocol(self, experiment, constrain_receptor=False,
-                                      n_equilibration_iterations=None, **kwargs):
+    def _generate_experiment_protocol(self, experiment):
         """Generate auto alchemical paths for the given experiment.
 
         Creates a YAML script in the experiment folder with the found protocol.
@@ -2334,13 +2353,6 @@ class ExperimentBuilder(object):
         ----------
         experiment : Tuple[str, dict]
             A tuple with the experiment path and the experiment description.
-        constrain_receptor : bool, optional
-            If True, the receptor in a receptor-ligand system will have its
-            CA atoms constrained during optimization (default is False).
-        n_equilibration_iterations : None or int
-            The number of equilibration iterations to perform before running
-            the path search. If None, the function will determine the number
-            of iterations to run based on the system dimension.
 
         Other Parameters
         ----------------
@@ -2385,6 +2397,12 @@ class ExperimentBuilder(object):
             is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
                          len(phase_factory.topography.solvent_atoms) == 0)
 
+
+            # Obtain the options for the automatic discretization.
+            trailblazer_options = protocol[phase_name]['trailblazer_options']
+            n_equilibration_iterations = trailblazer_options.pop('n_equilibration_iterations')
+            constrain_receptor = trailblazer_options.pop('constrain_receptor')
+
             # Determine the path (i.e. end states of the different lambdas).
             state_parameters = []
             # First, turn on the restraint if there are any.
@@ -2417,16 +2435,6 @@ class ExperimentBuilder(object):
 
             if not os.path.isfile(os.path.join(trailblaze_dir_path, 'protocol.yaml')):
                 # TODO automatic equilibration?
-                if n_equilibration_iterations is None:
-                    if is_vacuum:  # Vacuum or small molecule in implicit solvent.
-                        n_equilibration_iterations = 0
-                    elif len(phase_factory.topography.receptor_atoms) == 0:  # Explicit solvent phase.
-                        n_equilibration_iterations = 250
-                    elif len(phase_factory.topography.solvent_atoms) == 0:  # Implicit complex phase.
-                        n_equilibration_iterations = 500
-                    else:  # Explicit complex phase
-                        n_equilibration_iterations = 1000
-
                 # Set number of equilibration iterations.
                 phase_factory.options['number_of_equilibration_iterations'] = n_equilibration_iterations
             else:
@@ -2466,7 +2474,7 @@ class ExperimentBuilder(object):
             # Find protocol.
             alchemical_path = pipeline.trailblaze_alchemical_protocol(
                 thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-                checkpoint_dir_path=trailblaze_dir_path, **kwargs)
+                checkpoint_dir_path=trailblaze_dir_path, **trailblazer_options)
             optimal_protocols[phase_name] = alchemical_path
 
         # Generate yaml script with updated protocol.
