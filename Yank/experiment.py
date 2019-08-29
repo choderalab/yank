@@ -1485,6 +1485,28 @@ class ExperimentBuilder(object):
             If the syntax for any protocol is not valid.
 
         """
+
+        protocol_value_schema = yaml.load("""
+        alchemical_path:
+            required: yes
+
+            # Must be a string ('auto') or a dictionary specifying the path.
+            type: [string, dict]
+            anyof:
+                - allowed: [auto]
+                - check_with: specify_lambda_electrostatics_and_sterics
+
+            # If a dictionary, check that this is a valid path.
+            keysrules:
+                type: string
+            valuesrules:
+                type: [string, list]
+                check_with: lambda_between_0_and_1
+                schema:
+                    type: [float, quantity]
+                    coerce: str_to_unit
+        """, Loader=yaml.FullLoader)
+
         def sort_protocol(protocol):
             """Reorder phases in dictionary to have complex/solvent1 first."""
             sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
@@ -1504,78 +1526,25 @@ class ExperimentBuilder(object):
                                  'OR "solvent1" and "solvent2", the phase names must also be non-ambiguous so each '
                                  'keyword can only appear in a single phase, not multiple.')
 
-        def validate_string_auto(field, value, error):
-            if isinstance(value, str) and value != 'auto':
-                error(field, "Only the exact string 'auto' is accepted as a string argument, not {}.".format(value))
-
-        def cast_quantity_strings(value):
-            """Take an object and try to cast quantity strings to quantity, otherwise return object"""
-            if isinstance(value, str):
-                value = utils.quantity_from_string(value)
-            return value
-
-        def validate_required_entries_dict(field, value, error):
-            """Ensure the required entries are in the dict, string is checked by a separate validator"""
-            if isinstance(value, dict) or isinstance(value, collections.OrderedDict):
-                if 'lambda_sterics' not in value.keys() or 'lambda_electrostatics' not in value.keys():
-                    error(field, "Missing required keys lambda_sterics and/or lambda_electrostatics")
-
-        def validate_lambda_min_max(field, value, error):
-            """Ensure keys which are lambda values are in fact between 0 and 1"""
-            base_error = "Entries with a 'lambda_' must be a float between 0 and 1, inclusive. Values {} are not."
-            collected_bad_values = []
-            if "lambda_" in field:
-                for single_value in value:
-                    if not (isinstance(single_value, float) and 0 <= single_value <= 1.0):
-                        collected_bad_values.append(single_value)
-            if len(collected_bad_values):
-                error(field, base_error.format(collected_bad_values))
-
-        # Define protocol Schema
-        # Note: Cannot cleanly do yaml.dump(v.errors) for nested `schema`/`*of` logic from Cerberus until its 1.2
-        protocol_value_schema = {
-            'alchemical_path': {  # The only literal key
-                'required': True,  # Key is required
-                'type': ['string', 'dict'],  # Must be a string or dictionary
-                # Use this to check the string value until Cerberus 1.2 for `oneof`
-                # Check string with validate_string_auto, pass other values to next validator
-                # Check the dict values with validate_required_entries_doct, ignore other values
-                'check_with': [validate_string_auto, validate_required_entries_dict],
-                'keyschema': {  # Validate the keys of this sub-dictionary against this schema
-                    'type': 'string'
-                },
-                'valueschema': {  # Validate the values of this sub-dictionary against this schema
-                    'type': 'list',  # They must be a list (dont accept single values)
-                    # Check if it has the `lambda_` string that its a float within [0,1]
-                    'check_with': validate_lambda_min_max,
-                    'schema': {
-                        'type': ['float', 'quantity'],  # Ensure the output type is float or quantity
-                        # Cast strings to quantity. Everything else had to validate down to this point
-                        'coerce': cast_quantity_strings,
-                    }
-                }
-            }
-        }
-
-        # Validate the top level keys (cannot be done with Cerberus)
-        def validate_protocol_keys_and_values(protocol_id, protocol):
-            # Ensure the protocol is 2 keys
+        def validate_protocol(protocol_id, protocol):
+            # First, validate the top level keys (cannot be done with Cerberus).
+            # Ensure the protocol has 2 keys.
             if len(protocol) != 2:
                 raise YamlParseError('Protocol {} must only have two phases, found {}'.format(protocol_id,
                                                                                               len(protocol)))
-            # Ensure the protocol keys are in fact strings
-            keys_not_strings = []
-            key_string_error = 'Protocol {} has keys which are not strings: '.format(protocol_id)
-            for key in protocol.keys():
-                if not isinstance(key, str):
-                    keys_not_strings.append(key)
+            # Ensure the protocol keys are strings.
+            keys_not_strings = [k for k in protocol.keys() if not isinstance(k, str)]
             if len(keys_not_strings) > 0:
-                # The join(list_comprehension) forces invalid keys to a string so the join command works
-                raise YamlParseError(key_string_error + ', '.join(['{}'.format(key) for key in keys_not_strings]))
-            # Check for ordered dict or the sorted keys
+                key_string_error = f'Protocol {protocol_id} has keys which are not strings: '
+                # Convert non-string values to string for printing.
+                key_string_error += ', '.join([str(key) for key in keys_not_strings])
+                raise YamlParseError(key_string_error)
+
+            # Order the two phases, unless a ordered dictionary is given.
             if not isinstance(protocol, collections.OrderedDict):
                 protocol = sort_protocol(protocol)
-            # Now user cerberus to validate the alchemical path part
+
+            # Now user cerberus to validate the alchemical_path part.
             errored_phases = []
             for phase_key, phase_entry in protocol.items():
                 phase_validator = schema.YANKCerberusValidator(protocol_value_schema)
@@ -1585,21 +1554,23 @@ class ExperimentBuilder(object):
                 else:
                     # collect the errors
                     errored_phases.append([phase_key, yaml.dump(phase_validator.errors)])
+
+            # Riase informative error about all phases that failed.
             if len(errored_phases) > 0:
-                # Throw error
-                error = "Protocol {} failed because one or more of the phases did not validate, see the errors below " \
-                        "for more information.\n".format(protocol_id)
+                error = (f"Protocol {protocol_id} failed because one or more of the phases"
+                          " did not validate, see the errors below for more information.\n")
                 for phase_id, phase_error in errored_phases:
                     error += "Phase: {}\n----\n{}\n====\n".format(phase_id, phase_error)
                 raise YamlParseError(error)
-            # Finally return if everything is fine
+
+            # Finally return if everything is fine.
             return protocol
 
         validated_protocols = protocols_description.copy()
         # Schema validation
         for protocol_id, protocol_descr in protocols_description.items():
             # Error is raised in the function
-            validated_protocols[protocol_id] = validate_protocol_keys_and_values(protocol_id, protocol_descr)
+            validated_protocols[protocol_id] = validate_protocol(protocol_id, protocol_descr)
 
         return validated_protocols
 

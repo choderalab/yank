@@ -1,4 +1,5 @@
 import os
+import collections
 import copy
 import inspect
 import logging
@@ -63,25 +64,33 @@ class YANKCerberusValidator(cerberus.Validator):
 
     def _normalize_coerce_single_str_to_list(self, value):
         """Cast a single string to a list of string"""
-        return [value] if isinstance(value, str) else value
+        if isinstance(value, str):
+            return [value]
+        return value
 
     def _normalize_coerce_str_to_openmm_app(self, value):
-        """Convert a string to the openmm.app object with that name unless the value is None."""
-        if value is None:
-            return None
-        return to_openmm_app_coercer(value)
+        """Convert a string to the openmm.app object with that name."""
+        if isinstance(value, str):
+            return to_openmm_app_coercer(value)
+        return value
+
+    def _normalize_coerce_str_to_unit(self, value):
+        """Convert a string to a Quantity without checking for compatible units."""
+        if isinstance(value, str):
+            return to_unit_coercer(compatible_units=None)(value)
+        return value
 
     def _normalize_coerce_str_to_distance_unit(self, value):
-        """Convert a string to a Quantity with units compatible with Angstrom unless the value is None."""
-        if value is None:
-            return None
-        return to_unit_coercer(unit.angstrom)(value)
+        """Convert a string to a Quantity with units compatible with Angstrom."""
+        if isinstance(value, str):
+            return to_unit_coercer(unit.angstrom)(value)
+        return value
 
     def _normalize_coerce_str_to_molar_unit(self, value):
-        """Convert a string to a Quantity with units compatible with molar unless the value is None."""
-        if value is None:
-            return None
-        return to_unit_coercer(unit.molar)(value)
+        """Convert a string to a Quantity with units compatible with molar."""
+        if isinstance(value, str):
+            return to_unit_coercer(unit.molar)(value)
+        return value
 
     # ====================================================
     # DATA VALIDATORS
@@ -175,6 +184,23 @@ class YANKCerberusValidator(cerberus.Validator):
         """
         if value is not None and self.document['nonbonded_method'] != app.NoCutoff:
             self._error(field, 'can be specified only if nonbonded method is NoCutoff')
+
+    def _check_with_specify_lambda_electrostatics_and_sterics(self, field, value):
+        """Check that the keys of a dictionary contain both lambda_electrostatics and lambda_sterics."""
+        if ((isinstance(value, dict) or isinstance(value, collections.OrderedDict)) and
+                not ('lambda_sterics' in value and 'lambda_electrostatics' in value)):
+            self._error(field, "Missing required keys lambda_sterics and/or lambda_electrostatics")
+
+    def _check_with_lambda_between_0_and_1(self, field, value):
+        """Ensure keys which are lambda values are in fact between 0 and 1"""
+        base_error = "Entries with a 'lambda_' must be a float in [0, 1]. Values {} are not."
+        collected_bad_values = []
+        if "lambda_" in field:
+            for single_value in value:
+                if not (isinstance(single_value, float) and 0 <= single_value <= 1.0):
+                    collected_bad_values.append(single_value)
+        if len(collected_bad_values):
+            self._error(field, base_error.format(collected_bad_values))
 
     def _check_with_is_restraint_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
