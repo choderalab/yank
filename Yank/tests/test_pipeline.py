@@ -15,6 +15,8 @@ Test pipeline functions in pipeline.py.
 
 from yank.pipeline import *
 
+from nose.tools import assert_raises_regexp
+
 
 # =============================================================================
 # TESTS
@@ -86,69 +88,118 @@ def test_pack_transformation():
 # TRAILBLAZE
 # ==============================================================================
 
-def test_trailblaze_checkpoint():
-    """Test that trailblaze algorithm can resume if interrupted."""
-    from openmmtools.states import (GlobalParameterState, ThermodynamicState,
-                                    CompoundThermodynamicState, SamplerState)
+class TestThermodynamicTrailblazing:
+    """Test suite for the thermodynamic trailblazing function."""
 
-    par_name = 'testsystems_HarmonicOscillator_x0'
+    PAR_NAME = 'testsystems_HarmonicOscillator_x0'
 
-    def _check_checkpoint_files(checkpoint_dir_path, expected_protocol, n_atoms):
+    @classmethod
+    def get_harmonic_oscillator(cls):
+        """Create a harmonic oscillator thermodynamic state to test the trailblaze algorithm."""
+        from openmmtools.states import (GlobalParameterState, ThermodynamicState,
+                                        CompoundThermodynamicState, SamplerState)
 
-        checkpoint_protocol_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
-        checkpoint_positions_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
+        # Create composable state that control offset of harmonic oscillator.
+        class X0State(GlobalParameterState):
+            testsystems_HarmonicOscillator_x0 = GlobalParameterState.GlobalParameter(cls.PAR_NAME, 1.0)
 
-        # The protocol on the checkpoint file is correct.
-        with open(checkpoint_protocol_path, 'r') as f:
-            checkpoint_protocol = yaml.load(f, Loader=yaml.FullLoader)
-        assert checkpoint_protocol == expected_protocol
+        # Create a harmonic oscillator thermo state.
+        oscillator = mmtools.testsystems.HarmonicOscillator(K=1.0*unit.kilocalories_per_mole/unit.nanometer**2)
+        sampler_state = SamplerState(positions=oscillator.positions)
+        thermo_state = ThermodynamicState(oscillator.system, temperature=300*unit.kelvin)
+        x0_state = X0State(testsystems_HarmonicOscillator_x0=0.0)
+        compound_state = CompoundThermodynamicState(thermo_state, composable_states=[x0_state])
 
-        # The positions and box vectors have the correct dimension.
-        expected_n_states = len(expected_protocol[par_name])
-        trajectory_file = mdtraj.formats.DCDTrajectoryFile(checkpoint_positions_path, 'r')
-        xyz, cell_lengths, cell_angles = trajectory_file.read()
-        assert (xyz.shape[0], xyz.shape[1]) == (expected_n_states, n_atoms)
-        assert cell_lengths.shape[0] == expected_n_states
+        return compound_state, sampler_state
 
-    # Create composable state that control offset of harmonic oscillator.
-    class X0State(GlobalParameterState):
-        testsystems_HarmonicOscillator_x0 = GlobalParameterState.GlobalParameter(par_name, 1.0)
-
-    # Create a harmonic oscillator thermo state.
-    oscillator = mmtools.testsystems.HarmonicOscillator(K=1.0*unit.kilocalories_per_mole/unit.nanometer**2)
-    sampler_state = SamplerState(positions=oscillator.positions)
-    thermo_state = ThermodynamicState(oscillator.system, temperature=300*unit.kelvin)
-    x0_state = X0State(testsystems_HarmonicOscillator_x0=0.0)
-    compound_state = CompoundThermodynamicState(thermo_state, composable_states=[x0_state])
-
-    # Run trailblaze to find path of x0 from 0 to 1 nm.
-    platform = platform=openmm.Platform.getPlatformByName('CPU')
-    mcmc_move = mmtools.mcmc.LangevinDynamicsMove(
-        timestep=1.0*unit.femtosecond, n_steps=1,
-        context_cache=mmtools.cache.ContextCache(platform=platform)
-    )
-
-    with mmtools.utils.temporary_directory() as checkpoint_dir_path:
-
-        # Running with a checkpoint path creates checkpoint files.
-        first_protocol = trailblaze_alchemical_protocol(
-            compound_state, sampler_state, mcmc_move,
-            checkpoint_dir_path=checkpoint_dir_path,
-            state_parameters=[(par_name, [0.0, 1.0])]
+    @staticmethod
+    def get_langevin_dynamics_move():
+        """Build a cheap Langevin dynamics move to test the trailblaze algorithm."""
+        platform = openmm.Platform.getPlatformByName('CPU')
+        mcmc_move = mmtools.mcmc.LangevinDynamicsMove(
+            timestep=1.0*unit.femtosecond, n_steps=1,
+            context_cache=mmtools.cache.ContextCache(platform=platform)
         )
+        return mcmc_move
 
-        # The info in the checkpoint files is correct.
-        _check_checkpoint_files(checkpoint_dir_path, first_protocol, len(oscillator.positions))
+    def test_trailblaze_checkpoint(self):
+        """Test that trailblaze algorithm can resume if interrupted."""
 
-        # Running a second time (with different final state) should
-        # start from the previous alchemical protocol.
-        second_protocol = trailblaze_alchemical_protocol(
+        def _check_checkpoint_files(checkpoint_dir_path, expected_protocol, n_atoms):
+
+            checkpoint_protocol_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+            checkpoint_positions_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
+
+            # The protocol on the checkpoint file is correct.
+            with open(checkpoint_protocol_path, 'r') as f:
+                checkpoint_protocol = yaml.load(f, Loader=yaml.FullLoader)
+            assert checkpoint_protocol == expected_protocol
+
+            # The positions and box vectors have the correct dimension.
+            expected_n_states = len(expected_protocol[self.PAR_NAME])
+            trajectory_file = mdtraj.formats.DCDTrajectoryFile(checkpoint_positions_path, 'r')
+            xyz, cell_lengths, cell_angles = trajectory_file.read()
+            assert (xyz.shape[0], xyz.shape[1]) == (expected_n_states, n_atoms)
+            assert cell_lengths.shape[0] == expected_n_states
+
+        # Create a harmonic oscillator system to test.
+        compound_state, sampler_state = self.get_harmonic_oscillator()
+        n_atoms = len(sampler_state.positions)
+        mcmc_move = self.get_langevin_dynamics_move()
+
+        # Run trailblaze to find path of x0 from 0 to 1 nm.
+        with mmtools.utils.temporary_directory() as checkpoint_dir_path:
+
+            # Running with a checkpoint path creates checkpoint files.
+            first_protocol = run_thermodynamic_trailblazing(
+                compound_state, sampler_state, mcmc_move,
+                checkpoint_dir_path=checkpoint_dir_path,
+                state_parameters=[(self.PAR_NAME, [0.0, 1.0])]
+            )
+
+            # The info in the checkpoint files is correct.
+            _check_checkpoint_files(checkpoint_dir_path, first_protocol, n_atoms)
+
+            # Running a second time (with different final state) should
+            # start from the previous alchemical protocol.
+            second_protocol = run_thermodynamic_trailblazing(
+                compound_state, sampler_state, mcmc_move,
+                checkpoint_dir_path=checkpoint_dir_path,
+                state_parameters=[(self.PAR_NAME, [0.0, 2.0])]
+            )
+            len_first_protocol = len(first_protocol[self.PAR_NAME])
+            assert second_protocol[self.PAR_NAME][:len_first_protocol] == first_protocol[self.PAR_NAME]
+
+            # The info in the checkpoint files is correct.
+            _check_checkpoint_files(checkpoint_dir_path, second_protocol, n_atoms)
+
+    def test_trailblaze_setters(self):
+        """Test that the special setters and the global parameter function shortcut are working properly."""
+        # Create a harmonic oscillator system to test.
+        compound_state, sampler_state = self.get_harmonic_oscillator()
+        mcmc_move = self.get_langevin_dynamics_move()
+
+        # Assign to the parameter a function and run the
+        # trailblaze algorithm over the function variable.
+        global_parameter_functions = {self.PAR_NAME: 'lambda**2'}
+        function_variables = ['lambda']
+
+        # Make sure it's not possible to have a parameter defined as a function and as a parameter state as well.
+        err_msg = f"Cannot specify {self.PAR_NAME} in 'state_parameters' and 'global_parameter_functions'"
+        with assert_raises_regexp(ValueError, err_msg):
+            run_thermodynamic_trailblazing_from_global_parameter_functions(
+                global_parameter_functions, function_variables,
+                compound_state, sampler_state, mcmc_move,
+                state_parameters=[(self.PAR_NAME, [0.0, 1.0])]
+            )
+
+        # Trailblaze returns the protocol for the actual parameters, not for the function variables.
+        protocol = run_thermodynamic_trailblazing_from_global_parameter_functions(
+            global_parameter_functions, function_variables,
             compound_state, sampler_state, mcmc_move,
-            checkpoint_dir_path=checkpoint_dir_path,
-            state_parameters=[(par_name, [0.0, 2.0])]
+            state_parameters=[('lambda', [0.0, 1.0])]
         )
-        len_first_protocol = len(first_protocol[par_name])
-        assert second_protocol[par_name][:len_first_protocol] == first_protocol[par_name]
-
-        # The info in the checkpoint files is correct.
-        _check_checkpoint_files(checkpoint_dir_path, second_protocol, len(oscillator.positions))
+        assert list(protocol.keys()) == [self.PAR_NAME]
+        parameter_protocol = protocol[self.PAR_NAME]
+        assert parameter_protocol[0] == 0
+        assert parameter_protocol[-1] == 1

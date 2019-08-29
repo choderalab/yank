@@ -2472,7 +2472,7 @@ class ExperimentBuilder(object):
                                                       restrained_atoms, sigma=3.0*unit.angstroms)
 
             # Find protocol.
-            alchemical_path = pipeline.trailblaze_alchemical_protocol(
+            alchemical_path = pipeline.run_thermodynamic_trailblazing(
                 thermodynamic_state, sampler_state, mcmc_move, state_parameters,
                 checkpoint_dir_path=trailblaze_dir_path, **trailblazer_options)
             optimal_protocols[phase_name] = alchemical_path

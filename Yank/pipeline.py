@@ -2034,10 +2034,11 @@ def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
     return sampler_states
 
 
-def trailblaze_alchemical_protocol(
+def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
         checkpoint_dir_path=None, std_potential_threshold=0.5,
-        threshold_tolerance=0.05, n_samples_per_state=100
+        threshold_tolerance=0.05, n_samples_per_state=100,
+        parameter_setters=None,
 ):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
@@ -2082,22 +2083,42 @@ def trailblaze_alchemical_protocol(
     n_samples_per_state : int
         How many samples to collect to estimate the overlap between two
         states.
+    parameter_setters : Dict[str, Callable]
+        If the parameter cannot be set in the ``thermodynamic_state``
+        with a simple call to ``setattr``, you can pass a dictionary
+        mapping the parameter name to a function
+        ``setter(thermodynamic_state, parameter_name, value)``. This
+        is useful for example to set global parameter function variables
+        with ``openmmtools.states.GlobalParameterState.set_function_variable``.
 
     Returns
     -------
-    optimal_protocol : dict {str, list of floats}
+    optimal_protocol : Dict[str, List[float]]
         The estimated protocol. Each dictionary key is one of the
         parameters in ``state_parameters``, and its values is the
         list of values that it takes in each state of the path.
 
     """
+    def _state_parameter_setter(state, parameter_name, value):
+        """Helper function to set state parameters."""
+        setattr(state, parameter_name, value)
+
     # Make sure that the state parameters to optimize have a clear order.
     assert (isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
+
+    # Handle mutable default arguments.
+    if parameter_setters is None:
+        parameter_setters = {}
+
+    # Create default setters for all other state parameters to later avoid if/else or try/except.
+    for parameter_name, _ in state_parameters:
+        if parameter_name not in parameter_setters:
+            parameter_setters[parameter_name] = _state_parameter_setter
 
     # Initialize protocol with the starting value.
     optimal_protocol = {par: [values[0]] for par, values in state_parameters}
 
-    # Check to see whether a trailblazing algorthim is already in progress,
+    # Check to see whether a trailblazing algorithm is already in progress,
     # and if so, restore to the previously checkpointed state.
     if checkpoint_dir_path is not None:
         # We save the protocol in a YAML file and the positions in netcdf.
@@ -2156,7 +2177,7 @@ def trailblaze_alchemical_protocol(
     # Make sure that thermodynamic_state is in the last explored
     # state, whether the algorithm was resumed or not.
     for state_parameter in optimal_protocol:
-        setattr(thermodynamic_state, state_parameter, optimal_protocol[state_parameter][-1])
+        parameter_setters[state_parameter](thermodynamic_state, state_parameter, optimal_protocol[state_parameter][-1])
 
     # We change only one parameter at a time.
     for state_parameter, values in state_parameters:
@@ -2206,7 +2227,7 @@ def trailblaze_alchemical_protocol(
                 assert search_direction * (optimal_protocol[state_parameter][-1] - current_parameter_value) < 0
 
                 # Get context in new thermodynamic state.
-                setattr(thermodynamic_state, state_parameter, current_parameter_value)
+                parameter_setters[state_parameter](thermodynamic_state, state_parameter, current_parameter_value)
                 context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
 
                 # Compute the energies at the sampled positions.
@@ -2249,6 +2270,114 @@ def trailblaze_alchemical_protocol(
 
     logger.debug('Alchemical path found: {}'.format(optimal_protocol))
     return optimal_protocol
+
+
+def run_thermodynamic_trailblazing_from_global_parameter_functions(
+        global_parameter_functions, function_variables,
+        thermodynamic_state, sampler_state, mcmc_move, state_parameters,
+        checkpoint_dir_path=None, std_potential_threshold=0.5,
+        threshold_tolerance=0.05, n_samples_per_state=100,
+        parameter_setters=None,
+):
+    """
+    Convenience function to run the thermodynamic trailblazing algorithm
+    from a path specified by a function.
+
+    Parameters
+    ----------
+    global_parameter_functions : Dict[str, Union[str, Callable]]
+        Map a parameter name to a mathematical expression as a string
+        or a function such as ``openmmtools.states.GlobalParameterFunction``.
+    function_variables : List[str]
+        A list of function variables entering the mathematical
+        expressions.
+    *args
+    **kwargs
+        Other parameters forwarded to ``run_thermodynamic_trailblazing``.
+
+    Returns
+    -------
+    optimal_protocol : Dict[str, List[float]]
+        The estimated protocol. Each dictionary key is one of the
+        parameters in ``state_parameters``, and its values is the
+        list of values that it takes in each state of the path.
+
+    See Also
+    --------
+    run_thermodynamic_trailblazing
+
+    """
+    def _function_variable_setter(state, parameter_name, value):
+        """Helper function to set global parameter function variables."""
+        state.set_function_variable(parameter_name, value)
+
+    # Handle mutable default arguments.
+    if parameter_setters is None:
+        parameter_setters = {}
+
+    # Make sure that the same parameter was not listed both as
+    # a function and a parameter to iterate.
+    for parameter_name, _ in state_parameters:
+        if parameter_name in global_parameter_functions:
+            raise ValueError(f"Cannot specify {parameter_name} in "
+                              "'state_parameters' and 'global_parameter_functions'")
+
+    # Make sure all function variables are in state_parameters.
+    state_parameter_dict = {x[0]: x[1] for x in state_parameters}
+    for function_variable in function_variables:
+        if function_variable not in state_parameter_dict:
+            raise ValueError(f"The variable '{function_variable}' must be given in 'state_parameters'")
+
+    # Do not modify original thermodynamic_state.
+    thermodynamic_state = copy.deepcopy(thermodynamic_state)
+
+    # Initialize all function variables in the thermodynamic state.
+    for function_variable in function_variables:
+        value = state_parameter_dict[function_variable][0]
+        thermodynamic_state.set_function_variable(function_variable, value)
+
+    # Assign global parameter functions.
+    for parameter_name, global_parameter_function in global_parameter_functions.items():
+        # If the user doesn't pass an instance of function class, create one.
+        if isinstance(global_parameter_function, str):
+            global_parameter_function = mmtools.states.GlobalParameterFunction(global_parameter_function)
+        setattr(thermodynamic_state, parameter_name, global_parameter_function)
+
+    # Use special setters for the function variables.
+    for function_variable in function_variables:
+        if parameter_name not in parameter_setters:
+            parameter_setters[function_variable] = _function_variable_setter
+
+    # Run trailblaze.
+    protocol = run_thermodynamic_trailblazing(
+        thermodynamic_state, sampler_state, mcmc_move, state_parameters,
+        checkpoint_dir_path=checkpoint_dir_path,
+        std_potential_threshold=std_potential_threshold,
+        threshold_tolerance=threshold_tolerance,
+        n_samples_per_state=n_samples_per_state,
+        parameter_setters=parameter_setters,
+    )
+    len_protocol = len(next(iter(protocol.values())))
+
+    # The algorithm returns the protocol for the function variables, not the original parameters.
+    function_variables_protocol = {var: protocol.pop(var) for var in function_variables}
+    original_parameters_protocol = {par: [] for par in global_parameter_functions}
+
+    # Rebuild the optimal discretization for the original parameters.
+    for state_idx in range(len_protocol):
+        # Set the function variable value so that the function is computed.
+        for function_variable in function_variables:
+            value = function_variables_protocol[function_variable][state_idx]
+            thermodynamic_state.set_function_variable(function_variable, value)
+
+        # Recover original parameters.
+        for parameter_name in original_parameters_protocol:
+            value = getattr(thermodynamic_state, parameter_name)
+            original_parameters_protocol[parameter_name].append(value)
+
+    # Update the total protocol.
+    protocol.update(original_parameters_protocol)
+    return protocol
 
 
 if __name__ == '__main__':
