@@ -2036,9 +2036,9 @@ def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
 
 def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        checkpoint_dir_path=None, std_potential_threshold=0.5,
+        parameter_setters=None, std_potential_threshold=0.5,
         threshold_tolerance=0.05, n_samples_per_state=100,
-        parameter_setters=None,
+        reversed_direction=False, checkpoint_dir_path=None
 ):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
@@ -2069,27 +2069,32 @@ def run_thermodynamic_trailblazing(
         of the parameter to be modified (e.g. ``lambda_electrostatics``,
         ``lambda_sterics``) and a list specifying the initial and final
         values for the path.
-    checkpoint_dir_path : str, optional
-        The path to the directory used to store the trailblaze information.
-        If this is given and the files exist, the algorithm will use this
-        information to resume in case it was previously interrupted. If
-        ``None``, no information is stored and it won't be possible to
-        resume. Default is ``None``.
-    std_potential_threshold : float
-        The threshold that determines how to separate the states between
-        each others.
-    threshold_tolerance : float
-        The tolerance on the found standard deviation.
-    n_samples_per_state : int
-        How many samples to collect to estimate the overlap between two
-        states.
-    parameter_setters : Dict[str, Callable]
+    parameter_setters : Dict[str, Callable], optional
         If the parameter cannot be set in the ``thermodynamic_state``
         with a simple call to ``setattr``, you can pass a dictionary
         mapping the parameter name to a function
         ``setter(thermodynamic_state, parameter_name, value)``. This
         is useful for example to set global parameter function variables
         with ``openmmtools.states.GlobalParameterState.set_function_variable``.
+    std_potential_threshold : float, optional
+        The threshold that determines how to separate the states between
+        each others.
+    threshold_tolerance : float, optional
+        The tolerance on the found standard deviation.
+    n_samples_per_state : int, optional
+        How many samples to collect to estimate the overlap between two
+        states.
+    reversed_direction : bool, optional
+        If True, the algorithm starts from the final state and traverses
+        the path from the end to the beginning. The returned path
+        discretization will still be ordered from the beginning to the
+        end following the order in ``state_parameters``.
+    checkpoint_dir_path : str, optional
+        The path to the directory used to store the trailblaze information.
+        If this is given and the files exist, the algorithm will use this
+        information to resume in case it was previously interrupted. If
+        ``None``, no information is stored and it won't be possible to
+        resume. Default is ``None``.
 
     Returns
     -------
@@ -2114,6 +2119,11 @@ def run_thermodynamic_trailblazing(
     for parameter_name, _ in state_parameters:
         if parameter_name not in parameter_setters:
             parameter_setters[parameter_name] = _state_parameter_setter
+
+    # Reverse the direction of the algorithm if requested.
+    if reversed_direction:
+        state_parameters = [(par_name, end_states.__class__(reversed(end_states)))
+                            for par_name, end_states in state_parameters]
 
     # Initialize protocol with the starting value.
     optimal_protocol = {par: [values[0]] for par, values in state_parameters}
@@ -2268,16 +2278,20 @@ def run_thermodynamic_trailblazing(
         trajectory_file.write_sampler_state(sampler_state)
         trajectory_file.close()
 
+    # If we have traversed the path in the reversed direction, re-invert
+    # the order of the discretized path.
+    if reversed_direction:
+        for par_name, values in optimal_protocol.items():
+            optimal_protocol[par_name] = values.__class__(reversed(values))
+
     logger.debug('Alchemical path found: {}'.format(optimal_protocol))
     return optimal_protocol
 
 
-def run_thermodynamic_trailblazing_from_global_parameter_functions(
+def run_thermodynamic_trailblazing_from_parameter_functions(
         global_parameter_functions, function_variables,
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        checkpoint_dir_path=None, std_potential_threshold=0.5,
-        threshold_tolerance=0.05, n_samples_per_state=100,
-        parameter_setters=None,
+        parameter_setters=None, **kwargs
 ):
     """
     Convenience function to run the thermodynamic trailblazing algorithm
@@ -2351,11 +2365,8 @@ def run_thermodynamic_trailblazing_from_global_parameter_functions(
     # Run trailblaze.
     protocol = run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        checkpoint_dir_path=checkpoint_dir_path,
-        std_potential_threshold=std_potential_threshold,
-        threshold_tolerance=threshold_tolerance,
-        n_samples_per_state=n_samples_per_state,
         parameter_setters=parameter_setters,
+        **kwargs
     )
     len_protocol = len(next(iter(protocol.values())))
 

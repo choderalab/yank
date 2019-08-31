@@ -187,14 +187,14 @@ class TestThermodynamicTrailblazing:
         # Make sure it's not possible to have a parameter defined as a function and as a parameter state as well.
         err_msg = f"Cannot specify {self.PAR_NAME} in 'state_parameters' and 'global_parameter_functions'"
         with assert_raises_regexp(ValueError, err_msg):
-            run_thermodynamic_trailblazing_from_global_parameter_functions(
+            run_thermodynamic_trailblazing_from_parameter_functions(
                 global_parameter_functions, function_variables,
                 compound_state, sampler_state, mcmc_move,
                 state_parameters=[(self.PAR_NAME, [0.0, 1.0])]
             )
 
         # Trailblaze returns the protocol for the actual parameters, not for the function variables.
-        protocol = run_thermodynamic_trailblazing_from_global_parameter_functions(
+        protocol = run_thermodynamic_trailblazing_from_parameter_functions(
             global_parameter_functions, function_variables,
             compound_state, sampler_state, mcmc_move,
             state_parameters=[('lambda', [0.0, 1.0])]
@@ -203,3 +203,15 @@ class TestThermodynamicTrailblazing:
         parameter_protocol = protocol[self.PAR_NAME]
         assert parameter_protocol[0] == 0
         assert parameter_protocol[-1] == 1
+
+    def test_reversed_direction(self):
+        """Make sure that a trailblaze run in the opposite direction still returns the parameters in the forward order."""
+        # Create a harmonic oscillator system to test.
+        compound_state, sampler_state = self.get_harmonic_oscillator()
+        mcmc_move = self.get_langevin_dynamics_move()
+        protocol = run_thermodynamic_trailblazing(
+            compound_state, sampler_state, mcmc_move,
+            state_parameters=[(self.PAR_NAME, [1.0, 0.0])],
+            reversed_direction=True
+        )
+        assert protocol[self.PAR_NAME] == [1.0, 0.0]
