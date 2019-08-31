@@ -1490,12 +1490,13 @@ class ExperimentBuilder(object):
         trailblazer_options:
             required: no
             type: dict
+            default: {}
             schema:
                 n_equilibration_iterations:
                     type: integer
                     default: 1000
                 constrain_receptor:
-                    type: bool
+                    type: boolean
                     default: no
                 n_samples_per_state:
                     type: integer
@@ -1506,6 +1507,13 @@ class ExperimentBuilder(object):
                 threshold_tolerance:
                     type: float
                     default: 0.05
+                reversed_direction:
+                    type: boolean
+                    default: yes
+                function_variable_name:
+                    required: no
+                    type: string
+                    check_with: defined_in_alchemical_path
 
         alchemical_path:
             required: yes
@@ -1514,7 +1522,7 @@ class ExperimentBuilder(object):
             type: [string, dict]
             anyof:
                 - allowed: [auto]
-                - check_with: specify_lambda_electrostatics_and_sterics
+                - check_with: [specify_lambda_electrostatics_and_sterics, math_expressions_variables_are_given]
 
             # If a dictionary, check that this is a valid path.
             keysrules:
@@ -2314,6 +2322,11 @@ class ExperimentBuilder(object):
         for phase_name in protocol:
             if protocol[phase_name]['alchemical_path'] == 'auto':
                 phases_to_generate.append(phase_name)
+            else:
+                # Check if there are mathematical expressions to discretize.
+                for parameter_name, parameter_values in protocol[phase_name]['alchemical_path'].items():
+                    if isinstance(parameter_values, str):
+                        phases_to_generate.append(phase_name)
         return phases_to_generate
 
     def _generate_experiments_protocols(self):
@@ -2394,32 +2407,16 @@ class ExperimentBuilder(object):
 
             logger.debug('Generating alchemical path for {}.{}'.format(experiment_path, phase_name))
             phase_factory = exp.phases[phase_idx]
-            is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
-                         len(phase_factory.topography.solvent_atoms) == 0)
 
-
-            # Obtain the options for the automatic discretization.
-            trailblazer_options = protocol[phase_name]['trailblazer_options']
+            # Obtain the options for the automatic discretization (avoid modifying the original).
+            trailblazer_options = copy.deepcopy(protocol[phase_name]['trailblazer_options'])
             n_equilibration_iterations = trailblazer_options.pop('n_equilibration_iterations')
             constrain_receptor = trailblazer_options.pop('constrain_receptor')
+            function_variable_name = trailblazer_options.pop('function_variable_name', None)
 
             # Determine the path (i.e. end states of the different lambdas).
-            state_parameters = []
-            # First, turn on the restraint if there are any.
-            if phase_factory.restraint is not None:
-                state_parameters.append(('lambda_restraints', [0.0, 1.0]))
-            # We support only lambda sterics and electrostatics for now.
-            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
-                state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
-            else:
-                state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
-            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
-                state_parameters.append(('lambda_sterics', [1.0, 1.0]))
-            else:
-                state_parameters.append(('lambda_sterics', [1.0, 0.0]))
-            # Turn the RMSD restraints off slowly at the end
-            if isinstance(phase_factory.restraint, restraints.RMSD):
-                state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+            alchemical_functions, state_parameters = self._determine_trailblaze_path(
+                phase_factory, protocol[phase_name]['alchemical_path'])
 
             # Now we let PhaseFactory and AlchemicalState initialize an initial
             # thermodynamic state and sampler state for the trailblaze.
@@ -2442,12 +2439,21 @@ class ExperimentBuilder(object):
                 phase_factory.options['minimize'] = False
                 phase_factory.options['number_of_equilibration_iterations'] = 0
 
-            # We only need to create a single thermo state to initialize trailblaze.
-            phase_factory.protocol = {par[0]: [par[1][0]] for par in state_parameters}
-            # We don't need to create unsampled states either.
+            # We only need to create a single thermo state for the equilibration,
+            # but AlchemicalPhase currently doesn't support alchemical functions yet
+            # so we need to set the state manually.
+            equilibration_protocol = {par[0]: [par[1][0]] for par in state_parameters}
+            if function_variable_name is not None:
+                variable_value = equilibration_protocol.pop(function_variable_name)[0]
+                expression_context = {function_variable_name: variable_value}
+                for parameter_name, alchemical_function in alchemical_functions.items():
+                    equilibration_protocol[parameter_name] = [alchemical_function(expression_context)]
+            phase_factory.protocol = equilibration_protocol
+
+            # We don't need to create unsampled states either for the initialization.
             phase_factory.options['anisotropic_dispersion_correction'] = False
 
-            # Create the thermodynamic state exactly as AlchemicalPhase would make it.
+            # Initialize: Create the thermodynamic state exactly as AlchemicalPhase would make it.
             alchemical_phase = phase_factory.initialize_alchemical_phase()
 
             # Get sampler and thermodynamic state and delete alchemical phase.
@@ -2472,9 +2478,13 @@ class ExperimentBuilder(object):
                                                       restrained_atoms, sigma=3.0*unit.angstroms)
 
             # Find protocol.
+            function_variables = tuple() if function_variable_name is None else [function_variable_name]
             alchemical_path = pipeline.run_thermodynamic_trailblazing(
                 thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-                checkpoint_dir_path=trailblaze_dir_path, **trailblazer_options)
+                checkpoint_dir_path=trailblaze_dir_path,
+                global_parameter_functions=alchemical_functions,
+                function_variables=function_variables,
+                **trailblazer_options)
             optimal_protocols[phase_name] = alchemical_path
 
         # Generate yaml script with updated protocol.
@@ -2483,6 +2493,52 @@ class ExperimentBuilder(object):
         for phase_name, alchemical_path in optimal_protocols.items():
             protocol[phase_name]['alchemical_path'] = alchemical_path
         self._generate_yaml(experiment, script_path, overwrite_protocol=protocol)
+
+    @staticmethod
+    def _determine_trailblaze_path(phase_factory, alchemical_path):
+        """Determine the path to discretize feeded to the trailblaze algorithm.
+
+        Parameters
+        ----------
+        phase_factory : AlchemicalPhaseFactory
+            The factory creating the AlchemicalPhase object.
+        alchemical_path : Union[str, Dict[str, Union[str, float Quantity]]]
+            Either 'auto' or the dictionary including mathematical
+            expressions or end states of the path to discretize.
+        """
+        state_parameters = []
+        alchemical_functions = {}
+
+        # If alchemical_path is set to 'auto', discretize the default path.
+        if alchemical_path == 'auto':
+            is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
+                         len(phase_factory.topography.solvent_atoms) == 0)
+            state_parameters = []
+
+            # First, turn on the restraint if there are any.
+            if phase_factory.restraint is not None:
+                state_parameters.append(('lambda_restraints', [0.0, 1.0]))
+            # We support only lambda sterics and electrostatics for now.
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
+                state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
+                state_parameters.append(('lambda_sterics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_sterics', [1.0, 0.0]))
+            # Turn the RMSD restraints off slowly at the end
+            if isinstance(phase_factory.restraint, restraints.RMSD):
+                state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+        else:
+            # Otherwise, differentiate between mathematical expressions and the function variable to build.
+            for parameter_name, value in alchemical_path.items():
+                if isinstance(value, str):
+                    alchemical_functions[parameter_name] = mmtools.alchemy.AlchemicalFunction(value)
+                else:
+                    state_parameters.append((parameter_name, value))
+
+        return alchemical_functions, state_parameters
 
     @mpiplus.on_single_node(rank=0, sync_nodes=True)
     def _generate_yaml(self, experiment, file_path, overwrite_protocol=None):

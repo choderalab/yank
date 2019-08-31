@@ -981,17 +981,30 @@ def test_validation_correct_protocols():
         modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
         yield ExperimentBuilder._validate_protocols, modified_protocol
 
-    # Trailblazer options.
+    # Try different options both with 'auto' and a path with alchemical functions.
+    function_protocol = copy.deepcopy(basic_protocol)
+    function_protocol['absolute-binding']['complex']['alchemical_path'] = {
+        'lambda_electrostatics': 'lambda**2',
+        'lambda_sterics': 'sqrt(lambda)',
+        'lambda': [1.0, 0.0]
+    }
     auto_protocol = copy.deepcopy(basic_protocol)
     auto_protocol['absolute-binding']['complex']['alchemical_path'] = 'auto'
+
     trailblazer_options = [
         {'n_equilibration_iterations': 1000, 'n_samples_per_state': 100,
          'std_potential_threshold': 0.5, 'threshold_tolerance': 0.05},
         {'n_equilibration_iterations': 100, 'n_samples_per_state': 10},
         {'std_potential_threshold': 1.0, 'threshold_tolerance': 0.5},
+        {'function_variable_name': 'lambda'},
+        {'function_variable_name': 'lambda', 'reverse_direction': False}
     ]
     for opts in trailblazer_options:
-        modified_protocol = copy.deepcopy(auto_protocol)
+        # Use the function protocol if the function variable is specified.
+        if 'function_variable_name' in opts:
+            modified_protocol = copy.deepcopy(function_protocol)
+        else:
+            modified_protocol = copy.deepcopy(auto_protocol)
         modified_protocol['absolute-binding']['complex']['trailblazer_options'] = opts
         yield ExperimentBuilder._validate_protocols, modified_protocol
 
@@ -1037,15 +1050,32 @@ def test_validation_wrong_protocols():
         modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
         yield assert_raises, YamlParseError, ExperimentBuilder._validate_protocols, modified_protocol
 
-    # Trailblazer options.
-    auto_protocol = copy.deepcopy(basic_protocol)
-    auto_protocol['absolute-binding']['complex']['alchemical_path'] = 'auto'
+    # Try different options both with 'auto' and a path with alchemical functions.
+    auto_path = 'auto'
+    no_lambda_path = {'lambda_electrostatics': 'lambda**2', 'lambda_sterics': 'sqrt(lambda)'}
+    hardcoded_path = {'lambda_electrostatics': [1.0, 0.0], 'lambda_sterics': [1.0, 0.0]}
+    correct_lambda_path = {'lambda': [1.0, 0.0], **no_lambda_path}
+    str_lambda_path = {'lambda': 'string', **no_lambda_path}
+    three_lambda_path = {'lambda': [1.0, 0.5, 0.0], **no_lambda_path}
+
+    # Each test case is (error_regex, options, alchemical_path)
     trailblazer_options = [
         ("n_equilibration_iterations:\n  - must be of integer type",
-            {'n_equilibration_iterations': 'bla'}),
+            {'n_equilibration_iterations': 'bla'}, auto_path),
+        ("Only mathematical expressions have been given with no values for their variables",
+            {}, no_lambda_path),
+        ("Mathematical expressions were detected but no function variable name was given",
+            {}, correct_lambda_path),
+        ("Function variable name 'lambda' is not defined in 'alchemical_path'",
+            {'function_variable_name': 'lambda'}, hardcoded_path),
+        ("Only mathematical expressions have been given with no values for their variables",
+            {'function_variable_name': 'lambda'}, str_lambda_path),
+        ("Only the two end-point values of function variable 'lambda' should be given.",
+            {'function_variable_name': 'lambda'}, three_lambda_path),
     ]
-    for regex, opts in trailblazer_options:
-        modified_protocol = copy.deepcopy(auto_protocol)
+    for regex, opts, alchemical_path in trailblazer_options:
+        modified_protocol = copy.deepcopy(basic_protocol)
+        modified_protocol['absolute-binding']['complex']['alchemical_path'] = alchemical_path
         modified_protocol['absolute-binding']['complex']['trailblazer_options'] = opts
         yield assert_raises_regexp, YamlParseError, regex, ExperimentBuilder._validate_protocols, modified_protocol
 
@@ -2930,69 +2960,111 @@ def test_run_solvation_experiment():
             assert yaml.load(f, Loader=yaml.FullLoader) == [['solvent1', 1], ['solvent2', -1]]
 
 
-def test_automatic_alchemical_path():
-    """Test automatic alchemical path found through the trailblaze algorithm."""
-    with mmtools.utils.temporary_directory() as tmp_dir:
+class TestTrailblazeAlchemicalPath:
+    """Test suite for the automatic discretization of the alchemical path."""
+
+    def _get_harmonic_oscillator_script(self, tmp_dir, alchemical_path='auto', trailblazer_options=None):
         # Setup only 1 hydration free energy system in implicit solvent and vacuum.
         yaml_script = get_template_script(tmp_dir, systems=['hydration-system'])
         yaml_script['systems']['hydration-system']['solvent1'] = 'GBSA-OBC2'
-
-        # We run trailblaze only for the phase in vacuum.
-        yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = 'auto'
         yaml_script['experiments']['system'] = 'hydration-system'
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
+
+        # We run trailblaze only for the phase in vacuum.
+        yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = alchemical_path
+        if trailblazer_options is not None:
+            yaml_script['protocols']['hydration-protocol']['solvent2']['trailblazer_options'] = trailblazer_options
 
         # Make the generation of the trailblaze samples inexpensive.
         yaml_script['mcmc_moves']['single']['n_steps'] = 1
         yaml_script['mcmc_moves']['single']['timestep'] = '0.5*femtosecond'
         yaml_script['samplers']['repex']['mcmc_moves'] = 'single'
         yaml_script['experiments']['sampler'] = 'repex'
-
         yaml_script['options']['platform'] = 'CPU'
-        yaml_script['options']['resume_setup'] = False
-        yaml_script['options']['resume_simulation'] = False
 
-        exp_builder = ExperimentBuilder(yaml_script)
+        return yaml_script
 
-        # ExperimentBuilder._get_experiment_protocol handles dummy protocols.
-        experiment_path, experiment_description = next(exp_builder._expand_experiments())
-        with assert_raises(FileNotFoundError):
-            exp_builder._get_experiment_protocol(experiment_path, experiment_description)
-        dummy_protocol = exp_builder._get_experiment_protocol(experiment_path, experiment_description,
-                                                              use_dummy_protocol=True)
-        assert dummy_protocol['solvent2']['alchemical_path'] == {}  # This is the dummy protocol.
+    def test_auto_alchemical_path(self):
+        """Test automatic alchemical path found by thermodynamic trailblazing when the option 'auto' is set."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            # Setup only 1 hydration free energy system in implicit solvent and vacuum.
+            yaml_script = self._get_harmonic_oscillator_script(
+                tmp_dir, alchemical_path='auto',
+                trailblazer_options={'n_equilibration_iterations': 0}
+            )
+            yaml_script['options']['resume_setup'] = False
+            yaml_script['options']['resume_simulation'] = False
+            exp_builder = ExperimentBuilder(yaml_script)
 
-        # check_resume should not raise exceptions at this point.
-        exp_builder._check_resume()
+            # ExperimentBuilder._get_experiment_protocol handles dummy protocols.
+            experiment_path, experiment_description = next(exp_builder._expand_experiments())
+            with assert_raises(FileNotFoundError):
+                exp_builder._get_experiment_protocol(experiment_path, experiment_description)
+            dummy_protocol = exp_builder._get_experiment_protocol(experiment_path, experiment_description,
+                                                                  use_dummy_protocol=True)
+            assert dummy_protocol['solvent2']['alchemical_path'] == {}  # This is the dummy protocol.
 
-        # Building the experiment should generate the alchemical path.
-        for experiment in exp_builder.build_experiments():
-            pass
+            # check_resume should not raise exceptions at this point.
+            exp_builder._check_resume()
 
-        # The experiment has the correct path. Only the path of solvent2 has been generated.
-        expected_generated_protocol = {
-            'lambda_electrostatics': [1.0, 0.0],
-            'lambda_sterics': [1.0, 1.0]
-        }
-        assert experiment.phases[0].protocol == yaml_script['protocols']['hydration-protocol']['solvent1']['alchemical_path']
-        assert experiment.phases[1].protocol == expected_generated_protocol
+            # Building the experiment should generate the alchemical path.
+            for experiment in exp_builder.build_experiments():
+                pass
 
-        # YANK takes advantage of the samples generated during the trailblaze.
-        assert isinstance(experiment.phases[0].sampler_states, mmtools.states.SamplerState)
-        assert len(experiment.phases[1].sampler_states) == 2
+            # The experiment has the correct path. Only the path of solvent2 has been generated.
+            expected_generated_protocol = {
+                'lambda_electrostatics': [1.0, 0.0],
+                'lambda_sterics': [1.0, 1.0]
+            }
+            assert experiment.phases[0].protocol == yaml_script['protocols']['hydration-protocol']['solvent1']['alchemical_path']
+            assert experiment.phases[1].protocol == expected_generated_protocol
 
-        # Resuming fails at this point because we have
-        # generated the YAML file containing the protocol.
-        with assert_raises(YamlParseError):
-            next(exp_builder.build_experiments())
+            # YANK takes advantage of the samples generated during the trailblaze.
+            assert isinstance(experiment.phases[0].sampler_states, mmtools.states.SamplerState)
+            assert len(experiment.phases[1].sampler_states) == 2
 
-        # When resuming, ExperimentBuilder should recycle the path from the previous run.
-        generated_yaml_script_path = exp_builder._get_generated_yaml_script_path('')
-        last_touched_yaml = os.stat(generated_yaml_script_path).st_mtime
-        exp_builder._options['resume_setup'] = True
-        exp_builder._options['resume_simulation'] = True
-        exp_builder.run_experiments()
-        assert last_touched_yaml == os.stat(generated_yaml_script_path).st_mtime
+            # Resuming fails at this point because we have
+            # generated the YAML file containing the protocol.
+            with assert_raises(YamlParseError):
+                next(exp_builder.build_experiments())
+
+            # When resuming, ExperimentBuilder should recycle the path from the previous run.
+            generated_yaml_script_path = exp_builder._get_generated_yaml_script_path('')
+            last_touched_yaml = os.stat(generated_yaml_script_path).st_mtime
+            exp_builder._options['resume_setup'] = True
+            exp_builder._options['resume_simulation'] = True
+            exp_builder.run_experiments()
+            assert last_touched_yaml == os.stat(generated_yaml_script_path).st_mtime
+
+    def test_alchemical_functions_path(self):
+        """Test automatic alchemical path found from alchemical functions."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            # Setup only 1 hydration free energy system in implicit solvent and vacuum.
+            yaml_script = self._get_harmonic_oscillator_script(
+                tmp_dir,
+                alchemical_path={'lambda_electrostatics': 'lambda',
+                                 'lambda_sterics': 'lambda',
+                                 'lambda': [0.0, 1.0]},
+                trailblazer_options={'function_variable_name': 'lambda',
+                                     'n_equilibration_iterations': 0}
+            )
+            exp_builder = ExperimentBuilder(yaml_script)
+
+            # Building the experiment should generate the alchemical path.
+            for experiment in exp_builder.build_experiments():
+                pass
+
+            # The experiment has the correct path. Only the path of solvent2 has been generated.
+            expected_generated_protocol = {
+                'lambda_electrostatics': [0.0, 1.0],
+                'lambda_sterics': [0.0, 1.0]
+            }
+            assert experiment.phases[0].protocol == yaml_script['protocols']['hydration-protocol']['solvent1']['alchemical_path']
+            assert experiment.phases[1].protocol == expected_generated_protocol, experiment.phases[1].protocol
+
+            # YANK takes advantage of the samples generated during the trailblaze.
+            assert isinstance(experiment.phases[0].sampler_states, mmtools.states.SamplerState)
+            assert len(experiment.phases[1].sampler_states) == 2
 
 
 def test_experiment_nan():

@@ -191,16 +191,52 @@ class YANKCerberusValidator(cerberus.Validator):
                 not ('lambda_sterics' in value and 'lambda_electrostatics' in value)):
             self._error(field, "Missing required keys lambda_sterics and/or lambda_electrostatics")
 
+    def _check_with_math_expressions_variables_are_given(self, field, value):
+        """Check that in the alchemical path math expressions and function variables are correctly configured."""
+        if not ( (isinstance(value, dict) or isinstance(value, collections.OrderedDict)) ):
+            return
+        # Check that there is at least one non-string value in the
+        # alchemical path that may correspond to the end state values
+        # of the mathematical expressions.
+        string_entries = []
+        for parameter_name, parameter_values in value.items():
+            if isinstance(parameter_values, str):
+                string_entries.append(parameter_name)
+
+        # Check that there is at least 1 non-string entry.
+        if len(string_entries) == len(value):
+            self._error(field, "Only mathematical expressions have been given with no values for their variables")
+
+        # If there are indeed mathematical expressions, make sure the function variable is given.
+        if len(string_entries) > 0:
+            try:
+                function_variable_name = self.root_document['trailblazer_options']['function_variable_name']
+            except KeyError:
+                self._error(field, ("Mathematical expressions were detected but no function "
+                                    "variable name was given in the 'trailblazer_options' section"))
+            else:
+                # The function variable should have exactly two end states.
+                if len(value[function_variable_name]) != 2:
+                    self._error(field, f"Only the two end-point values of function variable '{function_variable_name}' should be given.")
+
     def _check_with_lambda_between_0_and_1(self, field, value):
         """Ensure keys which are lambda values are in fact between 0 and 1"""
-        base_error = "Entries with a 'lambda_' must be a float in [0, 1]. Values {} are not."
+        if "lambda_" not in field or not isinstance(value, list):
+            return
+
         collected_bad_values = []
-        if "lambda_" in field:
-            for single_value in value:
-                if not (isinstance(single_value, float) and 0 <= single_value <= 1.0):
-                    collected_bad_values.append(single_value)
+        for single_value in value:
+            if not (isinstance(single_value, float) and 0 <= single_value <= 1.0):
+                collected_bad_values.append(single_value)
+
         if len(collected_bad_values):
-            self._error(field, base_error.format(collected_bad_values))
+            err_msg = "Entries with a 'lambda_' must be a float in [0, 1]. Values {} are not."
+            self._error(field, err_msg.format(collected_bad_values))
+
+    def _check_with_defined_in_alchemical_path(self, field, value):
+        """When a function variable name is given in trailblazer_options, check that it's defined in alchemical_path."""
+        if value not in self.root_document['alchemical_path']:
+            self._error(field, f"Function variable name '{value}' is not defined in 'alchemical_path'")
 
     def _check_with_is_restraint_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
