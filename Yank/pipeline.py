@@ -1994,7 +1994,7 @@ class _DCDTrajectoryFile(mdtraj.formats.dcd.DCDTrajectoryFile):
 
     def write_sampler_state(self, sampler_state):
         a, b, c, alpha, beta, gamma = mdtraj.utils.box_vectors_to_lengths_and_angles(
-            *(sampler_state.box_vectors / unit.angstrom))
+            *(np.array(sampler_state.box_vectors / unit.angstrom)))
         super().write(sampler_state.positions / unit.angstrom,
                       (a, b, c), (alpha, beta, gamma))
 
@@ -2229,7 +2229,7 @@ def run_thermodynamic_trailblazing(
                                              force_overwrite=True)
         if len_trajectory > 0:
             for i in range(len_trajectory):
-                trajectory_file.write_sampler_state(sampler_state[i])
+                trajectory_file.write_sampler_state(sampler_states[i])
             # Make sure the next search starts from the last saved position
             # unless the previous calculation was interrupted before the
             # first position could be saved.
