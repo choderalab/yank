@@ -2038,7 +2038,8 @@ def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
         parameter_setters=None, std_potential_threshold=0.5,
         threshold_tolerance=0.05, n_samples_per_state=100,
-        reversed_direction=False, checkpoint_dir_path=None
+        reversed_direction=False, global_parameter_functions=None,
+        function_variables=tuple(), checkpoint_dir_path=None
 ):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
@@ -2055,6 +2056,10 @@ def run_thermodynamic_trailblazing(
     is specified. This will create two files called 'protocol.yaml' and
     'coordinates.dcd' storing the protocol and initial positions and box
     vectors for each state that are generated while running the algorithm.
+
+    It is also possibleto discretize a path specified through maathematical
+    expressions through the arguments ``global_parameter_function`` and
+    ``function_variables``.
 
     Parameters
     ----------
@@ -2089,6 +2094,12 @@ def run_thermodynamic_trailblazing(
         the path from the end to the beginning. The returned path
         discretization will still be ordered from the beginning to the
         end following the order in ``state_parameters``.
+    global_parameter_functions : Dict[str, Union[str, openmmtools.states.GlobalParameterFunction]], optional
+        Map a parameter name to a mathematical expression as a string
+        or a ``openmmtools.states.GlobalParameterFunction`` object.
+    function_variables : List[str], optional
+        A list of function variables entering the mathematical
+        expressions.
     checkpoint_dir_path : str, optional
         The path to the directory used to store the trailblaze information.
         If this is given and the files exist, the algorithm will use this
@@ -2108,17 +2119,57 @@ def run_thermodynamic_trailblazing(
         """Helper function to set state parameters."""
         setattr(state, parameter_name, value)
 
+    def _function_variable_setter(state, parameter_name, value):
+        """Helper function to set global parameter function variables."""
+        state.set_function_variable(parameter_name, value)
+
     # Make sure that the state parameters to optimize have a clear order.
     assert (isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
+
+    # Create unordered helper variable.
+    state_parameter_dict = {x[0]: x[1] for x in state_parameters}
+
+    # Do not modify original thermodynamic_state.
+    thermodynamic_state = copy.deepcopy(thermodynamic_state)
 
     # Handle mutable default arguments.
     if parameter_setters is None:
         parameter_setters = {}
+    if global_parameter_functions is None:
+        global_parameter_functions = {}
 
+    # Make sure that the same parameter was not listed both as
+    # a function and a parameter to iterate.
+    for parameter_name, _ in state_parameters:
+        if parameter_name in global_parameter_functions:
+            raise ValueError(f"Cannot specify {parameter_name} in "
+                              "'state_parameters' and 'global_parameter_functions'")
+
+    # Make sure all function variables are in state_parameters.
+    for function_variable in function_variables:
+        if function_variable not in state_parameter_dict:
+            raise ValueError(f"The variable '{function_variable}' must be given in 'state_parameters'")
+
+    # Use special setters for the function variables.
+    for function_variable in function_variables:
+        if parameter_name not in parameter_setters:
+            parameter_setters[function_variable] = _function_variable_setter
     # Create default setters for all other state parameters to later avoid if/else or try/except.
     for parameter_name, _ in state_parameters:
         if parameter_name not in parameter_setters:
             parameter_setters[parameter_name] = _state_parameter_setter
+
+    # Initialize all function variables in the thermodynamic state.
+    for function_variable in function_variables:
+        value = state_parameter_dict[function_variable][0]
+        thermodynamic_state.set_function_variable(function_variable, value)
+
+    # Assign global parameter functions.
+    for parameter_name, global_parameter_function in global_parameter_functions.items():
+        # If the user doesn't pass an instance of function class, create one.
+        if isinstance(global_parameter_function, str):
+            global_parameter_function = mmtools.states.GlobalParameterFunction(global_parameter_function)
+        setattr(thermodynamic_state, parameter_name, global_parameter_function)
 
     # Reverse the direction of the algorithm if requested.
     if reversed_direction:
@@ -2284,94 +2335,11 @@ def run_thermodynamic_trailblazing(
         for par_name, values in optimal_protocol.items():
             optimal_protocol[par_name] = values.__class__(reversed(values))
 
-    logger.debug('Alchemical path found: {}'.format(optimal_protocol))
-    return optimal_protocol
-
-
-def run_thermodynamic_trailblazing_from_parameter_functions(
-        global_parameter_functions, function_variables,
-        thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        parameter_setters=None, **kwargs
-):
-    """
-    Convenience function to run the thermodynamic trailblazing algorithm
-    from a path specified by a function.
-
-    Parameters
-    ----------
-    global_parameter_functions : Dict[str, Union[str, Callable]]
-        Map a parameter name to a mathematical expression as a string
-        or a function such as ``openmmtools.states.GlobalParameterFunction``.
-    function_variables : List[str]
-        A list of function variables entering the mathematical
-        expressions.
-    *args
-    **kwargs
-        Other parameters forwarded to ``run_thermodynamic_trailblazing``.
-
-    Returns
-    -------
-    optimal_protocol : Dict[str, List[float]]
-        The estimated protocol. Each dictionary key is one of the
-        parameters in ``state_parameters``, and its values is the
-        list of values that it takes in each state of the path.
-
-    See Also
-    --------
-    run_thermodynamic_trailblazing
-
-    """
-    def _function_variable_setter(state, parameter_name, value):
-        """Helper function to set global parameter function variables."""
-        state.set_function_variable(parameter_name, value)
-
-    # Handle mutable default arguments.
-    if parameter_setters is None:
-        parameter_setters = {}
-
-    # Make sure that the same parameter was not listed both as
-    # a function and a parameter to iterate.
-    for parameter_name, _ in state_parameters:
-        if parameter_name in global_parameter_functions:
-            raise ValueError(f"Cannot specify {parameter_name} in "
-                              "'state_parameters' and 'global_parameter_functions'")
-
-    # Make sure all function variables are in state_parameters.
-    state_parameter_dict = {x[0]: x[1] for x in state_parameters}
-    for function_variable in function_variables:
-        if function_variable not in state_parameter_dict:
-            raise ValueError(f"The variable '{function_variable}' must be given in 'state_parameters'")
-
-    # Do not modify original thermodynamic_state.
-    thermodynamic_state = copy.deepcopy(thermodynamic_state)
-
-    # Initialize all function variables in the thermodynamic state.
-    for function_variable in function_variables:
-        value = state_parameter_dict[function_variable][0]
-        thermodynamic_state.set_function_variable(function_variable, value)
-
-    # Assign global parameter functions.
-    for parameter_name, global_parameter_function in global_parameter_functions.items():
-        # If the user doesn't pass an instance of function class, create one.
-        if isinstance(global_parameter_function, str):
-            global_parameter_function = mmtools.states.GlobalParameterFunction(global_parameter_function)
-        setattr(thermodynamic_state, parameter_name, global_parameter_function)
-
-    # Use special setters for the function variables.
-    for function_variable in function_variables:
-        if parameter_name not in parameter_setters:
-            parameter_setters[function_variable] = _function_variable_setter
-
-    # Run trailblaze.
-    protocol = run_thermodynamic_trailblazing(
-        thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        parameter_setters=parameter_setters,
-        **kwargs
-    )
-    len_protocol = len(next(iter(protocol.values())))
-
-    # The algorithm returns the protocol for the function variables, not the original parameters.
-    function_variables_protocol = {var: protocol.pop(var) for var in function_variables}
+    # If we used global parameter functions, the optimal_protocol at this
+    # point is a discratization of the function_variables, not the original
+    # parameters so we convert it back.
+    len_protocol = len(next(iter(optimal_protocol.values())))
+    function_variables_protocol = {var: optimal_protocol.pop(var) for var in function_variables}
     original_parameters_protocol = {par: [] for par in global_parameter_functions}
 
     # Rebuild the optimal discretization for the original parameters.
@@ -2387,8 +2355,10 @@ def run_thermodynamic_trailblazing_from_parameter_functions(
             original_parameters_protocol[parameter_name].append(value)
 
     # Update the total protocol.
-    protocol.update(original_parameters_protocol)
-    return protocol
+    optimal_protocol.update(original_parameters_protocol)
+
+    logger.debug('Alchemical path found: {}'.format(optimal_protocol))
+    return optimal_protocol
 
 
 if __name__ == '__main__':

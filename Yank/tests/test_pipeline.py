@@ -187,17 +187,19 @@ class TestThermodynamicTrailblazing:
         # Make sure it's not possible to have a parameter defined as a function and as a parameter state as well.
         err_msg = f"Cannot specify {self.PAR_NAME} in 'state_parameters' and 'global_parameter_functions'"
         with assert_raises_regexp(ValueError, err_msg):
-            run_thermodynamic_trailblazing_from_parameter_functions(
-                global_parameter_functions, function_variables,
+            run_thermodynamic_trailblazing(
                 compound_state, sampler_state, mcmc_move,
-                state_parameters=[(self.PAR_NAME, [0.0, 1.0])]
+                state_parameters=[(self.PAR_NAME, [0.0, 1.0])],
+                global_parameter_functions=global_parameter_functions,
+                function_variables=function_variables,
             )
 
         # Trailblaze returns the protocol for the actual parameters, not for the function variables.
-        protocol = run_thermodynamic_trailblazing_from_parameter_functions(
-            global_parameter_functions, function_variables,
+        protocol = run_thermodynamic_trailblazing(
             compound_state, sampler_state, mcmc_move,
-            state_parameters=[('lambda', [0.0, 1.0])]
+            state_parameters=[('lambda', [0.0, 1.0])],
+            global_parameter_functions=global_parameter_functions,
+            function_variables=function_variables,
         )
         assert list(protocol.keys()) == [self.PAR_NAME]
         parameter_protocol = protocol[self.PAR_NAME]
