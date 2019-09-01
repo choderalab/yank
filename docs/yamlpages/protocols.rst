@@ -137,28 +137,29 @@ More options for automatic determination of the alchemical path
 
 .. code-block:: yaml
 
-   protocols:
-     {UserDefinedProtocol}:
-       {PhaseName1}:
-         trailblazer_options:
-           # Number of initial equilibration iterations performed in the first state before running the algorithm.
-           n_equilibration_iterations: 1000
-           # Whether the heavy atoms of the receptor are positionally restrained with a harmonic potential during the algorithm.
-           constrain_receptor: false
-           # Number of samples used to estimate the standard deviation of the potential between two states.
-           n_samples_per_state: 100
-           # The "distance" in potential standard deviation between two intermediate states up to 'threshold_tolerance'.
-           std_potential_threshold: 0.5  # in kT
-           threshold_tolerance: 0.05  # in kT
-           # Whether to traverse the path in the forward (given by 'alchemical_path') or reversed direction.
-           reversed_direction: true
-           # A variable controlling the path if 'alchemical_path' contains mathematical expressions.
-           function_variable_name: lambda
+protocols:
+  {UserDefinedProtocol}:
+    {PhaseName1}:
+      trailblazer_options:
+        # Number of initial equilibration iterations performed in the first state before running the algorithm.
+        n_equilibration_iterations: 1000
+        # Whether the heavy atoms of the receptor are positionally restrained with a harmonic potential during the algorithm.
+        constrain_receptor: false
+        # Number of samples used to estimate the standard deviation of the potential between two states.
+        n_samples_per_state: 100
+        # The "distance" in potential standard deviation between two intermediate states up to 'threshold_tolerance'.
+        std_potential_threshold: 0.5  # in kT
+        threshold_tolerance: 0.05  # in kT
+        # Whether to traverse the path in the forward (given by 'alchemical_path') or reversed direction.
+        reversed_direction: true
+        # A variable controlling the path if 'alchemical_path' contains mathematical expressions.
+        function_variable_name: lambda
 
-         alchemical_path:
-           lambda_electrostatics: 2*(lambda - 0.5) * step(lambda - 0.5)
-           lambda_sterics: step_hm(lambda - 0.5) + 2*lambda * step_hm(0.5 - lambda)
-           lambda: [1.0, 0.0]
+      alchemical_path:
+        # Deactivate electrostatic interactions before decoupling the Lennard-Jones potential.
+        lambda_electrostatics: 2*(lambda - 0.5) * step(lambda - 0.5)
+        lambda_sterics: step_hm(lambda - 0.5) + 2*lambda * step_hm(0.5 - lambda)
+        lambda: [1.0, 0.0]
 
 It is possible to set some of the parameters of the algorithm performing the path discretization in the
 ``trailblazer_options`` tag. Moreover, instead of ``alchemical_path: auto`` you can express the alchemical variables
