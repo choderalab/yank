@@ -997,7 +997,7 @@ def test_validation_correct_protocols():
         {'n_equilibration_iterations': 100, 'n_samples_per_state': 10},
         {'std_potential_threshold': 1.0, 'threshold_tolerance': 0.5},
         {'function_variable_name': 'lambda'},
-        {'function_variable_name': 'lambda', 'reverse_direction': False}
+        {'function_variable_name': 'lambda', 'reversed_direction': False}
     ]
     for opts in trailblazer_options:
         # Use the function protocol if the function variable is specified.
