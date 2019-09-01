@@ -130,10 +130,53 @@ the path determination are used to seed the replicas of Hamiltonian replica exch
 in the ``options`` section is set to ``yes``, this is the stage where the minimization of the input structure occurs.
 
 
+.. _yaml_protocols_auto_options:
+
+More options for automatic determination of the alchemical path
+---------------------------------------------------------------
+
+.. code-block:: yaml
+
+   protocols:
+     {UserDefinedProtocol}:
+       {PhaseName1}:
+         trailblazer_options:
+           # Number of initial equilibration iterations performed in the first state before running the algorithm.
+           n_equilibration_iterations: 1000
+           # Whether the heavy atoms of the receptor are positionally restrained with a harmonic potential during the algorithm.
+           constrain_receptor: false
+           # Number of samples used to estimate the standard deviation of the potential between two states.
+           n_samples_per_state: 100
+           # The "distance" in potential standard deviation between two intermediate states up to 'threshold_tolerance'.
+           std_potential_threshold: 0.5  # in kT
+           threshold_tolerance: 0.05  # in kT
+           # Whether to traverse the path in the forward (given by 'alchemical_path') or reversed direction.
+           reversed_direction: true
+           # A variable controlling the path if 'alchemical_path' contains mathematical expressions.
+           function_variable_name: lambda
+
+         alchemical_path:
+           lambda_electrostatics: 2*(lambda - 0.5) * step(lambda - 0.5)
+           lambda_sterics: step_hm(lambda - 0.5) + 2*lambda * step_hm(0.5 - lambda)
+           lambda: [1.0, 0.0]
+
+It is possible to set some of the parameters of the algorithm performing the path discretization in the
+``trailblazer_options`` tag. Moreover, instead of ``alchemical_path: auto`` you can express the alchemical variables
+in terms of mathematical Python expressions depending on a variable that will be discretized by the algorihtm. In this
+case, ``alchemical_path`` must contain the value of the end states assumed by the variable. In the example above,
+electrostatic interactions are deactivated beetween the variable ``lambda`` 1.0 and 0.5, while Lennard-Jones potential
+is decoupled between ``lambda`` 0.5 and 0.0.
+
+All functions available in the Python standard module ``math`` are available together with
+* ``step(x)`` : Heaviside step function (1.0 for x=0)
+* ``step_hm(x)`` : Heaviside step function with half-maximum convention.
+* ``sign(x)`` : sign function (0.0 for x=0.0)
+
+
 .. _yaml_protocols_thermodynamic_variables:
 
-``temperature`` and ``pressure``
---------------------------------
+Temperature and pressure
+------------------------
 
 It is possible to vary temperature and pressure along the alchemical path, but the end states must have the same values.
 The number of window must be identical to the other lambda variables. A short example:
