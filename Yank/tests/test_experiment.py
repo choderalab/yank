@@ -395,7 +395,7 @@ def test_yaml_parsing():
     """
 
     exp_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
-    assert len(exp_builder._options) == 32
+    assert len(exp_builder._options) == 33
 
     # The global context cache has been set.
     assert mmtools.cache.global_context_cache.capacity == 9
