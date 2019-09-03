@@ -20,7 +20,8 @@ New features
 ^^^^^^^^^^^^
 - The thermodynamic trailblazing algorithm used for the authomatic generation of the alchemical path is now capable of
   resuming after an unexpected interruption or crash. The samples generated during the process are used to initialize
-  the replicas of the replica exchange or SAMS free energy calculation (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
+  the replicas of the replica exchange or SAMS free energy calculation. This behavior can be controlled through the
+  YAML ``start_from_trailblaze_samples`` option (`#1176 <https://github.com/choderalab/yank/pull/1176>`_, `#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - It is possible to control more options of the thermodynamic trailblazing algorithm and to discretize an alchemical
   path given through mathematical expressions enslaved to a generic variable (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - Added a ``--setup-only`` flag in the ``yank script`` CLI command to run the automatic setup pipeline without running

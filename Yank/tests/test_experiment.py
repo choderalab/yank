@@ -3019,10 +3019,6 @@ class TestTrailblazeAlchemicalPath:
             assert experiment.phases[0].protocol == yaml_script['protocols']['hydration-protocol']['solvent1']['alchemical_path']
             assert experiment.phases[1].protocol == expected_generated_protocol
 
-            # YANK takes advantage of the samples generated during the trailblaze.
-            assert isinstance(experiment.phases[0].sampler_states, mmtools.states.SamplerState)
-            assert len(experiment.phases[1].sampler_states) == 2
-
             # Resuming fails at this point because we have
             # generated the YAML file containing the protocol.
             with assert_raises(YamlParseError):
@@ -3035,6 +3031,32 @@ class TestTrailblazeAlchemicalPath:
             exp_builder._options['resume_simulation'] = True
             exp_builder.run_experiments()
             assert last_touched_yaml == os.stat(generated_yaml_script_path).st_mtime
+
+    def test_start_from_trailblaze_samples_path(self):
+        """Test the correct implementation of the option start_from_trailblaze_samples."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            # Setup only 1 hydration free energy system in implicit solvent and vacuum.
+            yaml_script = self._get_harmonic_oscillator_script(
+                tmp_dir, alchemical_path='auto',
+                trailblazer_options={'n_equilibration_iterations': 0}
+            )
+            exp_builder = ExperimentBuilder(yaml_script)
+
+            # YANK by default takes advantage of the samples generated during the trailblaze.
+            for experiment in exp_builder.build_experiments():
+                pass
+            assert isinstance(experiment.phases[0].sampler_states, mmtools.states.SamplerState)
+            trailblaze_sampler_states = experiment.phases[1].sampler_states
+            assert len(trailblaze_sampler_states) == 2
+
+            # Unless the option start_from_trailblaze_samples is False.
+            exp_builder._options['start_from_trailblaze_samples'] = False
+            for experiment in exp_builder.build_experiments():
+                pass
+            input_sampler_state = experiment.phases[1].sampler_states
+            assert isinstance(input_sampler_state, mmtools.states.SamplerState)
+            assert not np.allclose(trailblaze_sampler_states[0].positions, input_sampler_state.positions)
+            assert not np.allclose(trailblaze_sampler_states[1].positions, input_sampler_state.positions)
 
     def test_alchemical_functions_path(self):
         """Test automatic alchemical path found from alchemical functions."""

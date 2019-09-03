@@ -556,7 +556,8 @@ class ExperimentBuilder(object):
         'hydrogen_mass': 1 * unit.amu,
         'default_nsteps_per_iteration': 500,
         'default_timestep': 2.0 * unit.femtosecond,
-        'default_number_of_iterations': 5000
+        'default_number_of_iterations': 5000,
+        'start_from_trailblaze_samples': True
     }
 
     def __init__(self, script=None, job_id=None, n_jobs=None):
@@ -3029,22 +3030,23 @@ class ExperimentBuilder(object):
             # If we have generated samples with trailblaze, we start the
             # simulation from those samples. Also, we can turn off minimization
             # as it has been already performed before trailblazing.
-            trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
-                experiment_path, phase_name)
-            try:
-                sampler_state = pipeline.read_trailblaze_checkpoint_coordinates(
-                    trailblaze_checkpoint_dir_path)
-            except FileNotFoundError:
-                # Just keep the sampler state read from the inpcrd file.
-                pass
-            else:
-                # If this is SAMS, just use the sampler state associated
-                # to the initial thermodynamic state.
-                if isinstance(sampler, mmtools.multistate.SAMSSampler):
-                    sampler_state = sampler_state[0]
-                # Also, these states have been already minimized so we
-                # can skip a second minimization.
-                phase_opts['minimize'] = False
+            if exp_opts['start_from_trailblaze_samples'] is True:
+                trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
+                    experiment_path, phase_name)
+                try:
+                    sampler_state = pipeline.read_trailblaze_checkpoint_coordinates(
+                        trailblaze_checkpoint_dir_path)
+                except FileNotFoundError:
+                    # Just keep the sampler state read from the inpcrd file.
+                    pass
+                else:
+                    # If this is SAMS, just use the sampler state associated
+                    # to the initial thermodynamic state.
+                    if isinstance(sampler, mmtools.multistate.SAMSSampler):
+                        sampler_state = sampler_state[0]
+                    # Also, these states have been already minimized so we
+                    # can skip a second minimization.
+                    phase_opts['minimize'] = False
 
             # Create phases.
             phases[phase_idx] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,

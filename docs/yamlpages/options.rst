@@ -623,6 +623,24 @@ Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
 
 
 
+.. _yaml_options_start_from_trailblaze_samples:
+
+.. rst-class:: html-toggle
+
+``start_from_trailblaze_samples``
+--------------------
+.. code-block:: yaml
+
+   options:
+     start_from_trailblaze_samples: yes
+
+If set to ``true`` or ``yes`` and the thermodynamic trailblazing algorithm is used to automatically determine the
+discretization of the alchemical path, the samples generated during the execution of the algorithm are used to initialize
+the replicas of the replica exchange or SAMS free energy calculation.
+
+Valid Options: [yes]/no
+
+
 
 .. _yaml_options_checkpoint_interval:
 
