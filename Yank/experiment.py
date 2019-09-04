@@ -51,57 +51,6 @@ HIGHEST_VERSION = '1.3'  # highest version of YAML syntax
 # UTILITY FUNCTIONS
 # =============================================================================
 
-def get_openmm_nonbonded_methods_strings():
-    """
-    Get the list of valid OpenMM Nonbonded methods YANK can process
-
-    Returns
-    -------
-    valid_methods : list of str
-
-    """
-    return ['NoCutoff', 'CutoffPeriodic', 'CutoffNonPeriodic', 'Ewald', 'PME']
-
-
-def get_openmm_implicit_nb_method_strings():
-    """
-    Get the subset of nonbonded method strings which work for implicit solvent
-
-    Returns
-    -------
-    valid_methods : list of str
-    """
-    return get_openmm_nonbonded_methods_strings()[:1]
-
-
-def get_openmm_explicit_nb_method_strings():
-    """
-    Get the subset of nonbonded method strings which work for explicit solvent
-
-    Returns
-    -------
-    valid_methods : list of str
-    """
-    return get_openmm_nonbonded_methods_strings()[1:]
-
-
-def to_openmm_app(input_string):
-    """
-    Converter function to be used with :func:`yank.utils.validate_parameters`.
-
-    Parameters
-    ----------
-    input_string : str
-        Method name of openmm.app to fetch
-
-    Returns
-    -------
-    method : Method of openmm.app
-        Returns openmm.app.{input_string}
-    """
-    return getattr(openmm.app, input_string)
-
-
 def _is_phase_completed(status, number_of_iterations):
     """Check if the stored simulation is completed.
 
@@ -607,7 +556,8 @@ class ExperimentBuilder(object):
         'hydrogen_mass': 1 * unit.amu,
         'default_nsteps_per_iteration': 500,
         'default_timestep': 2.0 * unit.femtosecond,
-        'default_number_of_iterations': 5000
+        'default_number_of_iterations': 5000,
+        'start_from_trailblaze_samples': True
     }
 
     def __init__(self, script=None, job_id=None, n_jobs=None):
@@ -1221,7 +1171,7 @@ class ExperimentBuilder(object):
                 return processes_per_experiment
             return int(processes_per_experiment)
 
-        special_conversions = {'constraints': to_openmm_app,
+        special_conversions = {'constraints': schema.to_openmm_app_coercer,
                                'default_number_of_iterations': schema.to_integer_or_infinity_coercer,
                                'anisotropic_dispersion_cutoff': check_anisotropic_cutoff,
                                'processes_per_experiment': check_processes_per_experiment}
@@ -1275,7 +1225,7 @@ class ExperimentBuilder(object):
             valueschema:
                 anyof:
                     - type: list
-                      validator: positive_int_list
+                      check_with: positive_int_list
                     - type: string
                     - type: integer
                       min: 0
@@ -1299,7 +1249,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: [smiles, name]
             required: yes
-            validator: [is_small_molecule, file_exists]
+            check_with: [is_small_molecule, file_exists]
         openeye:
             required: no
             type: dict
@@ -1323,7 +1273,7 @@ class ExperimentBuilder(object):
         select:
             required: no
             dependencies: filepath
-            validator: int_or_all_string
+            check_with: int_or_all_string
         """
         # Build small molecule Epik by hand as dict since we are fetching from another source
         epik_schema = schema.generate_signature_schema(moltools.schrodinger.run_epik,
@@ -1345,11 +1295,11 @@ class ExperimentBuilder(object):
         filepath:
             required: yes
             type: string
-            validator: [is_peptide, file_exists]
+            check_with: [is_peptide, file_exists]
         select:
             required: no
             dependencies: filepath
-            validator: int_or_all_string
+            check_with: int_or_all_string
         strip_protons:
             required: no
             type: boolean
@@ -1442,136 +1392,65 @@ class ExperimentBuilder(object):
             If the syntax for any solvent is not valid.
 
         """
-        openmm_nonbonded_strings = get_openmm_nonbonded_methods_strings()
-        mapped_openmm_nonbonded_methods = {nb_method: to_openmm_app(nb_method) for
-                                           nb_method in openmm_nonbonded_strings}
-        explicit_strings = get_openmm_explicit_nb_method_strings()
-        mapped_explicit_methods = [mapped_openmm_nonbonded_methods[method] for method in explicit_strings]
-        all_valid_explicit = explicit_strings + mapped_explicit_methods
-        implicit_strings = get_openmm_implicit_nb_method_strings()
-        mapped_implicit_methods = [mapped_openmm_nonbonded_methods[method] for method in implicit_strings]
-        all_valid_implicit = implicit_strings + mapped_implicit_methods
-
-        def is_supported_solvent_model(field, solvent_model, error):
-            """Check that solvent model name is supported."""
-            if solvent_model not in pipeline._OPENMM_LEAP_SOLVENT_MODELS_MAP:
-                error(field, "{} not in the known solvent models map!".format(solvent_model))
-
-        def ionic_strength_if_explicit_else_none(document, default="0.0*molar"):
-            """Set the ionic strength IFF solvent model is explicit"""
-            if document['nonbonded_method'] in all_valid_explicit:
-                return default
-            else:
-                return None
-
-        def solvent_model_if_explicit_else_none(document, default='tip4pew'):
-            """Set the solvent_model IFF solvent model is explicit"""
-
-            if document['nonbonded_method'] in all_valid_explicit:
-                return default
-            else:
-                return None
-
-        def to_openmm_app_unless_none(input_string):
-            """
-            Extension method of the :func:`to_openmm_app` method which returns None if None is given
-            Primarily used by the schema validators
-
-            Parameters
-            ----------
-            input_string : str or None
-                Method name of openmm.app to fetch
-
-            Returns
-            -------
-            method : Method of openmm.app or None
-                Returns openmm.app.{input_string}
-            """
-            return to_openmm_app(input_string) if input_string is not None else None
-
-        def to_unit_unless_none_coercer(compatible_units):
-            """
-            Extension to the :func:`utils.to_unit_coercer` method which also allows a None object to be set
-
-            See call to :func:`utils.to_unit_coercer` for call
-            """
-            unit_validator = schema.to_unit_coercer(compatible_units)
-
-            def _to_unit_unless_none(input_quantity):
-                if input_quantity is None:
-                    return None
-                else:
-                    return unit_validator(input_quantity)
-            return _to_unit_unless_none
-
-        # Define solvents Schema
-        # Create the basic solvent schema, ignoring things which have a dependency
-        # Some keys we manually tweak
-        base_solvent_schema = schema.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                                               exclude_keys=['nonbonded_method'])
-        implicit_solvent_default_schema = {'implicit_solvent': base_solvent_schema.pop('implicit_solvent')}
-        rigid_water_default_schema = {'rigid_water': base_solvent_schema.pop('rigid_water')}
-        nonbonded_cutoff_default_schema = {'nonbonded_cutoff': base_solvent_schema.pop('nonbonded_cutoff')}
         # Cerberus Schema Processing hierarchy:
         # Input Value -> {default value} -> default setter -> coerce -> allowed/validate
-        #  Handle the use cases for special keys
-        # nonbonded_method
-        base_solvent_schema['nonbonded_method'] = {
-            'allowed': [value for _, value in mapped_openmm_nonbonded_methods.items()],  # Only use valid openmm methods
-            'coerce': to_openmm_app,  # Cast the string first to valid method
-            'required': True,  # This must be set
-            'default': openmm_nonbonded_strings[0],  # Choose a default mapping
-        }
-        # Explicit solvent keys, populate required and dependencies in batch
-        explicit_only_keys = {
-            'clearance': {
-                'type': 'quantity',
-                'coerce': schema.to_unit_coercer(unit.angstrom),
-            },
-            'solvent_model': {
-                'type': 'string',
-                'nullable': True,
-                'validator': is_supported_solvent_model,
-                'default_setter': solvent_model_if_explicit_else_none
-            },
-            'positive_ion': {
-                'type': 'string'
-            },
-            'negative_ion': {
-                'type': 'string'
-            },
-            'ionic_strength': {
-                'type': 'quantity',
-                'coerce': to_unit_unless_none_coercer(unit.molar),
-                'default_setter': ionic_strength_if_explicit_else_none,
-                'nullable': True
-            },
-            **nonbonded_cutoff_default_schema
-        }
-        # Batch the explicit dependencies
-        for key in explicit_only_keys.keys():
-            explicit_only_keys[key]['dependencies'] = {'nonbonded_method': [mapped_openmm_nonbonded_methods[value] for
-                                                                            value in
-                                                                            get_openmm_explicit_nb_method_strings()]}
-            explicit_only_keys[key]['required'] = False
 
-        # Implicit solvent keys
-        # Input Value -> {default value} -> default setter -> coerce -> allowed/validate
-        implicit_only_keys = {**implicit_solvent_default_schema}
-        implicit_only_keys['implicit_solvent']['coerce'] = to_openmm_app_unless_none
-        implicit_only_keys['implicit_solvent']['dependencies'] = {'nonbonded_method': all_valid_implicit}
-        # Batch the implicit dependencies
-        for key in implicit_only_keys.keys():
-            implicit_only_keys[key]['dependencies'] = {'nonbonded_method': [mapped_openmm_nonbonded_methods[value] for
-                                                                            value in
-                                                                            get_openmm_implicit_nb_method_strings()]}
-            implicit_only_keys[key]['required'] = False
+        # First create the dynamically-created part of the schema from the createSystem() function.
+        solvent_schema = schema.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                                          exclude_keys=['nonbonded_method'])
 
-        # Vacuum solvent is implicitly defined when the `NoCutoff` scheme is selected and `implicit_solvent` is None
+        # The nonbonded_cutoff keyword is accepted only if the nonbonded method has a cutoff.
+        solvent_schema['nonbonded_cutoff'].update({
+            'check_with': 'only_with_cutoff'
+        })
 
-        # Finally, stitch the schema together
-        solvent_schema = {**base_solvent_schema, **explicit_only_keys, **implicit_only_keys,
-                          **rigid_water_default_schema, **cls._LEAP_PARAMETERS_DEFAULT_SCHEMA}
+        # The implicit_solvent keyword should be accepted only with no cutoff.
+        solvent_schema['implicit_solvent'].update({
+            'coerce': 'str_to_openmm_app',
+            'check_with': 'only_with_no_cutoff'
+        })
+
+        # Add leap schema.
+        solvent_schema.update(cls._LEAP_PARAMETERS_DEFAULT_SCHEMA)
+
+        # Schema for nonbonded_method and the automatic pipeline keywords.
+        solvent_schema.update(yaml.load("""
+        nonbonded_method:
+            required: yes
+            default: NoCutoff
+            coerce: str_to_openmm_app
+            check_with: is_valid_nonbonded_method
+
+        # Explicit solvent schema. These keywords are valid
+        # only if the nonbonded method has a cutoff.
+        clearance:
+            type: quantity
+            coerce: str_to_distance_unit
+            check_with: mandatory_with_cutoff
+        solvent_model:
+            required: no
+            nullable: yes
+            type: string
+            allowed: [tip3p, tip3pfb, tip4pew, tip5p, spce]
+            default_setter: tip4pew_or_none
+            check_with: only_with_cutoff
+        positive_ion:
+            required: no
+            type: string
+            check_with: only_with_cutoff
+        negative_ion:
+            required: no
+            type: string
+            check_with: only_with_cutoff
+        ionic_strength:
+            required: no
+            nullable: yes
+            type: quantity
+            default_setter: 0_molar_or_none
+            coerce: str_to_molar_unit
+            check_with: only_with_cutoff
+
+        """, Loader=yaml.FullLoader))
 
         solvent_validator = schema.YANKCerberusValidator(solvent_schema)
 
@@ -1607,6 +1486,56 @@ class ExperimentBuilder(object):
             If the syntax for any protocol is not valid.
 
         """
+
+        protocol_value_schema = yaml.load("""
+        trailblazer_options:
+            required: no
+            type: dict
+            default: {}
+            schema:
+                n_equilibration_iterations:
+                    type: integer
+                    default: 1000
+                constrain_receptor:
+                    type: boolean
+                    default: no
+                n_samples_per_state:
+                    type: integer
+                    default: 100
+                std_potential_threshold:
+                    type: float
+                    default: 0.5
+                threshold_tolerance:
+                    type: float
+                    default: 0.05
+                reversed_direction:
+                    type: boolean
+                    default: yes
+                function_variable_name:
+                    required: no
+                    type: string
+                    check_with: defined_in_alchemical_path
+
+        alchemical_path:
+            required: yes
+
+            # Must be a string ('auto') or a dictionary specifying the path.
+            type: [string, dict]
+            anyof:
+                - allowed: [auto]
+                - check_with: [specify_lambda_electrostatics_and_sterics, math_expressions_variables_are_given]
+
+            # If a dictionary, check that this is a valid path.
+            keysrules:
+                type: string
+            valuesrules:
+                type: [string, list]
+                check_with: lambda_between_0_and_1
+                schema:
+                    type: [float, quantity]
+                    coerce: str_to_unit
+        """, Loader=yaml.FullLoader)
+
         def sort_protocol(protocol):
             """Reorder phases in dictionary to have complex/solvent1 first."""
             sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
@@ -1626,78 +1555,25 @@ class ExperimentBuilder(object):
                                  'OR "solvent1" and "solvent2", the phase names must also be non-ambiguous so each '
                                  'keyword can only appear in a single phase, not multiple.')
 
-        def validate_string_auto(field, value, error):
-            if isinstance(value, str) and value != 'auto':
-                error(field, "Only the exact string 'auto' is accepted as a string argument, not {}.".format(value))
-
-        def cast_quantity_strings(value):
-            """Take an object and try to cast quantity strings to quantity, otherwise return object"""
-            if isinstance(value, str):
-                value = utils.quantity_from_string(value)
-            return value
-
-        def validate_required_entries_dict(field, value, error):
-            """Ensure the required entries are in the dict, string is checked by a separate validator"""
-            if isinstance(value, dict) or isinstance(value, collections.OrderedDict):
-                if 'lambda_sterics' not in value.keys() or 'lambda_electrostatics' not in value.keys():
-                    error(field, "Missing required keys lambda_sterics and/or lambda_electrostatics")
-
-        def validate_lambda_min_max(field, value, error):
-            """Ensure keys which are lambda values are in fact between 0 and 1"""
-            base_error = "Entries with a 'lambda_' must be a float between 0 and 1, inclusive. Values {} are not."
-            collected_bad_values = []
-            if "lambda_" in field:
-                for single_value in value:
-                    if not (isinstance(single_value, float) and 0 <= single_value <= 1.0):
-                        collected_bad_values.append(single_value)
-            if len(collected_bad_values):
-                error(field, base_error.format(collected_bad_values))
-
-        # Define protocol Schema
-        # Note: Cannot cleanly do yaml.dump(v.errors) for nested `schema`/`*of` logic from Cerberus until its 1.2
-        protocol_value_schema = {
-            'alchemical_path': {  # The only literal key
-                'required': True,  # Key is required
-                'type': ['string', 'dict'],  # Must be a string or dictionary
-                # Use this to check the string value until Cerberus 1.2 for `oneof`
-                # Check string with validate_string_auto, pass other values to next validator
-                # Check the dict values with validate_required_entries_doct, ignore other values
-                'validator': [validate_string_auto, validate_required_entries_dict],
-                'keyschema': {  # Validate the keys of this sub-dictionary against this schema
-                    'type': 'string'
-                },
-                'valueschema': {  # Validate the values of this sub-dictionary against this schema
-                    'type': 'list',  # They must be a list (dont accept single values)
-                    # Check if it has the `lambda_` string that its a float within [0,1]
-                    'validator': validate_lambda_min_max,
-                    'schema': {
-                        'type': ['float', 'quantity'],  # Ensure the output type is float or quantity
-                        # Cast strings to quantity. Everything else had to validate down to this point
-                        'coerce': cast_quantity_strings,
-                    }
-                }
-            }
-        }
-
-        # Validate the top level keys (cannot be done with Cerberus)
-        def validate_protocol_keys_and_values(protocol_id, protocol):
-            # Ensure the protocol is 2 keys
+        def validate_protocol(protocol_id, protocol):
+            # First, validate the top level keys (cannot be done with Cerberus).
+            # Ensure the protocol has 2 keys.
             if len(protocol) != 2:
                 raise YamlParseError('Protocol {} must only have two phases, found {}'.format(protocol_id,
                                                                                               len(protocol)))
-            # Ensure the protocol keys are in fact strings
-            keys_not_strings = []
-            key_string_error = 'Protocol {} has keys which are not strings: '.format(protocol_id)
-            for key in protocol.keys():
-                if not isinstance(key, str):
-                    keys_not_strings.append(key)
+            # Ensure the protocol keys are strings.
+            keys_not_strings = [k for k in protocol.keys() if not isinstance(k, str)]
             if len(keys_not_strings) > 0:
-                # The join(list_comprehension) forces invalid keys to a string so the join command works
-                raise YamlParseError(key_string_error + ', '.join(['{}'.format(key) for key in keys_not_strings]))
-            # Check for ordered dict or the sorted keys
+                key_string_error = f'Protocol {protocol_id} has keys which are not strings: '
+                # Convert non-string values to string for printing.
+                key_string_error += ', '.join([str(key) for key in keys_not_strings])
+                raise YamlParseError(key_string_error)
+
+            # Order the two phases, unless a ordered dictionary is given.
             if not isinstance(protocol, collections.OrderedDict):
                 protocol = sort_protocol(protocol)
-            # Now user cerberus to validate the alchemical path part
+
+            # Now user cerberus to validate the alchemical_path part.
             errored_phases = []
             for phase_key, phase_entry in protocol.items():
                 phase_validator = schema.YANKCerberusValidator(protocol_value_schema)
@@ -1707,21 +1583,23 @@ class ExperimentBuilder(object):
                 else:
                     # collect the errors
                     errored_phases.append([phase_key, yaml.dump(phase_validator.errors)])
+
+            # Riase informative error about all phases that failed.
             if len(errored_phases) > 0:
-                # Throw error
-                error = "Protocol {} failed because one or more of the phases did not validate, see the errors below " \
-                        "for more information.\n".format(protocol_id)
+                error = (f"Protocol {protocol_id} failed because one or more of the phases"
+                          " did not validate, see the errors below for more information.\n")
                 for phase_id, phase_error in errored_phases:
                     error += "Phase: {}\n----\n{}\n====\n".format(phase_id, phase_error)
                 raise YamlParseError(error)
-            # Finally return if everything is fine
+
+            # Finally return if everything is fine.
             return protocol
 
         validated_protocols = protocols_description.copy()
         # Schema validation
         for protocol_id, protocol_descr in protocols_description.items():
             # Error is raised in the function
-            validated_protocols[protocol_id] = validate_protocol_keys_and_values(protocol_id, protocol_descr)
+            validated_protocols[protocol_id] = validate_protocol(protocol_id, protocol_descr)
 
         return validated_protocols
 
@@ -1799,21 +1677,21 @@ class ExperimentBuilder(object):
             type: list
             schema:
                 type: string
-                validator: file_exists
+                check_with: file_exists
             dependencies: phase2_path
-            validator: supported_system_files
+            check_with: supported_system_file_format
         phase2_path:
             required: no
             type: list
             schema:
                 type: string
-                validator: file_exists
-            validator: supported_system_files
+                check_with: file_exists
+            check_with: supported_system_file_format
         gromacs_include_dir:
             required: no
             type: string
             dependencies: [phase1_path, phase2_path]
-            validator: directory_exists
+            check_with: directory_exists
 
         # Solvents
         solvent:
@@ -1821,7 +1699,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: [solvent1, solvent2]
             allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
-            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_RECEPTOR
+            check_with: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_RECEPTOR
             oneof:
                 - dependencies: [phase1_path, phase2_path]
                 - dependencies: [receptor, ligand]
@@ -1830,7 +1708,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: solvent
             allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
-            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            check_with: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
             oneof:
                 - dependencies: [phase1_path, phase2_path, solvent2]
                 - dependencies: [solute, solvent2]
@@ -1839,7 +1717,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: solvent
             allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
-            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            check_with: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
             oneof:
                 - dependencies: [phase1_path, phase2_path, solvent1]
                 - dependencies: [solute, solvent1]
@@ -1851,7 +1729,7 @@ class ExperimentBuilder(object):
             dependencies: [ligand, solvent]
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             excludes: [solute, phase1_path, phase2_path]
-            validator: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
+            check_with: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
         ligand:
             required: no
             type: string
@@ -1868,7 +1746,7 @@ class ExperimentBuilder(object):
             type: string
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             dependencies: [solvent1, solvent2]
-            validator: REGION_CLASH_DETERMINED_AT_RUNTIME
+            check_with: REGION_CLASH_DETERMINED_AT_RUNTIME
             excludes: [receptor, ligand]
         """
         # Load the YAML into a schema into dict format
@@ -1894,16 +1772,16 @@ class ExperimentBuilder(object):
             new_schema = system_schema.copy()
             # Handle the validators
             # Spin up the region clash calculators
-            new_schema['receptor']['validator'] = generate_region_clash_validator(system_descr, 'ligand', 'receptor')
-            new_schema['solute']['validator'] = generate_region_clash_validator(system_descr, 'solute')
+            new_schema['receptor']['check_with'] = generate_region_clash_validator(system_descr, 'ligand', 'receptor')
+            new_schema['solute']['check_with'] = generate_region_clash_validator(system_descr, 'solute')
             # "solvent"
-            new_schema['solvent']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
-                                                                                                      'receptor')
+            new_schema['solvent']['check_with'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                       'receptor')
             # "solvent1" and "solvent2
-            new_schema['solvent1']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
-                                                                                                       'solute')
-            new_schema['solvent2']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
-                                                                                                       'solute')
+            new_schema['solvent1']['check_with'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                        'solute')
+            new_schema['solvent2']['check_with'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                        'solute')
             return new_schema
 
         validated_systems = systems_description.copy()
@@ -1931,7 +1809,7 @@ class ExperimentBuilder(object):
                 type: string
             valueschema:
                 type: dict
-                validator: is_mcmc_move_constructor
+                check_with: is_mcmc_move_constructor
                 keyschema:
                     type: string
         """
@@ -1957,7 +1835,7 @@ class ExperimentBuilder(object):
                 type: string
             valueschema:
                 type: dict
-                validator: is_sampler_constructor
+                check_with: is_sampler_constructor
                 allow_unknown: yes
                 schema:
                     mcmc_moves:
@@ -2064,7 +1942,7 @@ class ExperimentBuilder(object):
         restraint:
             required: no
             type: dict
-            validator: is_restraint_constructor
+            check_with: is_restraint_constructor
             keyschema:
                 type: string
         """
@@ -2445,6 +2323,11 @@ class ExperimentBuilder(object):
         for phase_name in protocol:
             if protocol[phase_name]['alchemical_path'] == 'auto':
                 phases_to_generate.append(phase_name)
+            else:
+                # Check if there are mathematical expressions to discretize.
+                for parameter_name, parameter_values in protocol[phase_name]['alchemical_path'].items():
+                    if isinstance(parameter_values, str):
+                        phases_to_generate.append(phase_name)
         return phases_to_generate
 
     def _generate_experiments_protocols(self):
@@ -2475,8 +2358,7 @@ class ExperimentBuilder(object):
                            distributed_args=experiments_to_generate,
                            send_results_to=None, group_size=1, sync_nodes=True)
 
-    def _generate_experiment_protocol(self, experiment, constrain_receptor=False,
-                                      n_equilibration_iterations=None, **kwargs):
+    def _generate_experiment_protocol(self, experiment):
         """Generate auto alchemical paths for the given experiment.
 
         Creates a YAML script in the experiment folder with the found protocol.
@@ -2485,13 +2367,6 @@ class ExperimentBuilder(object):
         ----------
         experiment : Tuple[str, dict]
             A tuple with the experiment path and the experiment description.
-        constrain_receptor : bool, optional
-            If True, the receptor in a receptor-ligand system will have its
-            CA atoms constrained during optimization (default is False).
-        n_equilibration_iterations : None or int
-            The number of equilibration iterations to perform before running
-            the path search. If None, the function will determine the number
-            of iterations to run based on the system dimension.
 
         Other Parameters
         ----------------
@@ -2533,26 +2408,16 @@ class ExperimentBuilder(object):
 
             logger.debug('Generating alchemical path for {}.{}'.format(experiment_path, phase_name))
             phase_factory = exp.phases[phase_idx]
-            is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
-                         len(phase_factory.topography.solvent_atoms) == 0)
+
+            # Obtain the options for the automatic discretization (avoid modifying the original).
+            trailblazer_options = copy.deepcopy(protocol[phase_name]['trailblazer_options'])
+            n_equilibration_iterations = trailblazer_options.pop('n_equilibration_iterations')
+            constrain_receptor = trailblazer_options.pop('constrain_receptor')
+            function_variable_name = trailblazer_options.pop('function_variable_name', None)
 
             # Determine the path (i.e. end states of the different lambdas).
-            state_parameters = []
-            # First, turn on the restraint if there are any.
-            if phase_factory.restraint is not None:
-                state_parameters.append(('lambda_restraints', [0.0, 1.0]))
-            # We support only lambda sterics and electrostatics for now.
-            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
-                state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
-            else:
-                state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
-            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
-                state_parameters.append(('lambda_sterics', [1.0, 1.0]))
-            else:
-                state_parameters.append(('lambda_sterics', [1.0, 0.0]))
-            # Turn the RMSD restraints off slowly at the end
-            if isinstance(phase_factory.restraint, restraints.RMSD):
-                state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+            alchemical_functions, state_parameters = self._determine_trailblaze_path(
+                phase_factory, protocol[phase_name]['alchemical_path'])
 
             # Now we let PhaseFactory and AlchemicalState initialize an initial
             # thermodynamic state and sampler state for the trailblaze.
@@ -2568,16 +2433,6 @@ class ExperimentBuilder(object):
 
             if not os.path.isfile(os.path.join(trailblaze_dir_path, 'protocol.yaml')):
                 # TODO automatic equilibration?
-                if n_equilibration_iterations is None:
-                    if is_vacuum:  # Vacuum or small molecule in implicit solvent.
-                        n_equilibration_iterations = 0
-                    elif len(phase_factory.topography.receptor_atoms) == 0:  # Explicit solvent phase.
-                        n_equilibration_iterations = 250
-                    elif len(phase_factory.topography.solvent_atoms) == 0:  # Implicit complex phase.
-                        n_equilibration_iterations = 500
-                    else:  # Explicit complex phase
-                        n_equilibration_iterations = 1000
-
                 # Set number of equilibration iterations.
                 phase_factory.options['number_of_equilibration_iterations'] = n_equilibration_iterations
             else:
@@ -2585,12 +2440,21 @@ class ExperimentBuilder(object):
                 phase_factory.options['minimize'] = False
                 phase_factory.options['number_of_equilibration_iterations'] = 0
 
-            # We only need to create a single thermo state to initialize trailblaze.
-            phase_factory.protocol = {par[0]: [par[1][0]] for par in state_parameters}
-            # We don't need to create unsampled states either.
+            # We only need to create a single thermo state for the equilibration,
+            # but AlchemicalPhase currently doesn't support alchemical functions yet
+            # so we need to set the state manually.
+            equilibration_protocol = {par[0]: [par[1][0]] for par in state_parameters}
+            if function_variable_name is not None:
+                variable_value = equilibration_protocol.pop(function_variable_name)[0]
+                expression_context = {function_variable_name: variable_value}
+                for parameter_name, alchemical_function in alchemical_functions.items():
+                    equilibration_protocol[parameter_name] = [alchemical_function(expression_context)]
+            phase_factory.protocol = equilibration_protocol
+
+            # We don't need to create unsampled states either for the initialization.
             phase_factory.options['anisotropic_dispersion_correction'] = False
 
-            # Create the thermodynamic state exactly as AlchemicalPhase would make it.
+            # Initialize: Create the thermodynamic state exactly as AlchemicalPhase would make it.
             alchemical_phase = phase_factory.initialize_alchemical_phase()
 
             # Get sampler and thermodynamic state and delete alchemical phase.
@@ -2615,9 +2479,13 @@ class ExperimentBuilder(object):
                                                       restrained_atoms, sigma=3.0*unit.angstroms)
 
             # Find protocol.
-            alchemical_path = pipeline.trailblaze_alchemical_protocol(
+            function_variables = tuple() if function_variable_name is None else [function_variable_name]
+            alchemical_path = pipeline.run_thermodynamic_trailblazing(
                 thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-                checkpoint_dir_path=trailblaze_dir_path, **kwargs)
+                checkpoint_dir_path=trailblaze_dir_path,
+                global_parameter_functions=alchemical_functions,
+                function_variables=function_variables,
+                **trailblazer_options)
             optimal_protocols[phase_name] = alchemical_path
 
         # Generate yaml script with updated protocol.
@@ -2626,6 +2494,52 @@ class ExperimentBuilder(object):
         for phase_name, alchemical_path in optimal_protocols.items():
             protocol[phase_name]['alchemical_path'] = alchemical_path
         self._generate_yaml(experiment, script_path, overwrite_protocol=protocol)
+
+    @staticmethod
+    def _determine_trailblaze_path(phase_factory, alchemical_path):
+        """Determine the path to discretize feeded to the trailblaze algorithm.
+
+        Parameters
+        ----------
+        phase_factory : AlchemicalPhaseFactory
+            The factory creating the AlchemicalPhase object.
+        alchemical_path : Union[str, Dict[str, Union[str, float Quantity]]]
+            Either 'auto' or the dictionary including mathematical
+            expressions or end states of the path to discretize.
+        """
+        state_parameters = []
+        alchemical_functions = {}
+
+        # If alchemical_path is set to 'auto', discretize the default path.
+        if alchemical_path == 'auto':
+            is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
+                         len(phase_factory.topography.solvent_atoms) == 0)
+            state_parameters = []
+
+            # First, turn on the restraint if there are any.
+            if phase_factory.restraint is not None:
+                state_parameters.append(('lambda_restraints', [0.0, 1.0]))
+            # We support only lambda sterics and electrostatics for now.
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
+                state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
+                state_parameters.append(('lambda_sterics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_sterics', [1.0, 0.0]))
+            # Turn the RMSD restraints off slowly at the end
+            if isinstance(phase_factory.restraint, restraints.RMSD):
+                state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+        else:
+            # Otherwise, differentiate between mathematical expressions and the function variable to build.
+            for parameter_name, value in alchemical_path.items():
+                if isinstance(value, str):
+                    alchemical_functions[parameter_name] = mmtools.alchemy.AlchemicalFunction(value)
+                else:
+                    state_parameters.append((parameter_name, value))
+
+        return alchemical_functions, state_parameters
 
     @mpiplus.on_single_node(rank=0, sync_nodes=True)
     def _generate_yaml(self, experiment, file_path, overwrite_protocol=None):
@@ -3116,22 +3030,23 @@ class ExperimentBuilder(object):
             # If we have generated samples with trailblaze, we start the
             # simulation from those samples. Also, we can turn off minimization
             # as it has been already performed before trailblazing.
-            trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
-                experiment_path, phase_name)
-            try:
-                sampler_state = pipeline.read_trailblaze_checkpoint_coordinates(
-                    trailblaze_checkpoint_dir_path)
-            except FileNotFoundError:
-                # Just keep the sampler state read from the inpcrd file.
-                pass
-            else:
-                # If this is SAMS, just use the sampler state associated
-                # to the initial thermodynamic state.
-                if isinstance(sampler, mmtools.multistate.SAMSSampler):
-                    sampler_state = sampler_state[0]
-                # Also, these states have been already minimized so we
-                # can skip a second minimization.
-                phase_opts['minimize'] = False
+            if exp_opts['start_from_trailblaze_samples'] is True:
+                trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
+                    experiment_path, phase_name)
+                try:
+                    sampler_state = pipeline.read_trailblaze_checkpoint_coordinates(
+                        trailblaze_checkpoint_dir_path)
+                except FileNotFoundError:
+                    # Just keep the sampler state read from the inpcrd file.
+                    pass
+                else:
+                    # If this is SAMS, just use the sampler state associated
+                    # to the initial thermodynamic state.
+                    if isinstance(sampler, mmtools.multistate.SAMSSampler):
+                        sampler_state = sampler_state[0]
+                    # Also, these states have been already minimized so we
+                    # can skip a second minimization.
+                    phase_opts['minimize'] = False
 
             # Create phases.
             phases[phase_idx] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,

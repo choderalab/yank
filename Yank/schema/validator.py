@@ -1,4 +1,5 @@
 import os
+import collections
 import copy
 import inspect
 import logging
@@ -8,6 +9,7 @@ from collections.abc import Mapping, Sequence
 import cerberus
 import cerberus.errors
 import simtk.unit as unit
+from simtk.openmm import app
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2
 
@@ -15,6 +17,21 @@ from .. import utils, restraints
 
 logger = logging.getLogger(__name__)
 
+
+# ==============================================================================
+# GLOBAL VARIABLES
+# ==============================================================================
+
+_NONBONDED_METHODS_STR = ['NoCutoff', 'CutoffPeriodic', 'CutoffNonPeriodic', 'Ewald', 'PME']
+_NONBONDED_METHODS_APP = [getattr(app, nm) for nm in _NONBONDED_METHODS_STR]
+_CUTOFF_NONBONDED_METHODS_STR = _NONBONDED_METHODS_STR[1:]
+_CUTOFF_NONBONDED_METHODS_APP = _NONBONDED_METHODS_APP[1:]
+
+
+
+# ==============================================================================
+# YANK CUSTOM VALIDATOR CLASS FOR CERBERUS
+# ==============================================================================
 
 class YANKCerberusValidator(cerberus.Validator):
     """
@@ -29,51 +46,89 @@ class YANKCerberusValidator(cerberus.Validator):
     def _normalize_default_setter_no_parameters(self, document):
         return dict(parameters=list())
 
+    def _normalize_default_setter_tip4pew_or_none(self, document):
+        # Default setting is before coercing so we need to check both strings and app objects.
+        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_STR + _CUTOFF_NONBONDED_METHODS_APP:
+            return 'tip4pew'
+        return None
+
+    def _normalize_default_setter_0_molar_or_none(self, document):
+        # Default setting is before coercing so we need to check both strings and app objects.
+        if document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_STR + _CUTOFF_NONBONDED_METHODS_APP:
+            return '0.0*molar'
+        return None
+
     # ====================================================
     # DATA COERCION
     # ====================================================
 
     def _normalize_coerce_single_str_to_list(self, value):
         """Cast a single string to a list of string"""
-        return [value] if isinstance(value, str) else value
+        if isinstance(value, str):
+            return [value]
+        return value
+
+    def _normalize_coerce_str_to_openmm_app(self, value):
+        """Convert a string to the openmm.app object with that name."""
+        if isinstance(value, str):
+            return to_openmm_app_coercer(value)
+        return value
+
+    def _normalize_coerce_str_to_unit(self, value):
+        """Convert a string to a Quantity without checking for compatible units."""
+        if isinstance(value, str):
+            return to_unit_coercer(compatible_units=None)(value)
+        return value
+
+    def _normalize_coerce_str_to_distance_unit(self, value):
+        """Convert a string to a Quantity with units compatible with Angstrom."""
+        if isinstance(value, str):
+            return to_unit_coercer(unit.angstrom)(value)
+        return value
+
+    def _normalize_coerce_str_to_molar_unit(self, value):
+        """Convert a string to a Quantity with units compatible with molar."""
+        if isinstance(value, str):
+            return to_unit_coercer(unit.molar)(value)
+        return value
 
     # ====================================================
     # DATA VALIDATORS
     # ====================================================
 
-    def _validator_file_exists(self, field, filepath):
+    def _check_with_file_exists(self, field, filepath):
         """Assert that the file is in fact, a file!"""
         if not os.path.isfile(filepath):
             self._error(field, 'File path {} does not exist.'.format(filepath))
 
-    def _validator_directory_exists(self, field, directory_path):
+    def _check_with_directory_exists(self, field, directory_path):
         """Assert that the file is in fact, a file!"""
         if not os.path.isdir(directory_path):
             self._error(field, 'Directory {} does not exist.'.format(directory_path))
 
-    def _validator_is_peptide(self, field, filepath):
+    def _check_with_is_peptide(self, field, filepath):
         """Input file is a peptide."""
         extension = os.path.splitext(filepath)[1]
         if extension != '.pdb':
             self._error(field, "Not a .pdb file")
 
-    def _validator_is_small_molecule(self, field, filepath):
+    def _check_with_is_small_molecule(self, field, filepath):
         """Input file is a small molecule."""
         file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
         extension = os.path.splitext(filepath)[1][1:]
         if extension not in file_formats:
             self._error(field, 'File is not one of {}'.format(file_formats))
 
-    def _validator_positive_int_list(self, field, value):
+    def _check_with_positive_int_list(self, field, value):
         for p in value:
             if not isinstance(p, int) or not p >= 0:
                 self._error(field, "{} of must be a positive integer!".format(p))
 
-    def _validator_int_or_all_string(self, field, value):
+    def _check_with_int_or_all_string(self, field, value):
         if value != 'all' and not isinstance(value, int):
             self._error(field, "{} must be an int or the string 'all'".format(value))
 
-    def _validator_supported_system_files(self, field, file_paths):
+    def _check_with_supported_system_file_format(self, field, file_paths):
         """Ensure the input system files are supported."""
         # Obtain the extension of the system files.
         file_extensions = {os.path.splitext(file_path)[1][1:] for file_path in file_paths}
@@ -93,20 +148,103 @@ class YANKCerberusValidator(cerberus.Validator):
 
         # Verify we found a match.
         if file_extension_type is None:
-            self._error(field, '{} must have file extensions matching one of the '
-                               'following types: {}'.format(field, expected_extensions))
+            self._error(field, 'must have file extensions matching one of the '
+                               'following types: {}'.format(expected_extensions))
             return
 
         logger.debug('Correctly recognized {}files ({}) as {} '
                      'files'.format(field, file_paths, file_extension_type))
 
-    def _validator_is_restraint_constructor(self, field, constructor_description):
+    def _check_with_is_valid_nonbonded_method(self, field, nonbonded_method):
+        """Ensure the given nonbonded method is valid."""
+        if nonbonded_method not in _NONBONDED_METHODS_APP:
+            self._error(field, f'must be one of {_NONBONDED_METHODS_STR}')
+
+    def _check_with_mandatory_with_cutoff(self, field, value):
+        """Ensure the value is specified if the nonbonded method has a cutoff.
+
+        The validator assumes that the document has a 'nonbonded_method' field.
+        """
+        if (self.document['nonbonded_method'] in _CUTOFF_NONBONDED_METHODS_APP and
+                value is None):
+            self._error(field, f'must be specified with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
+
+    def _check_with_only_with_cutoff(self, field, value):
+        """Ensure the value is different than None only if the nonbonded method has a cutoff.
+
+        The validator assumes that the document has a 'nonbonded_method' field.
+        """
+        if value is not None and self.document['nonbonded_method'] not in _CUTOFF_NONBONDED_METHODS_APP:
+            self._error(field, f'can be specified only with the following nonbonded methods {_CUTOFF_NONBONDED_METHODS_STR}')
+
+    def _check_with_only_with_no_cutoff(self, field, value):
+        """Ensure the value is different than None only if the nonbonded method has no cutoff.
+
+        The validator assumes that the document has a 'nonbonded_method' field.
+        """
+        if value is not None and self.document['nonbonded_method'] != app.NoCutoff:
+            self._error(field, 'can be specified only if nonbonded method is NoCutoff')
+
+    def _check_with_specify_lambda_electrostatics_and_sterics(self, field, value):
+        """Check that the keys of a dictionary contain both lambda_electrostatics and lambda_sterics."""
+        if ((isinstance(value, dict) or isinstance(value, collections.OrderedDict)) and
+                not ('lambda_sterics' in value and 'lambda_electrostatics' in value)):
+            self._error(field, "Missing required keys lambda_sterics and/or lambda_electrostatics")
+
+    def _check_with_math_expressions_variables_are_given(self, field, value):
+        """Check that in the alchemical path math expressions and function variables are correctly configured."""
+        if not ( (isinstance(value, dict) or isinstance(value, collections.OrderedDict)) ):
+            return
+        # Check that there is at least one non-string value in the
+        # alchemical path that may correspond to the end state values
+        # of the mathematical expressions.
+        string_entries = []
+        for parameter_name, parameter_values in value.items():
+            if isinstance(parameter_values, str):
+                string_entries.append(parameter_name)
+
+        # Check that there is at least 1 non-string entry.
+        if len(string_entries) == len(value):
+            self._error(field, "Only mathematical expressions have been given with no values for their variables")
+
+        # If there are indeed mathematical expressions, make sure the function variable is given.
+        if len(string_entries) > 0:
+            try:
+                function_variable_name = self.root_document['trailblazer_options']['function_variable_name']
+            except KeyError:
+                self._error(field, ("Mathematical expressions were detected but no function "
+                                    "variable name was given in the 'trailblazer_options' section"))
+            else:
+                # The function variable should have exactly two end states.
+                if len(value[function_variable_name]) != 2:
+                    self._error(field, f"Only the two end-point values of function variable '{function_variable_name}' should be given.")
+
+    def _check_with_lambda_between_0_and_1(self, field, value):
+        """Ensure keys which are lambda values are in fact between 0 and 1"""
+        if "lambda_" not in field or not isinstance(value, list):
+            return
+
+        collected_bad_values = []
+        for single_value in value:
+            if not (isinstance(single_value, float) and 0 <= single_value <= 1.0):
+                collected_bad_values.append(single_value)
+
+        if len(collected_bad_values):
+            err_msg = "Entries with a 'lambda_' must be a float in [0, 1]. Values {} are not."
+            self._error(field, err_msg.format(collected_bad_values))
+
+    def _check_with_defined_in_alchemical_path(self, field, value):
+        """When a function variable name is given in trailblazer_options, check that it's defined in alchemical_path."""
+        if value not in self.root_document['alchemical_path']:
+            self._error(field, f"Function variable name '{value}' is not defined in 'alchemical_path'")
+
+    def _check_with_is_restraint_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
 
-    def _validator_is_mcmc_move_constructor(self, field, constructor_description):
+    def _check_with_is_mcmc_move_constructor(self, field, constructor_description):
         self._check_subclass_constructor(field, call_mcmc_move_constructor, constructor_description)
 
-    def _validator_is_sampler_constructor(self, field, constructor_description):
+    def _check_with_is_sampler_constructor(self, field, constructor_description):
         # Check if the MCMCMove is defined (its validation is done in
         # is_mcmc_move_constructor). Don't modify original dictionary.
         constructor_description = copy.deepcopy(constructor_description)
@@ -138,6 +276,23 @@ class YANKCerberusValidator(cerberus.Validator):
 # ==============================================================================
 # STATIC VALIDATORS/COERCERS
 # ==============================================================================
+
+def to_openmm_app_coercer(input_string):
+    """
+    Converter function to be used with :func:`yank.utils.validate_parameters`.
+
+    Parameters
+    ----------
+    input_string : str
+        Method name of openmm.app to fetch
+
+    Returns
+    -------
+    method : Method of openmm.app
+        Returns openmm.app.{input_string}
+    """
+    return getattr(app, input_string)
+
 
 def to_unit_coercer(compatible_units):
     """Function generator to test unit bearing strings with Cerberus."""

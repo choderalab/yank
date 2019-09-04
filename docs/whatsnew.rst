@@ -13,12 +13,17 @@ API-breaking changes
 ^^^^^^^^^^^^^^^^^^^^
 - The ``yank.mpi`` module and the objects in the ``yank.multistate`` package, which were deprecated in 0.24.0, have now
   been removed, and they can be found in the ``mpiplus`` and ``openmmtools`` libraries respectively.
+- The function ``yank.pipeline.trailblaze_alchemical_protocol`` has been renamed
+  ``yank.pipeline.run_thermodynamic_trailblazing`` (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 
 New features
 ^^^^^^^^^^^^
-- The trailblaze algorithm used for the authomatic generation of the alchemical path is now capable of resuming after an
-  unexpected interruption or crash. The samples generated during the process are used to initialize the replicas of the
-  replica exchange or SAMS free energy calculation (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
+- The thermodynamic trailblazing algorithm used for the authomatic generation of the alchemical path is now capable of
+  resuming after an unexpected interruption or crash. The samples generated during the process are used to initialize
+  the replicas of the replica exchange or SAMS free energy calculation. This behavior can be controlled through the
+  YAML ``start_from_trailblaze_samples`` `option <http://getyank.org/latest/yamlpages/options.html#start-from-trailblaze-samples>`_ (`#1176 <https://github.com/choderalab/yank/pull/1176>`_, `#1180 <https://github.com/choderalab/yank/pull/1180>`_).
+- It is possible to control more options of the thermodynamic trailblazing algorithm and to discretize an alchemical
+  path given through mathematical expressions enslaved to a generic variable (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - Added a ``--setup-only`` flag in the ``yank script`` CLI command to run the automatic setup pipeline without running
   the free energy calculation (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
 
@@ -26,10 +31,13 @@ Bugfixes
 ^^^^^^^^
 - Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unkown experiment name would
   fail silently without error (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
+- Fixed a problem that would prevent YANK to work with Cerberus >= 1.2 (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 
 Enhancements
 ^^^^^^^^^^^^
-- By default, the automatic determination of the alchemical path now starts with the harmonic/flat-bottom restraint turned off and activate it in intermediate states instead of keeping the restraint activated throughout the calculation and reweighting in the analysis stage (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
+- By default, the automatic determination of the alchemical path now starts with the harmonic/flat-bottom restraint
+  turned off and activate it in intermediate states instead of keeping the restraint activated throughout the calculation
+  and reweighting in the analysis stage (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
 
 
 0.24.1 Bugfix release
