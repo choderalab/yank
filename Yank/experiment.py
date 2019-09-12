@@ -2419,6 +2419,10 @@ class ExperimentBuilder(object):
             alchemical_functions, state_parameters = self._determine_trailblaze_path(
                 phase_factory, protocol[phase_name]['alchemical_path'])
 
+            # The alchemical path will be a function of 'lambda' when it is 'auto'.
+            if protocol[phase_name]['alchemical_path'] == 'auto':
+                function_variable_name = 'lambda'
+
             # Now we let PhaseFactory and AlchemicalState initialize an initial
             # thermodynamic state and sampler state for the trailblaze.
             # Use a reporter that doesn't write anything to save time.
