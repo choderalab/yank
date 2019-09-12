@@ -2587,6 +2587,10 @@ class ExperimentBuilder(object):
                     alchemical_functions['lambda_restraints'] = alchemical_function
                 lambda_end_states[0] += 1
 
+            # Convert strings to actual alchemical function objects.
+            for parameter_name, alchemical_function in alchemical_functions.items():
+                alchemical_functions[parameter_name] = mmtools.alchemy.AlchemicalFunction(alchemical_function)
+
             # The end states for lambda feeded to the trailblaze function have
             # to go from the coupled to the decoupled direction.
             state_parameters = [('lambda', lambda_end_states)]

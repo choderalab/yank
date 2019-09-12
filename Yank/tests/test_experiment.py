@@ -3068,6 +3068,11 @@ class TestTrailblazeAlchemicalPath:
             phase_factory = MockPhaseFactory(**phase_factory_kwargs)
             alchemical_functions, states_parameters = ExperimentBuilder._determine_trailblaze_path(
                 phase_factory, alchemical_path='auto')
+
+            # Convert alchemical functions objects to string expressions for comparison.
+            for parameter_name, alchemical_function in alchemical_functions.items():
+                alchemical_functions[parameter_name] = alchemical_function._expression
+
             err_msg = 'test case ' + str(idx) + ':\n\nExpected:\n{}\n\nObtained:\n{}'
             # if alchemical_functions != expected_alchemical_functions:
             #     import pdb; pdb.set_trace()
