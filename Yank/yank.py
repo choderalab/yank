@@ -1296,7 +1296,7 @@ class AlchemicalPhase(object):
             raise RuntimeError('Barostated box sides must be at least {} Angstroms '
                                'to correct for missing dispersion interactions. The '
                                'minimum dimension of the provided box is {} Angstroms'
-                               ''.format(expanded_cutoff_distance/unit.angstrom * 2,
+                               ''.format(expanded_cutoff_distance/unit.angstrom * 2 / fluctuation_size,
                                          min_box_dimension/unit.angstrom))
 
         logger.debug('Setting cutoff for fully interacting system to {}. The minimum box '
