@@ -32,6 +32,8 @@ Bugfixes
 - Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unkown experiment name would
   fail silently without error (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
 - Fixed a problem that would prevent YANK to work with Cerberus >= 1.2 (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
+- Fixed the error message displayed when the anisotropic dispersion correction cutoff was too big for the box dimension
+  (`#1181 <https://github.com/choderalab/yank/pull/1181>`_).
 
 Enhancements
 ^^^^^^^^^^^^
