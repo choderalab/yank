@@ -2441,11 +2441,15 @@ class ExperimentBuilder(object):
                 phase_factory.options['number_of_equilibration_iterations'] = 0
 
             # We only need to create a single thermo state for the equilibration,
-            # but AlchemicalPhase currently doesn't support alchemical functions yet
-            # so we need to set the state manually.
-            equilibration_protocol = {par[0]: [par[1][0]] for par in state_parameters}
+            # and we need to equilibrate in the state used to start the algorithm.
+            if trailblazer_options['reversed_direction']:
+                equilibration_state_idx = -1
+            else:
+                equilibration_state_idx = 0
+            # AlchemicalPhase doesn't support alchemical functions yet so we need to set the state manually.
+            equilibration_protocol = {par[0]: [par[1][equilibration_state_idx]] for par in state_parameters}
             if function_variable_name is not None:
-                variable_value = equilibration_protocol.pop(function_variable_name)[0]
+                variable_value = equilibration_protocol.pop(function_variable_name)[equilibration_state_idx]
                 expression_context = {function_variable_name: variable_value}
                 for parameter_name, alchemical_function in alchemical_functions.items():
                     equilibration_protocol[parameter_name] = [alchemical_function(expression_context)]
