@@ -120,8 +120,7 @@ class Topography(object):
 
     @ligand_atoms.setter
     def ligand_atoms(self, value):
-        self._ligand_atoms = self.select(value)
-
+        self._ligand_atoms = tuple([self.select(v) for v in value])
         # Safety check: with a ligand there should always be a receptor.
         if len(self._ligand_atoms) > 0 and len(self.receptor_atoms) == 0:
             raise ValueError('Specified ligand but cannot find '
@@ -141,7 +140,7 @@ class Topography(object):
             return []
 
         # Create a set for fast searching.
-        ligand_atomset = frozenset(self._ligand_atoms)
+        ligand_atomset = tuple(frozenset([index for ligand in self._ligand_atoms for index in ligand]))
         # Receptor atoms are all solute atoms that are not ligand.
         return [i for i in self.solute_atoms if i not in ligand_atomset]
 
@@ -1012,8 +1011,9 @@ class AlchemicalPhase(object):
                 reference_system, topography, protocol)
 
         # Check that we have atoms to alchemically modify.
-        if len(alchemical_regions.alchemical_atoms) == 0:
-            raise ValueError("Couldn't find atoms to alchemically modify.")
+        for region in alchemical_regions:
+            if len(region.alchemical_atoms) == 0:
+                raise ValueError("Couldn't find atoms to alchemically modify.")
 
         # Create alchemically-modified system using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
@@ -1024,11 +1024,16 @@ class AlchemicalPhase(object):
 
         # Create compound alchemically modified state to pass to sampler.
         thermodynamic_state.system = alchemical_system
-        alchemical_state = mmtools.alchemy.AlchemicalState.from_system(alchemical_system)
-        if restraint_state is not None:
-            composable_states = [alchemical_state, restraint_state]
+        if len(alchemical_regions) > 1:
+            alchemical_state = [mmtools.alchemy.AlchemicalState.from_system(alchemical_system, parameters_name_suffix = 'zero'),
+                                mmtools.alchemy.AlchemicalState.from_system(alchemical_system, parameters_name_suffix = 'one')]
         else:
-            composable_states = [alchemical_state]
+            alchemical_state = [mmtools.alchemy.AlchemicalState.from_system(alchemical_system)]
+
+        composable_states = [state for state in alchemical_state]
+        if restraint_state is not None:
+            composable_states += [restraint_state]
+
         compound_state = mmtools.states.CompoundThermodynamicState(
             thermodynamic_state=thermodynamic_state, composable_states=composable_states)
 
@@ -1340,25 +1345,28 @@ class AlchemicalPhase(object):
 
         # Modify ligand if this is a receptor-ligand phase, or
         # solute if this is a transfer free energy calculation.
-        if len(topography.ligand_atoms) > 0:
-            alchemical_region_name = 'ligand_atoms'
-        else:
+        alchemical_region_name = 'ligand_atoms'
+        if len(topography.ligand_atoms) == 0:
             alchemical_region_name = 'solute_atoms'
         alchemical_atoms = getattr(topography, alchemical_region_name)
+        if len(topography.ligand_atoms) > 1:
+            alchemical_region_name = ['ligand_atoms_zero', 'ligand_atoms_one']
 
         # In periodic systems, we alchemically modify the ligand/solute
         # counterions to make sure that the solvation box is always neutral.
         if system.usesPeriodicBoundaryConditions():
-            alchemical_counterions = mpiplus.run_single_node(0, pipeline.find_alchemical_counterions,
-                                                             system, topography, alchemical_region_name,
-                                                             broadcast_result=True)
-            alchemical_atoms += alchemical_counterions
+            if len(topography.ligand_atoms) < 2: # not a relative system
+                alchemical_counterions = mpiplus.run_single_node(0, pipeline.find_alchemical_counterions,
+                                                                 system, topography, alchemical_region_name,
+                                                                 broadcast_result=True)
+                alchemical_atoms += alchemical_counterions
 
             # Sort them by index for safety. We don't want to
             # accidentally exchange two atoms' positions.
             alchemical_atoms = sorted(alchemical_atoms)
 
-        alchemical_region_kwargs['alchemical_atoms'] = alchemical_atoms
+        if len(topography.ligand_atoms) < 2: # not a relative system
+            alchemical_region_kwargs['alchemical_atoms'] = alchemical_atoms
 
         # Check if we need to modify bonds/angles/torsions.
         for element_type in ['bonds', 'angles', 'torsions']:
@@ -1369,8 +1377,12 @@ class AlchemicalPhase(object):
             alchemical_region_kwargs['alchemical_' + element_type] = modify_it
 
         # Create alchemical region.
-        alchemical_region = mmtools.alchemy.AlchemicalRegion(**alchemical_region_kwargs)
+        if len(topography.ligand_atoms) > 1: # relative system
+            alchemical_region = [mmtools.alchemy.AlchemicalRegion(name='zero', alchemical_atoms=alchemical_atoms[0], **alchemical_region_kwargs),
+                                 mmtools.alchemy.AlchemicalRegion(name='one', alchemical_atoms=alchemical_atoms[1], **alchemical_region_kwargs)]
 
+        else:
+            alchemical_region = [mmtools.alchemy.AlchemicalRegion(**alchemical_region_kwargs)]
         return alchemical_region
 
     @staticmethod

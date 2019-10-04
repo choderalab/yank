@@ -1664,7 +1664,7 @@ class ExperimentBuilder(object):
         # DSL Schema
         ligand_dsl:
             required: no
-            type: string
+            type: list
             dependencies: [phase1_path, phase2_path]
         solvent_dsl:
             required: no
@@ -3009,7 +3009,7 @@ class ExperimentBuilder(object):
             phase_protocol = protocol[phase_name]['alchemical_path']
             alchemical_region = AlchemicalPhase._build_default_alchemical_region(system, topography,
                                                                                  phase_protocol)
-            alchemical_region = alchemical_region._replace(**alchemical_region_opts)
+            alchemical_region = [region._replace(**alchemical_region_opts) for region in alchemical_region]
 
             # Apply restraint only if this is the first phase. AlchemicalPhase
             # will take care of raising an error if the phase type does not support it.
