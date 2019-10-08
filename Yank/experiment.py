@@ -1732,9 +1732,7 @@ class ExperimentBuilder(object):
         ligand:
             required: no
             valueschema:
-                anyof:
-                    - type: list
-                    - type: string
+            type: [string, list]
             dependencies: [receptor, solvent]
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             excludes: [solute, phase1_path, phase2_path]

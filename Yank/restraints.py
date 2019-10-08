@@ -263,7 +263,7 @@ class _AtomSelector(object):
         def compute_atom_set(passed_atoms):
             """Helper function for doing set operations on heavy ligand atoms of all other types"""
             input_set = set(passed_atoms)
-            intersect_set = input_set & additional_intersect & topography_se
+            intersect_set = input_set & additional_intersect & topography_set
             if intersect_set != input_set:
                 return intersect_set
             else:
@@ -283,7 +283,7 @@ class _AtomSelector(object):
             # Ensure the selection is in the correct set
             set_combined = set_output & topography_set & additional_intersect
             final_output = [particle for particle in output if particle in set_combined]
-            # Force output to be a normal int, don't need to worry about floats at this point, there 	should not be any
+            # Force output to be a normal int, don't need to worry about floats at this point, there should not be any
             # If they come out as np.int64's, OpenMM complains
             return [*map(int, final_output)]
 
