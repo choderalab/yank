@@ -651,7 +651,6 @@ class ExperimentBuilder(object):
             yaml_content = script.copy()
 
         self._raw_yaml = yaml_content.copy()
-
         # Check that YAML loading was successful
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
@@ -1664,7 +1663,7 @@ class ExperimentBuilder(object):
         # DSL Schema
         ligand_dsl:
             required: no
-            type: list
+            type: [string, list]
             dependencies: [phase1_path, phase2_path]
         solvent_dsl:
             required: no
@@ -1732,7 +1731,10 @@ class ExperimentBuilder(object):
             check_with: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
         ligand:
             required: no
-            type: string
+            valueschema:
+                anyof:
+                    - type: list
+                    - type: string
             dependencies: [receptor, solvent]
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             excludes: [solute, phase1_path, phase2_path]

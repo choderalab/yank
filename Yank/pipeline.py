@@ -272,7 +272,6 @@ def find_alchemical_counterions(system, topography, region_name):
     if len(atom_indices) == 0:
         raise ValueError("Cannot find counterions for region {}. "
                          "The region has no atoms.")
-
     # If the net charge of alchemical atoms is 0, we don't need counterions.
     mol_net_charge = compute_net_charge(system, atom_indices)
     logger.debug('{} net charge: {}'.format(region_name, mol_net_charge))

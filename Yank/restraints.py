@@ -259,12 +259,11 @@ class _AtomSelector(object):
             additional_intersect = topography_set
         else:
             additional_intersect = set.intersection(*additional_sets)
-
         @functools.singledispatch
         def compute_atom_set(passed_atoms):
             """Helper function for doing set operations on heavy ligand atoms of all other types"""
             input_set = set(passed_atoms)
-            intersect_set = input_set & additional_intersect & topography_set
+            intersect_set = input_set & additional_intersect & topography_se
             if intersect_set != input_set:
                 return intersect_set
             else:
@@ -284,7 +283,7 @@ class _AtomSelector(object):
             # Ensure the selection is in the correct set
             set_combined = set_output & topography_set & additional_intersect
             final_output = [particle for particle in output if particle in set_combined]
-            # Force output to be a normal int, don't need to worry about floats at this point, there should not be any
+            # Force output to be a normal int, don't need to worry about floats at this point, there 	should not be any
             # If they come out as np.int64's, OpenMM complains
             return [*map(int, final_output)]
 
@@ -434,10 +433,13 @@ class _RestrainedAtomsProperty(object):
     def __set__(self, instance, new_restrained_atoms):
         # If we set the restrained attributes to None, no reason to check things.
         if new_restrained_atoms is not None:
-            if len(new_restrained_atoms) == 2: # relative system
-                new_restrained_atoms = [self._validate_atoms(atoms) for atoms in new_restrained_atoms]
-            else:
-                new_restrained_atoms = self._validate_atoms(new_restrained_atoms)
+            for element in new_restrained_atoms:
+                if isinstance(element, list): # relative system
+                    new_restrained_atoms = [self._validate_atoms(atoms) for atoms in new_restrained_atoms]
+                    break
+                else:
+                    new_restrained_atoms = self._validate_atoms(new_restrained_atoms)
+
         setattr(instance, self._attribute_name, new_restrained_atoms)
 
     @methoddispatch
@@ -574,12 +576,13 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             raise RestraintParameterError('Restraint {}: Undefined restrained '
                                           'atoms.'.format(self.__class__.__name__))
 
-        # Create restraint force.
-        if len(self.restrained_ligand_atoms) == 1: # not a relative system
+        # Create restraint force
+        if isinstance(self.restrained_ligand_atoms[0], list) and isinstance(self.restrained_ligand_atoms[1], list): # relative system
+            restraint_force = self._get_restraint_force(*self.restrained_ligand_atoms)
+        else:
             restraint_force = self._get_restraint_force(self.restrained_receptor_atoms,
                                                         self.restrained_ligand_atoms)
-        else:
-            restraint_force = self._get_restraint_force(*self.restrained_ligand_atoms)
+
         # Set periodic conditions on the force if necessary.
         restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
 
@@ -705,14 +708,16 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     @property
     def _are_restrained_atoms_defined(self):
         """Check if the restrained atoms are defined well enough to make a restraint"""
-        for atoms in [self.restrained_ligand_atoms]:
-            # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
-            if atoms is None or any(isinstance(atom, str) for atom in atoms) or not (isinstance(atoms, list) and len(atoms) > 0):
-                return False
-        if len(self.restrained_ligand_atoms) == 1:
-            for atoms in [self.restrained_receptor_atoms]:
-                if atoms is None or not (isinstance(atoms, list) and len(atoms) > 0):
-                    return False
+        if self.restrained_ligand_atoms:
+            if isinstance(self.restrained_ligand_atoms[0], list) and isinstance(self.restrained_ligand_atoms[1], list): # relative system
+                for atoms in self.restrained_ligand_atoms:
+                # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
+                    if atoms is None or any(isinstance(atom, str) for atom in atoms) or not (isinstance(atoms, list) and len(atoms) > 0):
+                        return False            
+            else:
+                for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
+                    if atoms is None or not (isinstance(atoms, list) and len(atoms) > 0):
+                        return False
 
         return True
 
@@ -753,8 +758,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # If receptor and ligand atoms are explicitly provided, use those.
         restrained_ligand_atoms = self.restrained_ligand_atoms
-        if len(restrained_ligand_atoms) != 2:
+        if not isinstance(self.restrained_ligand_atoms[0], list) and not isinstance(self.restrained_ligand_atoms[1], list):
             restrained_receptor_atoms = self.restrained_receptor_atoms
+                
 
         @functools.singledispatch
         def compute_atom_set(input_atoms, topography_key, mapping_function):
@@ -771,7 +777,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                                "Atoms not part of {0} will be ignored.".format(topography_key))
                 final_atoms = list(intersect_set)
             else:
-                final_atoms = list(input_atoms)
+                final_atoms = list(input_atoms_set)
             return final_atoms
 
         @compute_atom_set.register(type(None))
@@ -786,20 +792,30 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         def compute_atom_str(input_string, topography_key, _):
             """Helper for string parsing"""
             selection = topography.select(input_string, as_set=True)
-            selection_with_top = selection  & set([index for sublist in getattr(topography, topography_key) for
+            if isinstance(getattr(topography, topography_key)[0], list) and isinstance(getattr(topography, topography_key)[1], list):
+                selection_with_top = selection & set([index for sublist in getattr(topography, topography_key) for
                                                    index in sublist])
+            else:
+                selection_with_top = selection & set(getattr(topography, topography_key))
             # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
             # If they come out as np.int64's, OpenMM complains
             return [*map(int, selection_with_top)]
-
-        self.restrained_ligand_atoms = [compute_atom_set(list,
+         
+        if isinstance(restrained_ligand_atoms[0], list) and isinstance(restrained_ligand_atoms[1], list):
+            self.restrained_ligand_atoms = []
+            for element in restrained_ligand_atoms:
+                for value in element:
+                    self.restrained_ligand_atoms.append(compute_atom_set(value,
                                                         'ligand_atoms',
-                                                        self._closest_atom_to_centroid) for list in restrained_ligand_atoms]
-        if len(self.restrained_ligand_atoms) != 2:
+                                                         self._closest_atom_to_centroid))
+        else:
+            self.restrained_ligand_atoms = compute_atom_set(restrained_ligand_atoms,
+                                                            'ligand_atoms',
+                                                             self._closest_atom_to_centroid)
+
             self.restrained_receptor_atoms = compute_atom_set(restrained_receptor_atoms,
                                                               'receptor_atoms',
-                                                              self._closest_atom_to_centroid)
-
+                                                             self._closest_atom_to_centroid)
     @staticmethod
     def _closest_atom_to_centroid(positions, indices=None, masses=None):
         """
