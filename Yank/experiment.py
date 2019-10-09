@@ -1731,7 +1731,6 @@ class ExperimentBuilder(object):
             check_with: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
         ligand:
             required: no
-            valueschema:
             type: [string, list]
             dependencies: [receptor, solvent]
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME

@@ -1363,7 +1363,7 @@ class AlchemicalPhase(object):
         alchemical_atoms = getattr(topography, alchemical_region_name)
 
         if isinstance(topography.ligand_atoms, tuple):
-            alchemical_region_name = ['ligand_atoms_zero', 'ligand_atoms_one']
+            alchemical_region_name = ['ligand_atoms_0', 'ligand_atoms_1']
 
         # In periodic systems, we alchemically modify the ligand/solute
         # counterions to make sure that the solvation box is always neutral.
@@ -1393,8 +1393,8 @@ class AlchemicalPhase(object):
 
         # Create alchemical region.
         if isinstance(topography.ligand_atoms, tuple): # relative system
-            alchemical_region = [mmtools.alchemy.AlchemicalRegion(name='zero', alchemical_atoms=alchemical_atoms[0], **alchemical_region_kwargs),
-                                 mmtools.alchemy.AlchemicalRegion(name='one', alchemical_atoms=alchemical_atoms[1], **alchemical_region_kwargs)]
+            alchemical_region = [mmtools.alchemy.AlchemicalRegion(name='0', alchemical_atoms=alchemical_atoms[0], **alchemical_region_kwargs),
+                                 mmtools.alchemy.AlchemicalRegion(name='1', alchemical_atoms=alchemical_atoms[1], **alchemical_region_kwargs)]
 
         else:
             alchemical_region = [mmtools.alchemy.AlchemicalRegion(**alchemical_region_kwargs)]

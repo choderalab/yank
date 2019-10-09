@@ -411,6 +411,8 @@ class ReceptorLigandRestraint(ABC):
                       for parameter_name in parameter_names}
         return parameters
 
+    def _is_ligand_ligand_restraint(self, restrained_ligand_atoms):
+        return len(restrained_ligand_atoms) == 2 and isinstance(restrained_ligand_atoms[0], list) and isinstance(restrained_ligand_atoms[1], list)
 
 class _RestrainedAtomsProperty(object):
     """
@@ -432,13 +434,11 @@ class _RestrainedAtomsProperty(object):
 
     def __set__(self, instance, new_restrained_atoms):
         # If we set the restrained attributes to None, no reason to check things.
-        if new_restrained_atoms is not None:
-            for element in new_restrained_atoms:
-                if isinstance(element, list): # relative system
-                    new_restrained_atoms = [self._validate_atoms(atoms) for atoms in new_restrained_atoms]
-                    break
-                else:
-                    new_restrained_atoms = self._validate_atoms(new_restrained_atoms)
+        if (new_restrained_atoms):
+            if instance._is_ligand_ligand_restraint(new_restrained_atoms):
+                new_restrained_atoms = [self._validate_atoms(atoms) for atoms in new_restrained_atoms]
+            else:
+                new_restrained_atoms = self._validate_atoms(new_restrained_atoms)
 
         setattr(instance, self._attribute_name, new_restrained_atoms)
 
@@ -450,7 +450,6 @@ class _RestrainedAtomsProperty(object):
         except AttributeError:
             restrained_atoms = list(restrained_atoms)
         return restrained_atoms
-
 
 # ==============================================================================
 # Base class for radially-symmetric receptor-ligand restraints.
@@ -577,7 +576,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                                           'atoms.'.format(self.__class__.__name__))
 
         # Create restraint force
-        if isinstance(self.restrained_ligand_atoms[0], list) and isinstance(self.restrained_ligand_atoms[1], list): # relative system
+        if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
             restraint_force = self._get_restraint_force(*self.restrained_ligand_atoms)
         else:
             restraint_force = self._get_restraint_force(self.restrained_receptor_atoms,
@@ -709,7 +708,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     def _are_restrained_atoms_defined(self):
         """Check if the restrained atoms are defined well enough to make a restraint"""
         if self.restrained_ligand_atoms:
-            if isinstance(self.restrained_ligand_atoms[0], list) and isinstance(self.restrained_ligand_atoms[1], list): # relative system
+            if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
                 for atoms in self.restrained_ligand_atoms:
                 # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
                     if atoms is None or any(isinstance(atom, str) for atom in atoms) or not (isinstance(atoms, list) and len(atoms) > 0):
@@ -758,7 +757,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # If receptor and ligand atoms are explicitly provided, use those.
         restrained_ligand_atoms = self.restrained_ligand_atoms
-        if not isinstance(self.restrained_ligand_atoms[0], list) and not isinstance(self.restrained_ligand_atoms[1], list):
+        if not self._is_ligand_ligand_restraint(restrained_ligand_atoms):
             restrained_receptor_atoms = self.restrained_receptor_atoms
                 
 
@@ -800,8 +799,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
             # If they come out as np.int64's, OpenMM complains
             return [*map(int, selection_with_top)]
-         
-        if isinstance(restrained_ligand_atoms[0], list) and isinstance(restrained_ligand_atoms[1], list):
+        
+        if self._is_ligand_ligand_restraint(restrained_ligand_atoms):
             self.restrained_ligand_atoms = []
             for element in restrained_ligand_atoms:
                 for value in element:
