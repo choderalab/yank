@@ -531,7 +531,7 @@ Valid Options (1.0 * femtosecond): <Quantity Time> [1]_
 .. code-block:: yaml
 
    options:
-     default_number_of_iterations: 1
+     default_number_of_iterations: 5000
 
 Default number of iterations for the :ref:`samplers that do not explicitly specify <yaml_samplers_example>`
 the option ``number_of_iterations``.
@@ -547,7 +547,7 @@ not stop unless some other criteria is stops it. We **strongly** recommend speci
 :ref:`a phase switching interval <yaml_options_switch_phase_interval>` to ensure there is at least some stop criteria,
 and all phases yield some samples.
 
-Valid Options (1): <Integer> or ``.inf``
+Valid Options (5000): <Integer> or ``.inf``
 
 
 ..
