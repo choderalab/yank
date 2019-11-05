@@ -2142,6 +2142,90 @@ def _cache_trailblaze_data(checkpoint_dir_path, optimal_protocol, states_stds,
     trajectory_file.write_sampler_state(sampler_state)
 
 
+def _redistribute_trailblaze_states(old_protocol, states_stds, thermo_length_threshold):
+    """Redistribute the states using a bidirectional estimate of the thermodynamic length.
+
+    Parameters
+    ----------
+    old_protocol : Dict[str, List[float]]
+        The unidirectional optimal protocol.
+    states_stds : List[List[float]]
+        states_stds[j][i] is the standard deviation of the potential
+        difference between states i-1 and i computed in the j direction.
+    thermo_length_threshold : float
+        The distance between each pair of states.
+
+    Returns
+    -------
+    new_protocol : Dict[str, List[float]]
+        The new estimate of the optimal protocol.
+    """
+    # The parameter names in a fixed order.
+    parameter_names = [par_name for par_name in old_protocol]
+
+    # Initialize the new protocol from the first state the optimal protocol.
+    new_protocol = {par_name: [values[0]] for par_name, values in old_protocol.items()}
+
+    def _get_old_protocol_state(state_idx):
+        """Return a representation of the thermo state as a list of parameter values."""
+        return np.array([old_protocol[par_name][state_idx] for par_name in parameter_names])
+
+    def _add_state_to_new_protocol(state):
+        for parameter_name, new_state_value in zip(parameter_names, state.tolist()):
+            new_protocol[parameter_name].append(new_state_value)
+
+    # The thermodynamic length at 0 is 0.0.
+    states_stds[0] = [0.0] + states_stds[0]
+    states_stds[1] = [0.0] + states_stds[1]
+
+    # We don't have the energy difference std in the
+    # direction opposite to the search direction so we
+    # pad the list.
+    states_stds[1].append(states_stds[0][-1])
+    states_stds = np.array(states_stds)
+
+    # Compute a bidirectional estimate of the thermodynamic length.
+    old_protocol_thermo_length = np.cumsum(np.mean(states_stds, axis=0))
+
+    # Trailblaze again interpolating the thermodynamic length function.
+    current_state_idx = 0
+    current_state = _get_old_protocol_state(0)
+    last_state = _get_old_protocol_state(-1)
+    new_protocol_cum_thermo_length = 0.0
+    while (current_state != last_state).any():
+        # Find first state for which the accumulated standard
+        # deviation is greater than the thermo length threshold.
+        try:
+            while old_protocol_thermo_length[current_state_idx+1] - new_protocol_cum_thermo_length <= thermo_length_threshold:
+                current_state_idx += 1
+        except IndexError:
+            # If we got to the end, we just add the last state
+            # to the protocol and stop the while loop.
+            _add_state_to_new_protocol(last_state)
+            break
+
+        # Update current state.
+        current_state = _get_old_protocol_state(current_state_idx)
+
+        # The thermodynamic length from the last redistributed state to current state.
+        pair_thermo_length = old_protocol_thermo_length[current_state_idx] - new_protocol_cum_thermo_length
+
+        # Now interpolate between the current state state and the next to find
+        # the exact state for which the thermo length equal the threshold.
+        next_state = _get_old_protocol_state(current_state_idx+1)
+        differential = thermo_length_threshold - pair_thermo_length
+        differential /= old_protocol_thermo_length[current_state_idx+1] - old_protocol_thermo_length[current_state_idx]
+        new_state = current_state + differential * (next_state - current_state)
+
+        # Update cumulative thermo length.
+        new_protocol_cum_thermo_length += thermo_length_threshold
+
+        # Update redistributed protocol.
+        _add_state_to_new_protocol(new_state)
+
+    return new_protocol
+
+
 def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
         parameter_setters=None, std_potential_threshold=0.5,
