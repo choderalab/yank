@@ -174,7 +174,8 @@ class TestThermodynamicTrailblazing:
             second_protocol = run_thermodynamic_trailblazing(
                 compound_state, sampler_state, mcmc_move,
                 checkpoint_dir_path=checkpoint_dir_path,
-                state_parameters=[(self.PAR_NAME_X0, [0.0, 2.0])]
+                state_parameters=[(self.PAR_NAME_X0, [0.0, 2.0])],
+                bidirectional_redistribution=False
             )
             len_first_protocol = len(first_protocol[self.PAR_NAME_X0])
             assert second_protocol[self.PAR_NAME_X0][:len_first_protocol] == first_protocol[self.PAR_NAME_X0]
@@ -230,7 +231,8 @@ class TestThermodynamicTrailblazing:
                 (self.PAR_NAME_X0, [1.0, 0.0]),
                 (self.PAR_NAME_K, [k_start, k_end]),
             ],
-            reversed_direction=True
+            reversed_direction=True,
+            bidirectional_redistribution=False
         )
         assert protocol[self.PAR_NAME_X0] == [1.0, 0.0, 0.0], protocol[self.PAR_NAME_X0]
         assert protocol[self.PAR_NAME_K] == [k_start, k_start, k_end], protocol[self.PAR_NAME_K]
