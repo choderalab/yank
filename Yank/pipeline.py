@@ -2034,6 +2034,88 @@ def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
     return sampler_states
 
 
+def _resume_thermodynamic_trailblazing(checkpoint_dir_path, initial_protocol):
+    """Resume a previously-run trailblaze execution.
+
+    Parameters
+    ----------
+    checkpoint_dir_path : str
+        The path to the directory used to store the trailblaze information.
+    initial_protocol : Dict[str, List[float]]
+        The initial protocol containing only the first state of the path.
+        If no checkpoint file for the protocol is found, the file will
+        be initialized using this state.
+
+    Returns
+    -------
+    resumed_protocol : Dict[str, List[float]]
+        The resumed optimal protocol.
+    trajectory_file : _DCDTrajectoryFile
+        A DCD file open for appening.
+    sampler_state : SamplerState or None
+        The last saved SamplerState or None if no frame was saved yet.
+
+    """
+    # We save the protocol in a YAML file and the positions in netcdf.
+    protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+    positions_file_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
+
+    # Create the directory, if it doesn't exist.
+    os.makedirs(checkpoint_dir_path, exist_ok=True)
+
+    # Create/load protocol checkpoint file.
+    try:
+        # Parse the previously calculated optimal_protocol dict.
+        with open(protocol_file_path, 'r') as file_stream:
+            resumed_protocol = yaml.load(file_stream, Loader=yaml.FullLoader)
+    except FileNotFoundError:
+        # The checkpoint doesn't exist. Create one.
+        with open(protocol_file_path, 'w') as file_stream:
+            yaml.dump(initial_protocol, file_stream)
+        resumed_protocol = initial_protocol
+
+    # Check if there's an existing positions information.
+    try:
+        sampler_states = read_trailblaze_checkpoint_coordinates(checkpoint_dir_path)
+    except FileNotFoundError:
+        len_trajectory = 0
+    else:
+        len_trajectory = len(sampler_states)
+
+    # Raise an error if the algorithm was interrupted *during*
+    # writing on disk. We store only the states that we simulated
+    # so there should be one less here.
+    for state_values in resumed_protocol.values():
+        if len_trajectory < len(state_values) - 1:
+            err_msg = ("The trailblaze algorithm was interrupted while "
+                       "writing the checkpoint file and it is now unable "
+                       "to resume. Please delete the files "
+                       f"in {checkpoint_dir_path} and restart.")
+            raise RuntimeError(err_msg)
+
+    # When this is resumed, but the trajectory is already completed,
+    # the frame of the final end state has been already written, but
+    # we don't want to add it twice at the end of the trailblaze function.
+    len_trajectory = len(state_values) - 1
+
+    # Whether the file exist or not, MDTraj doesn't support appending
+    # files so we open a new one and rewrite the configurations we
+    # have generated in the previous run.
+    trajectory_file = _DCDTrajectoryFile(positions_file_path, 'w',
+                                         force_overwrite=True)
+    if len_trajectory > 0:
+        for i in range(len_trajectory):
+            trajectory_file.write_sampler_state(sampler_states[i])
+        # Make sure the next search starts from the last saved position
+        # unless the previous calculation was interrupted before the
+        # first position could be saved.
+        sampler_state = sampler_states[-1]
+    else:
+        sampler_state = None
+
+    return resumed_protocol, trajectory_file, sampler_state
+
+
 def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
         parameter_setters=None, std_potential_threshold=0.5,
@@ -2057,7 +2139,7 @@ def run_thermodynamic_trailblazing(
     'coordinates.dcd' storing the protocol and initial positions and box
     vectors for each state that are generated while running the algorithm.
 
-    It is also possibleto discretize a path specified through maathematical
+    It is also possible to discretize a path specified through maathematical
     expressions through the arguments ``global_parameter_function`` and
     ``function_variables``.
 
@@ -2182,63 +2264,19 @@ def run_thermodynamic_trailblazing(
     # Check to see whether a trailblazing algorithm is already in progress,
     # and if so, restore to the previously checkpointed state.
     if checkpoint_dir_path is not None:
-        # We save the protocol in a YAML file and the positions in netcdf.
+        optimal_protocol, trajectory_file, resumed_sampler_state = _resume_thermodynamic_trailblazing(
+            checkpoint_dir_path, optimal_protocol)
+        # Start from the last saved conformation.
+        if resumed_sampler_state is not None:
+            sampler_state = resumed_sampler_state
+        # Determine path where to save updates of the protocol.
         protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
-        positions_file_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
-
-        # Create the directory, if it doesn't exist.
-        os.makedirs(checkpoint_dir_path, exist_ok=True)
-
-        # Create/load protocol checkpoint file.
-        try:
-            # Parse the previously calculated optimal_protocol dict.
-            with open(protocol_file_path, 'r') as file_stream:
-                optimal_protocol = yaml.load(file_stream, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            # The checkpoint doesn't exist. Create one.
-            with open(protocol_file_path, 'w') as file_stream:
-                yaml.dump(optimal_protocol, file_stream)
-
-        # Check if there's an existing positions information.
-        try:
-            sampler_states = read_trailblaze_checkpoint_coordinates(checkpoint_dir_path)
-        except FileNotFoundError:
-            len_trajectory = 0
-        else:
-            len_trajectory = len(sampler_states)
-
-        # Raise an error if the algorithm was interrupted *during*
-        # writing on disk. We store only the states that we simulated
-        # so there should be one less here.
-        if len_trajectory < len(optimal_protocol[state_parameters[0][0]])-1:
-            err_msg = ("The trailblaze algorithm was interrupted while "
-                       "writing the checkpoint file and it is now unable "
-                       "to resume. Please delete the files "
-                       f"in {checkpoint_dir_path} and restart.")
-            raise RuntimeError(err_msg)
-
-        # When this is resumed, but the trajectory is already completed,
-        # the frame of the final end state has been already written, but
-        # we don't want to add it twice at the end of this function.
-        len_trajectory = len(optimal_protocol[state_parameters[0][0]])-1
-
-        # Whether the file exist or not, MDTraj doesn't support appending
-        # files so we open a new one and rewrite the configurations we
-        # have generated in the previous run.
-        trajectory_file = _DCDTrajectoryFile(positions_file_path, 'w',
-                                             force_overwrite=True)
-        if len_trajectory > 0:
-            for i in range(len_trajectory):
-                trajectory_file.write_sampler_state(sampler_states[i])
-            # Make sure the next search starts from the last saved position
-            # unless the previous calculation was interrupted before the
-            # first position could be saved.
-            sampler_state = sampler_states[-1]
 
     # Make sure that thermodynamic_state is in the last explored
     # state, whether the algorithm was resumed or not.
     for state_parameter in optimal_protocol:
-        parameter_setters[state_parameter](thermodynamic_state, state_parameter, optimal_protocol[state_parameter][-1])
+        parameter_setters[state_parameter](thermodynamic_state, state_parameter,
+                                           optimal_protocol[state_parameter][-1])
 
     # We change only one parameter at a time.
     for state_parameter, values in state_parameters:
@@ -2336,7 +2374,7 @@ def run_thermodynamic_trailblazing(
             optimal_protocol[par_name] = values.__class__(reversed(values))
 
     # If we used global parameter functions, the optimal_protocol at this
-    # point is a discratization of the function_variables, not the original
+    # point is a discretization of the function_variables, not the original
     # parameters so we convert it back.
     len_protocol = len(next(iter(optimal_protocol.values())))
     function_variables_protocol = {var: optimal_protocol.pop(var) for var in function_variables}
