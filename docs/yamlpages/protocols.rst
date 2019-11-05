@@ -152,8 +152,6 @@ protocols:
         threshold_tolerance: 0.05  # in kT
         # Whether to traverse the path in the forward (given by 'alchemical_path') or reversed direction.
         reversed_direction: true
-        # If set, the states are redistributed after trailblazing using the std estimated in both directions.
-        bidirectional_redistribution: true
         # A variable controlling the path if 'alchemical_path' contains mathematical expressions.
         function_variable_name: lambda
 
