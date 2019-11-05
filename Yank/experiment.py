@@ -1511,6 +1511,9 @@ class ExperimentBuilder(object):
                 reversed_direction:
                     type: boolean
                     default: yes
+                bidirectional_redistribution:
+                    type: boolean
+                    default: yes
                 function_variable_name:
                     required: no
                     type: string
