@@ -2230,9 +2230,8 @@ def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
         parameter_setters=None, std_potential_threshold=0.5,
         threshold_tolerance=0.05, n_samples_per_state=100,
-        reversed_direction=False, bidirectional_redistribution=True,
-        global_parameter_functions=None, function_variables=tuple(),
-        checkpoint_dir_path=None
+        reversed_direction=False, global_parameter_functions=None,
+        function_variables=tuple(), checkpoint_dir_path=None
 ):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
@@ -2287,10 +2286,6 @@ def run_thermodynamic_trailblazing(
         the path from the end to the beginning. The returned path
         discretization will still be ordered from the beginning to the
         end following the order in ``state_parameters``.
-    bidirectional_redistribution : bool, optional
-        If True, the states will be redistributed using the standard
-        deviation of the potential difference between states in both
-        directions.
     global_parameter_functions : Dict[str, Union[str, openmmtools.states.GlobalParameterFunction]], optional
         Map a parameter name to a mathematical expression as a string
         or a ``openmmtools.states.GlobalParameterFunction`` object.
@@ -2392,21 +2387,15 @@ def run_thermodynamic_trailblazing(
         if resumed_sampler_state is not None:
             sampler_state = resumed_sampler_state
 
-    # We keep track of the previous state in the optimal protocol
-    # that we'll use to compute the stds in the opposite direction.
-    if len(states_stds[0]) == 0:
-        previous_thermo_state = None
-    else:
-        previous_thermo_state = copy.deepcopy(thermodynamic_state)
-
     # Make sure that thermodynamic_state is in the last explored
     # state, whether the algorithm was resumed or not.
     for state_parameter in optimal_protocol:
         parameter_setters[state_parameter](thermodynamic_state, state_parameter,
                                            optimal_protocol[state_parameter][-1])
-        if previous_thermo_state is not None:
-            parameter_setters[state_parameter](previous_thermo_state, state_parameter,
-                                               optimal_protocol[state_parameter][-2])
+
+    # We keep track also of the previous state in the optimal protocol
+    # that we'll use to compute the stds in the opposite direction.
+    previous_thermo_state = None
 
     # We change only one parameter at a time.
     for state_parameter, values in state_parameters:
@@ -2522,11 +2511,6 @@ def run_thermodynamic_trailblazing(
         # We haven't simulated the last state so we just set the positions of the second to last.
         trajectory_file.write_sampler_state(sampler_state)
         trajectory_file.close()
-
-    # Redistribute the states using the standard deviation estimates in both directions.
-    if bidirectional_redistribution:
-        optimal_protocol = _redistribute_trailblaze_states(
-            optimal_protocol, states_stds, std_potential_threshold)
 
     # If we have traversed the path in the reversed direction, re-invert
     # the order of the discretized path.
