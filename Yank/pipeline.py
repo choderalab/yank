@@ -2174,7 +2174,7 @@ def run_thermodynamic_trailblazing(
     # Reverse the direction of the algorithm if requested.
     if reversed_direction:
         state_parameters = [(par_name, end_states.__class__(reversed(end_states)))
-                            for par_name, end_states in state_parameters]
+                            for par_name, end_states in reversed(state_parameters)]
 
     # Initialize protocol with the starting value.
     optimal_protocol = {par: [values[0]] for par, values in state_parameters}

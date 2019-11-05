@@ -325,16 +325,14 @@ class Topography(object):
             no effect.
 
         """
-
         selection = copy.deepcopy(selection)
-        # Handle subset. Define a subset topology to manipulate, then define a common call to convert subset atom
-        # into absolute atom
+        topology = self.topology
+
+        # Make sure that the subset of atoms is a list of atom indices
+        # and slice the topology will be matching against accordingly.
         if subset is not None:
-            subset_atoms = self.select(subset, sort_by='index', as_set=False, subset=None)
-            topology = self.topology.subset(subset_atoms)
-        else:
-            subset_atoms = None
-            topology = self.topology
+            subset = self.select(subset, sort_by='index', as_set=False, subset=None)
+            topology = self.topology.subset(subset)
 
         class AtomMap(object):
             """Atom mapper class"""
@@ -359,7 +357,7 @@ class Topography(object):
                 else:
                     return item in self.subset_atoms
 
-        atom_map = AtomMap(subset_atoms)
+        atom_map = AtomMap(subset)
         # Shorthand for later
         atom_mapping = atom_map.atom_mapping
 
@@ -1298,7 +1296,7 @@ class AlchemicalPhase(object):
             raise RuntimeError('Barostated box sides must be at least {} Angstroms '
                                'to correct for missing dispersion interactions. The '
                                'minimum dimension of the provided box is {} Angstroms'
-                               ''.format(expanded_cutoff_distance/unit.angstrom * 2,
+                               ''.format(expanded_cutoff_distance/unit.angstrom * 2 / fluctuation_size,
                                          min_box_dimension/unit.angstrom))
 
         logger.debug('Setting cutoff for fully interacting system to {}. The minimum box '

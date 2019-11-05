@@ -503,8 +503,8 @@ The region definition supports multiple selection formats:
   molecules instead. This feature is not in yet, but is planned. The regions framework is the pre-cursor to this
   feature. See
   `Daylight's website for more information on SMARTS <http://www.daylight.com/dayhtml/doc/theory/theory.smarts.html>`_.
-* List of Ints: Select atoms by integers, this applies only to the final system, so numbers will probably not align
-  with the atom numbers from the input files.
+* List of Ints: Select atoms by integers, this applies only to the final system, so the indices may not align with the
+  with the atom indices from the input files if the setup pipeline adds/remove atoms (e.g. hydrogen or capping atoms).
 * Single Int: Same as the list of ints, but with a single entry, subject to same rules
 
 **OPTIONAL**

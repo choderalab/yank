@@ -91,7 +91,8 @@ def test_pack_transformation():
 class TestThermodynamicTrailblazing:
     """Test suite for the thermodynamic trailblazing function."""
 
-    PAR_NAME = 'testsystems_HarmonicOscillator_x0'
+    PAR_NAME_X0 = 'testsystems_HarmonicOscillator_x0'
+    PAR_NAME_K = 'testsystems_HarmonicOscillator_K'
 
     @classmethod
     def get_harmonic_oscillator(cls):
@@ -101,13 +102,20 @@ class TestThermodynamicTrailblazing:
 
         # Create composable state that control offset of harmonic oscillator.
         class X0State(GlobalParameterState):
-            testsystems_HarmonicOscillator_x0 = GlobalParameterState.GlobalParameter(cls.PAR_NAME, 1.0)
+            testsystems_HarmonicOscillator_x0 = GlobalParameterState.GlobalParameter(
+                cls.PAR_NAME_X0, 1.0)
+            testsystems_HarmonicOscillator_K = GlobalParameterState.GlobalParameter(
+                cls.PAR_NAME_K, (1.0*unit.kilocalories_per_mole/unit.nanometer**2).value_in_unit_system(unit.md_unit_system))
 
         # Create a harmonic oscillator thermo state.
-        oscillator = mmtools.testsystems.HarmonicOscillator(K=1.0*unit.kilocalories_per_mole/unit.nanometer**2)
+        k = 1.0*unit.kilocalories_per_mole/unit.nanometer**2
+        oscillator = mmtools.testsystems.HarmonicOscillator(K=k)
         sampler_state = SamplerState(positions=oscillator.positions)
         thermo_state = ThermodynamicState(oscillator.system, temperature=300*unit.kelvin)
-        x0_state = X0State(testsystems_HarmonicOscillator_x0=0.0)
+        x0_state = X0State(
+            testsystems_HarmonicOscillator_x0=0.0,
+            testsystems_HarmonicOscillator_K=k.value_in_unit_system(unit.md_unit_system)
+        )
         compound_state = CompoundThermodynamicState(thermo_state, composable_states=[x0_state])
 
         return compound_state, sampler_state
@@ -136,7 +144,7 @@ class TestThermodynamicTrailblazing:
             assert checkpoint_protocol == expected_protocol
 
             # The positions and box vectors have the correct dimension.
-            expected_n_states = len(expected_protocol[self.PAR_NAME])
+            expected_n_states = len(expected_protocol[self.PAR_NAME_X0])
             trajectory_file = mdtraj.formats.DCDTrajectoryFile(checkpoint_positions_path, 'r')
             xyz, cell_lengths, cell_angles = trajectory_file.read()
             assert (xyz.shape[0], xyz.shape[1]) == (expected_n_states, n_atoms)
@@ -154,7 +162,7 @@ class TestThermodynamicTrailblazing:
             first_protocol = run_thermodynamic_trailblazing(
                 compound_state, sampler_state, mcmc_move,
                 checkpoint_dir_path=checkpoint_dir_path,
-                state_parameters=[(self.PAR_NAME, [0.0, 1.0])]
+                state_parameters=[(self.PAR_NAME_X0, [0.0, 1.0])]
             )
 
             # The info in the checkpoint files is correct.
@@ -165,10 +173,10 @@ class TestThermodynamicTrailblazing:
             second_protocol = run_thermodynamic_trailblazing(
                 compound_state, sampler_state, mcmc_move,
                 checkpoint_dir_path=checkpoint_dir_path,
-                state_parameters=[(self.PAR_NAME, [0.0, 2.0])]
+                state_parameters=[(self.PAR_NAME_X0, [0.0, 2.0])]
             )
-            len_first_protocol = len(first_protocol[self.PAR_NAME])
-            assert second_protocol[self.PAR_NAME][:len_first_protocol] == first_protocol[self.PAR_NAME]
+            len_first_protocol = len(first_protocol[self.PAR_NAME_X0])
+            assert second_protocol[self.PAR_NAME_X0][:len_first_protocol] == first_protocol[self.PAR_NAME_X0]
 
             # The info in the checkpoint files is correct.
             _check_checkpoint_files(checkpoint_dir_path, second_protocol, n_atoms)
@@ -181,15 +189,15 @@ class TestThermodynamicTrailblazing:
 
         # Assign to the parameter a function and run the
         # trailblaze algorithm over the function variable.
-        global_parameter_functions = {self.PAR_NAME: 'lambda**2'}
+        global_parameter_functions = {self.PAR_NAME_X0: 'lambda**2'}
         function_variables = ['lambda']
 
         # Make sure it's not possible to have a parameter defined as a function and as a parameter state as well.
-        err_msg = f"Cannot specify {self.PAR_NAME} in 'state_parameters' and 'global_parameter_functions'"
+        err_msg = f"Cannot specify {self.PAR_NAME_X0} in 'state_parameters' and 'global_parameter_functions'"
         with assert_raises_regexp(ValueError, err_msg):
             run_thermodynamic_trailblazing(
                 compound_state, sampler_state, mcmc_move,
-                state_parameters=[(self.PAR_NAME, [0.0, 1.0])],
+                state_parameters=[(self.PAR_NAME_X0, [0.0, 1.0])],
                 global_parameter_functions=global_parameter_functions,
                 function_variables=function_variables,
             )
@@ -201,8 +209,8 @@ class TestThermodynamicTrailblazing:
             global_parameter_functions=global_parameter_functions,
             function_variables=function_variables,
         )
-        assert list(protocol.keys()) == [self.PAR_NAME]
-        parameter_protocol = protocol[self.PAR_NAME]
+        assert list(protocol.keys()) == [self.PAR_NAME_X0]
+        parameter_protocol = protocol[self.PAR_NAME_X0]
         assert parameter_protocol[0] == 0
         assert parameter_protocol[-1] == 1
 
@@ -211,9 +219,17 @@ class TestThermodynamicTrailblazing:
         # Create a harmonic oscillator system to test.
         compound_state, sampler_state = self.get_harmonic_oscillator()
         mcmc_move = self.get_langevin_dynamics_move()
+
+        # For this, we run through two variables to make sure they are executed in the correct order.
+        k_start = getattr(compound_state, self.PAR_NAME_K)
+        k_end = k_start * 2
         protocol = run_thermodynamic_trailblazing(
             compound_state, sampler_state, mcmc_move,
-            state_parameters=[(self.PAR_NAME, [1.0, 0.0])],
+            state_parameters=[
+                (self.PAR_NAME_X0, [1.0, 0.0]),
+                (self.PAR_NAME_K, [k_start, k_end]),
+            ],
             reversed_direction=True
         )
-        assert protocol[self.PAR_NAME] == [1.0, 0.0]
+        assert protocol[self.PAR_NAME_X0] == [1.0, 0.0, 0.0], protocol[self.PAR_NAME_X0]
+        assert protocol[self.PAR_NAME_K] == [k_start, k_start, k_end], protocol[self.PAR_NAME_K]
