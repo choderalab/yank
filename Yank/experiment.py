@@ -1514,6 +1514,9 @@ class ExperimentBuilder(object):
                 bidirectional_redistribution:
                     type: boolean
                     default: yes
+                bidirectional_search_thermo_dist:
+                    required: no
+                    type: float
                 function_variable_name:
                     required: no
                     type: string

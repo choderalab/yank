@@ -2231,6 +2231,7 @@ def run_thermodynamic_trailblazing(
         parameter_setters=None, thermodynamic_distance=0.5,
         distance_tolerance=0.05, n_samples_per_state=100,
         reversed_direction=False, bidirectional_redistribution=True,
+        bidirectional_search_thermo_dist='auto',
         global_parameter_functions=None, function_variables=tuple(),
         checkpoint_dir_path=None
 ):
@@ -2290,9 +2291,19 @@ def run_thermodynamic_trailblazing(
         discretization will still be ordered from the beginning to the
         end following the order in ``state_parameters``.
     bidirectional_redistribution : bool, optional
-        If True, the states will be redistributed using the standard
+        If ``True``, the states will be redistributed using the standard
         deviation of the potential difference between states in both
         directions.
+    bidirectional_search_thermo_dist : float or 'auto', optional
+        If ``bidirectional_redistribution`` is ``True``, the thermodynamic
+        distance between the sampled states used to collect data along
+        the path can be different than the thermodynamic distance after
+        redistribution. The default ('auto') caps the thermodynamic
+        distance used for trailblazing at 1 kT. Keeping this value small
+        lower the chance of obtaining very large stds in the opposite direction
+        due to rare, dominating events in sections of the path where the overlap
+        decreases quickly, which in turn may results in unreasonably long
+        protocols.
     global_parameter_functions : Dict[str, Union[str, openmmtools.states.GlobalParameterFunction]], optional
         Map a parameter name to a mathematical expression as a string
         or a ``openmmtools.states.GlobalParameterFunction`` object.
@@ -2324,6 +2335,15 @@ def run_thermodynamic_trailblazing(
 
     # Make sure that the state parameters to optimize have a clear order.
     assert (isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
+
+    # Determine the thermo distance to achieve during the search.
+    if not bidirectional_redistribution:
+        search_thermo_dist = thermodynamic_distance
+    else:
+        if bidirectional_search_thermo_dist == 'auto':
+            search_thermo_dist = min(1.0, thermodynamic_distance)
+        else:
+            search_thermo_dist = bidirectional_search_thermo_dist
 
     # Create unordered helper variable.
     state_parameter_dict = {x[0]: x[1] for x in state_parameters}
@@ -2433,12 +2453,12 @@ def run_thermodynamic_trailblazing(
             reweighted_thermo_state = None
 
             # Find first state that doesn't overlap with simulated one
-            # with std(du) within thermodynamic_distance +- distance_tolerance.
+            # with std(du) within search_thermo_dist +- distance_tolerance.
             # We stop anyway if we reach the last value of the protocol.
             std_energy = 0.0
             current_parameter_value = optimal_protocol[state_parameter][-1]
-            while (abs(std_energy - thermodynamic_distance) > distance_tolerance and
-                   not (current_parameter_value == values[1] and std_energy < thermodynamic_distance)):
+            while (abs(std_energy - search_thermo_dist) > distance_tolerance and
+                   not (current_parameter_value == values[1] and std_energy < search_thermo_dist)):
 
                 # Determine next parameter value to compute.
                 if np.isclose(std_energy, 0.0):
@@ -2451,7 +2471,7 @@ def run_thermodynamic_trailblazing(
                     derivative_std_energy = ((std_energy - old_std_energy) /
                                              (current_parameter_value - old_parameter_value))
                     old_parameter_value = current_parameter_value
-                    current_parameter_value += (thermodynamic_distance - std_energy) / derivative_std_energy
+                    current_parameter_value += (search_thermo_dist - std_energy) / derivative_std_energy
 
                 # Keep current_parameter_value inside bound interval.
                 if search_direction * current_parameter_value > values[1]:

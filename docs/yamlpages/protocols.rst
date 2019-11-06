@@ -148,12 +148,14 @@ protocols:
         # Number of samples used to estimate the standard deviation of the potential between two states.
         n_samples_per_state: 100
         # The target distance (in thermodynamic length) between two intermediate states up to 'distance_tolerance'.
-        thermodynamic_distance: 0.5  # in kT
+        thermodynamic_distance: 1.0  # in kT
         distance_tolerance: 0.05  # in kT
         # Whether to traverse the path in the forward (given by 'alchemical_path') or reversed direction.
         reversed_direction: true
         # If set, the states are redistributed after trailblazing using the std estimated in both directions.
+        # Optionally, the samples can be obtained from states at a different thermo length than thermodynamic_distance.
         bidirectional_redistribution: true
+        bidirectional_search_thermo_dist: 0.5
         # A variable controlling the path if 'alchemical_path' contains mathematical expressions.
         function_variable_name: lambda
 
@@ -164,7 +166,8 @@ protocols:
         lambda: [1.0, 0.0]
 
 It is possible to set some of the parameters of the algorithm performing the path discretization in the
-``trailblazer_options`` tag. Moreover, instead of ``alchemical_path: auto`` you can express the alchemical variables
+``trailblazer_options`` tag (for an extensive description of the options, see the API documentation of the function
+``yank.pipeline.run_thermodynamic_trailblazing``). Moreover, instead of ``alchemical_path: auto`` you can express the alchemical variables
 in terms of mathematical Python expressions depending on a variable that will be discretized by the algorihtm. In this
 case, ``alchemical_path`` must contain the value of the end states assumed by the variable. In the example above,
 electrostatic interactions are deactivated beetween the variable ``lambda`` 1.0 and 0.5, while Lennard-Jones potential
