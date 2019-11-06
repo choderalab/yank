@@ -2142,7 +2142,7 @@ def _cache_trailblaze_data(checkpoint_dir_path, optimal_protocol, states_stds,
     trajectory_file.write_sampler_state(sampler_state)
 
 
-def _redistribute_trailblaze_states(old_protocol, states_stds, thermo_length_threshold):
+def _redistribute_trailblaze_states(old_protocol, states_stds, thermodynamic_distance):
     """Redistribute the states using a bidirectional estimate of the thermodynamic length.
 
     Parameters
@@ -2152,7 +2152,7 @@ def _redistribute_trailblaze_states(old_protocol, states_stds, thermo_length_thr
     states_stds : List[List[float]]
         states_stds[j][i] is the standard deviation of the potential
         difference between states i-1 and i computed in the j direction.
-    thermo_length_threshold : float
+    thermodynamic_distance : float
         The distance between each pair of states.
 
     Returns
@@ -2196,7 +2196,7 @@ def _redistribute_trailblaze_states(old_protocol, states_stds, thermo_length_thr
         # Find first state for which the accumulated standard
         # deviation is greater than the thermo length threshold.
         try:
-            while old_protocol_thermo_length[current_state_idx+1] - new_protocol_cum_thermo_length <= thermo_length_threshold:
+            while old_protocol_thermo_length[current_state_idx+1] - new_protocol_cum_thermo_length <= thermodynamic_distance:
                 current_state_idx += 1
         except IndexError:
             # If we got to the end, we just add the last state
@@ -2213,12 +2213,12 @@ def _redistribute_trailblaze_states(old_protocol, states_stds, thermo_length_thr
         # Now interpolate between the current state state and the next to find
         # the exact state for which the thermo length equal the threshold.
         next_state = _get_old_protocol_state(current_state_idx+1)
-        differential = thermo_length_threshold - pair_thermo_length
+        differential = thermodynamic_distance - pair_thermo_length
         differential /= old_protocol_thermo_length[current_state_idx+1] - old_protocol_thermo_length[current_state_idx]
         new_state = current_state + differential * (next_state - current_state)
 
         # Update cumulative thermo length.
-        new_protocol_cum_thermo_length += thermo_length_threshold
+        new_protocol_cum_thermo_length += thermodynamic_distance
 
         # Update redistributed protocol.
         _add_state_to_new_protocol(new_state)
@@ -2228,8 +2228,8 @@ def _redistribute_trailblaze_states(old_protocol, states_stds, thermo_length_thr
 
 def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        parameter_setters=None, std_potential_threshold=0.5,
-        threshold_tolerance=0.05, n_samples_per_state=100,
+        parameter_setters=None, thermodynamic_distance=0.5,
+        distance_tolerance=0.05, n_samples_per_state=100,
         reversed_direction=False, bidirectional_redistribution=True,
         global_parameter_functions=None, function_variables=tuple(),
         checkpoint_dir_path=None
@@ -2242,8 +2242,10 @@ def run_thermodynamic_trailblazing(
     and computing the standard deviation of the difference of potential energies
     between the two states at those configurations.
 
-    Two states are chosen for the protocol if their standard deviation is
-    within ``std_potential_threshold +- threshold_tolerance``.
+    The states of the protocol are chosen so that each pair has a distance
+    (in thermodynamic length) of ``thermodynamic_distance +- distance_tolerance``.
+    The thermodynamic length estimate (in kT) is based on the standard deviation
+    of the difference in potential energy between the two states.
 
     The function is capable of resuming when interrupted if ``checkpoint_dir_path``
     is specified. This will create two files called 'protocol.yaml' and
@@ -2274,10 +2276,10 @@ def run_thermodynamic_trailblazing(
         ``setter(thermodynamic_state, parameter_name, value)``. This
         is useful for example to set global parameter function variables
         with ``openmmtools.states.GlobalParameterState.set_function_variable``.
-    std_potential_threshold : float, optional
-        The threshold that determines how to separate the states between
-        each others.
-    threshold_tolerance : float, optional
+    thermodynamic_distance : float, optional
+        The target distance (in thermodynamic length) between each pair of
+        states in kT.
+    distance_tolerance : float, optional
         The tolerance on the found standard deviation.
     n_samples_per_state : int, optional
         How many samples to collect to estimate the overlap between two
@@ -2431,12 +2433,12 @@ def run_thermodynamic_trailblazing(
             reweighted_thermo_state = None
 
             # Find first state that doesn't overlap with simulated one
-            # with std(du) within std_potential_threshold +- threshold_tolerance.
+            # with std(du) within thermodynamic_distance +- distance_tolerance.
             # We stop anyway if we reach the last value of the protocol.
             std_energy = 0.0
             current_parameter_value = optimal_protocol[state_parameter][-1]
-            while (abs(std_energy - std_potential_threshold) > threshold_tolerance and
-                   not (current_parameter_value == values[1] and std_energy < std_potential_threshold)):
+            while (abs(std_energy - thermodynamic_distance) > distance_tolerance and
+                   not (current_parameter_value == values[1] and std_energy < thermodynamic_distance)):
 
                 # Determine next parameter value to compute.
                 if np.isclose(std_energy, 0.0):
@@ -2449,7 +2451,7 @@ def run_thermodynamic_trailblazing(
                     derivative_std_energy = ((std_energy - old_std_energy) /
                                              (current_parameter_value - old_parameter_value))
                     old_parameter_value = current_parameter_value
-                    current_parameter_value += (std_potential_threshold - std_energy) / derivative_std_energy
+                    current_parameter_value += (thermodynamic_distance - std_energy) / derivative_std_energy
 
                 # Keep current_parameter_value inside bound interval.
                 if search_direction * current_parameter_value > values[1]:
@@ -2526,7 +2528,7 @@ def run_thermodynamic_trailblazing(
     # Redistribute the states using the standard deviation estimates in both directions.
     if bidirectional_redistribution:
         optimal_protocol = _redistribute_trailblaze_states(
-            optimal_protocol, states_stds, std_potential_threshold)
+            optimal_protocol, states_stds, thermodynamic_distance)
 
     # If we have traversed the path in the reversed direction, re-invert
     # the order of the discretized path.

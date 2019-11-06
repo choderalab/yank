@@ -1502,10 +1502,10 @@ class ExperimentBuilder(object):
                 n_samples_per_state:
                     type: integer
                     default: 100
-                std_potential_threshold:
+                thermodynamic_distance:
                     type: float
                     default: 0.5
-                threshold_tolerance:
+                distance_tolerance:
                     type: float
                     default: 0.05
                 reversed_direction:

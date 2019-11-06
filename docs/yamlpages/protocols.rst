@@ -147,9 +147,9 @@ protocols:
         constrain_receptor: false
         # Number of samples used to estimate the standard deviation of the potential between two states.
         n_samples_per_state: 100
-        # The "distance" in potential standard deviation between two intermediate states up to 'threshold_tolerance'.
-        std_potential_threshold: 0.5  # in kT
-        threshold_tolerance: 0.05  # in kT
+        # The target distance (in thermodynamic length) between two intermediate states up to 'distance_tolerance'.
+        thermodynamic_distance: 0.5  # in kT
+        distance_tolerance: 0.05  # in kT
         # Whether to traverse the path in the forward (given by 'alchemical_path') or reversed direction.
         reversed_direction: true
         # If set, the states are redistributed after trailblazing using the std estimated in both directions.

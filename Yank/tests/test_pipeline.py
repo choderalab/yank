@@ -269,5 +269,5 @@ class TestThermodynamicTrailblazing:
 
         for states_stds, expected_redistributed_protocol in test_cases:
             redistributed_protocol = _redistribute_trailblaze_states(
-                optimal_protocol, states_stds, thermo_length_threshold=0.5)
+                optimal_protocol, states_stds, thermodynamic_distance=0.5)
             assert expected_redistributed_protocol == redistributed_protocol, redistributed_protocol
