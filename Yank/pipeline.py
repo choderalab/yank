@@ -2228,7 +2228,7 @@ def _redistribute_trailblaze_states(old_protocol, states_stds, thermodynamic_dis
 
 def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        parameter_setters=None, thermodynamic_distance=0.5,
+        parameter_setters=None, thermodynamic_distance=1.0,
         distance_tolerance=0.05, n_samples_per_state=100,
         reversed_direction=False, bidirectional_redistribution=True,
         bidirectional_search_thermo_dist='auto',
@@ -2279,21 +2279,21 @@ def run_thermodynamic_trailblazing(
         with ``openmmtools.states.GlobalParameterState.set_function_variable``.
     thermodynamic_distance : float, optional
         The target distance (in thermodynamic length) between each pair of
-        states in kT.
+        states in kT. Default is 1.0 (kT).
     distance_tolerance : float, optional
-        The tolerance on the found standard deviation.
+        The tolerance on the found standard deviation. Default is 0.05 (kT).
     n_samples_per_state : int, optional
         How many samples to collect to estimate the overlap between two
-        states.
+        states. Default is 100.
     reversed_direction : bool, optional
-        If True, the algorithm starts from the final state and traverses
+        If ``True``, the algorithm starts from the final state and traverses
         the path from the end to the beginning. The returned path
         discretization will still be ordered from the beginning to the
-        end following the order in ``state_parameters``.
+        end following the order in ``state_parameters``. Default is ``False``.
     bidirectional_redistribution : bool, optional
         If ``True``, the states will be redistributed using the standard
         deviation of the potential difference between states in both
-        directions.
+        directions. Default is ``True``.
     bidirectional_search_thermo_dist : float or 'auto', optional
         If ``bidirectional_redistribution`` is ``True``, the thermodynamic
         distance between the sampled states used to collect data along
