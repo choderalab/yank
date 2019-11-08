@@ -11,7 +11,7 @@ DOCLINES = __doc__.split("\n")
 ########################
 VERSION = "0.25.0"  # Primary base version of the build
 DEVBUILD = None  # Dev build status, Either None or Integer
-ISRELEASED = False  # Are we releasing this as a full cut?
+ISRELEASED = True  # Are we releasing this as a full cut?
 __version__ = VERSION
 ########################
 CLASSIFIERS = """\

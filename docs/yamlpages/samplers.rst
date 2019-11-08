@@ -9,8 +9,8 @@ Together with the :doc:`mcmc_moves <mcmc>` section, this section provides a flex
 thermodynamic states are efficiently sampled.
 
 This block is fully optional for those who do not wish to fiddle with such settings and to
-support backwards compatible YAML scripts. If this no ``sampler`` is given to ``experiment``, then a DEFAULT one is
-used.
+support backwards compatible YAML scripts. If no ``sampler`` is given to ``experiment``, then Hamiltonian replica exchange
+is used by default.
 
 ----
 
@@ -28,20 +28,18 @@ Samplers Syntax
             number_of_iterations: {NumberOfIterations}
             {SamplerOptions}
 
-The ``{Sampler}`` can be one of the following:
+The **only mandatory** keyword is``type``. The ``{Sampler}`` can be one of the following:
 
 * :ref:`MultistateSampler <yaml_samplers_multistatesampler>`: Independent simulations at distinct thermodynamic states
 * :ref:`ReplicaExchangeSampler <yaml_samplers_repexsampler>`: Replica exchange among thermodynamic states (also called Hamiltonian exchange if only the Hamiltonian is changing)
 * :ref:`SAMSSampler <yaml_samplers_samssampler>`: Self-adjusted mixture sampling (also known as optimally-adjusted mixture sampling)
 
-The above block is the **minimum syntax** needed for any definition for any of the options.
-
 The ``{MCMCName}`` denotes the name of an MCMC scheme block to be used to update the replicas at fixed thermodynamic state.
-See :ref:`MCMC defaults <yaml_mcmc_head>` for more information about MCMC schemes.
+If not given, a default MCMC move is used (see :ref:`MCMC defaults <yaml_mcmc_head>` for more information).
 
 The ``{NumberOfIterations}`` is a non-negative integer that denotes the maximum number of iterations to be run.
 When this block is not given and :ref:`default_number_of_iterations <yaml_options_default_number_of_iterations>` is set
-in the main :ref:`yaml-options-head` block, then that number is used instead. See that description for more information
+in the main :ref:`yaml-options-head` block, then that number is used instead. See that description for more information.
 
 ``{SamplerOptions}`` denotes an optional set of sampler-specific options that can individually be specified if user
 desires to override defaults. The ``MultiStateSampler`` is the base class for all other samples and options which

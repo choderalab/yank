@@ -6,8 +6,8 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.25.0 - Moved multistate and mpi modules to OpenMMTools and MPIPlus
---------------------------------------------------------------------
+0.25.0 - Moved multistate and mpi modules and new trailblaze algorithm
+----------------------------------------------------------------------
 
 API-breaking changes
 ^^^^^^^^^^^^^^^^^^^^
