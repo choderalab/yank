@@ -14,6 +14,7 @@ Test pipeline functions in pipeline.py.
 # =============================================================================
 
 from yank.pipeline import *
+from yank.pipeline import _redistribute_trailblaze_states
 
 from nose.tools import assert_raises_regexp
 
@@ -173,7 +174,8 @@ class TestThermodynamicTrailblazing:
             second_protocol = run_thermodynamic_trailblazing(
                 compound_state, sampler_state, mcmc_move,
                 checkpoint_dir_path=checkpoint_dir_path,
-                state_parameters=[(self.PAR_NAME_X0, [0.0, 2.0])]
+                state_parameters=[(self.PAR_NAME_X0, [0.0, 2.0])],
+                bidirectional_redistribution=False
             )
             len_first_protocol = len(first_protocol[self.PAR_NAME_X0])
             assert second_protocol[self.PAR_NAME_X0][:len_first_protocol] == first_protocol[self.PAR_NAME_X0]
@@ -229,7 +231,43 @@ class TestThermodynamicTrailblazing:
                 (self.PAR_NAME_X0, [1.0, 0.0]),
                 (self.PAR_NAME_K, [k_start, k_end]),
             ],
-            reversed_direction=True
+            reversed_direction=True,
+            bidirectional_redistribution=False
         )
         assert protocol[self.PAR_NAME_X0] == [1.0, 0.0, 0.0], protocol[self.PAR_NAME_X0]
         assert protocol[self.PAR_NAME_K] == [k_start, k_start, k_end], protocol[self.PAR_NAME_K]
+
+    def test_redistribute_trailblaze_states(self):
+        """States are redistributed correctly as a function of the bidirectional thermo length."""
+        # This simulates the protocol found after trailblazing.
+        optimal_protocol = {
+            'lambda_electrostatics': [1.0, 0.5, 0.0, 0.0, 0.0],
+            'lambda_sterics':        [1.0, 1.0, 1.0, 0.5, 0.0]
+        }
+
+        # Each test case is a tuple (states_stds, expected_redistributed_protocol).
+        test_cases = [
+            (
+                [
+                    [0.5, 0.5, 0.5, 0.5],
+                    [1.5, 1.5, 1.5]
+                ], {
+                    'lambda_electrostatics': [1.0, 0.75, 0.5, 0.25, 0.0,  0.0, 0.0, 0.0],
+                    'lambda_sterics':        [1.0,  1.0, 1.0,  1.0, 1.0, 0.75, 0.5, 0.0]
+                }
+            ),
+            (
+                [
+                    [0.5, 0.5, 0.5, 0.5],
+                    [0.0, 0.0, 0.0]
+                ], {
+                    'lambda_electrostatics': [1.0, 0.0,  0.0, 0.0],
+                    'lambda_sterics':        [1.0, 1.0, 0.25, 0.0]
+                }
+            ),
+        ]
+
+        for states_stds, expected_redistributed_protocol in test_cases:
+            redistributed_protocol = _redistribute_trailblaze_states(
+                optimal_protocol, states_stds, thermodynamic_distance=0.5)
+            assert expected_redistributed_protocol == redistributed_protocol, redistributed_protocol

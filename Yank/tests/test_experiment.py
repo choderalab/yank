@@ -995,9 +995,9 @@ def test_validation_correct_protocols():
 
     trailblazer_options = [
         {'n_equilibration_iterations': 1000, 'n_samples_per_state': 100,
-         'std_potential_threshold': 0.5, 'threshold_tolerance': 0.05},
+         'thermodynamic_distance': 0.5, 'distance_tolerance': 0.05},
         {'n_equilibration_iterations': 100, 'n_samples_per_state': 10},
-        {'std_potential_threshold': 1.0, 'threshold_tolerance': 0.5},
+        {'thermodynamic_distance': 1.0, 'distance_tolerance': 0.5},
         {'function_variable_name': 'lambda'},
         {'function_variable_name': 'lambda', 'reversed_direction': False}
     ]

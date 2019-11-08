@@ -2056,23 +2056,28 @@ def _resume_thermodynamic_trailblazing(checkpoint_dir_path, initial_protocol):
         The last saved SamplerState or None if no frame was saved yet.
 
     """
+    import json
+
     # We save the protocol in a YAML file and the positions in netcdf.
     protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+    stds_file_path = os.path.join(checkpoint_dir_path, 'states_stds.json')
     positions_file_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
 
     # Create the directory, if it doesn't exist.
     os.makedirs(checkpoint_dir_path, exist_ok=True)
 
-    # Create/load protocol checkpoint file.
+    # Load protocol and stds checkpoint file.
     try:
         # Parse the previously calculated optimal_protocol dict.
         with open(protocol_file_path, 'r') as file_stream:
             resumed_protocol = yaml.load(file_stream, Loader=yaml.FullLoader)
+
+        # Load the energy difference stds.
+        with open(stds_file_path, 'r') as f:
+            states_stds = json.load(f)
     except FileNotFoundError:
-        # The checkpoint doesn't exist. Create one.
-        with open(protocol_file_path, 'w') as file_stream:
-            yaml.dump(initial_protocol, file_stream)
         resumed_protocol = initial_protocol
+        states_stds = [[], []]
 
     # Check if there's an existing positions information.
     try:
@@ -2113,15 +2118,122 @@ def _resume_thermodynamic_trailblazing(checkpoint_dir_path, initial_protocol):
     else:
         sampler_state = None
 
-    return resumed_protocol, trajectory_file, sampler_state
+    return resumed_protocol, states_stds, trajectory_file, sampler_state
+
+
+def _cache_trailblaze_data(checkpoint_dir_path, optimal_protocol, states_stds,
+                           trajectory_file, sampler_state):
+    """Store on disk current state of the trailblaze run."""
+    import json
+
+    # Determine the file paths of the stored data.
+    protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+    stds_file_path = os.path.join(checkpoint_dir_path, 'states_stds.json')
+
+    # Update protocol.
+    with open(protocol_file_path, 'w') as file_stream:
+        yaml.dump(optimal_protocol, file_stream)
+
+    # Update the stds between states.
+    with open(stds_file_path, 'w') as f:
+        json.dump(states_stds, f)
+
+    # Append positions of the state that we just simulated.
+    trajectory_file.write_sampler_state(sampler_state)
+
+
+def _redistribute_trailblaze_states(old_protocol, states_stds, thermodynamic_distance):
+    """Redistribute the states using a bidirectional estimate of the thermodynamic length.
+
+    Parameters
+    ----------
+    old_protocol : Dict[str, List[float]]
+        The unidirectional optimal protocol.
+    states_stds : List[List[float]]
+        states_stds[j][i] is the standard deviation of the potential
+        difference between states i-1 and i computed in the j direction.
+    thermodynamic_distance : float
+        The distance between each pair of states.
+
+    Returns
+    -------
+    new_protocol : Dict[str, List[float]]
+        The new estimate of the optimal protocol.
+    """
+    # The parameter names in a fixed order.
+    parameter_names = [par_name for par_name in old_protocol]
+
+    # Initialize the new protocol from the first state the optimal protocol.
+    new_protocol = {par_name: [values[0]] for par_name, values in old_protocol.items()}
+
+    def _get_old_protocol_state(state_idx):
+        """Return a representation of the thermo state as a list of parameter values."""
+        return np.array([old_protocol[par_name][state_idx] for par_name in parameter_names])
+
+    def _add_state_to_new_protocol(state):
+        for parameter_name, new_state_value in zip(parameter_names, state.tolist()):
+            new_protocol[parameter_name].append(new_state_value)
+
+    # The thermodynamic length at 0 is 0.0.
+    states_stds[0] = [0.0] + states_stds[0]
+    states_stds[1] = [0.0] + states_stds[1]
+
+    # We don't have the energy difference std in the
+    # direction opposite to the search direction so we
+    # pad the list.
+    states_stds[1].append(states_stds[0][-1])
+    states_stds = np.array(states_stds)
+
+    # Compute a bidirectional estimate of the thermodynamic length.
+    old_protocol_thermo_length = np.cumsum(np.mean(states_stds, axis=0))
+
+    # Trailblaze again interpolating the thermodynamic length function.
+    current_state_idx = 0
+    current_state = _get_old_protocol_state(0)
+    last_state = _get_old_protocol_state(-1)
+    new_protocol_cum_thermo_length = 0.0
+    while (current_state != last_state).any():
+        # Find first state for which the accumulated standard
+        # deviation is greater than the thermo length threshold.
+        try:
+            while old_protocol_thermo_length[current_state_idx+1] - new_protocol_cum_thermo_length <= thermodynamic_distance:
+                current_state_idx += 1
+        except IndexError:
+            # If we got to the end, we just add the last state
+            # to the protocol and stop the while loop.
+            _add_state_to_new_protocol(last_state)
+            break
+
+        # Update current state.
+        current_state = _get_old_protocol_state(current_state_idx)
+
+        # The thermodynamic length from the last redistributed state to current state.
+        pair_thermo_length = old_protocol_thermo_length[current_state_idx] - new_protocol_cum_thermo_length
+
+        # Now interpolate between the current state state and the next to find
+        # the exact state for which the thermo length equal the threshold.
+        next_state = _get_old_protocol_state(current_state_idx+1)
+        differential = thermodynamic_distance - pair_thermo_length
+        differential /= old_protocol_thermo_length[current_state_idx+1] - old_protocol_thermo_length[current_state_idx]
+        new_state = current_state + differential * (next_state - current_state)
+
+        # Update cumulative thermo length.
+        new_protocol_cum_thermo_length += thermodynamic_distance
+
+        # Update redistributed protocol.
+        _add_state_to_new_protocol(new_state)
+
+    return new_protocol
 
 
 def run_thermodynamic_trailblazing(
         thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-        parameter_setters=None, std_potential_threshold=0.5,
-        threshold_tolerance=0.05, n_samples_per_state=100,
-        reversed_direction=False, global_parameter_functions=None,
-        function_variables=tuple(), checkpoint_dir_path=None
+        parameter_setters=None, thermodynamic_distance=1.0,
+        distance_tolerance=0.05, n_samples_per_state=100,
+        reversed_direction=False, bidirectional_redistribution=True,
+        bidirectional_search_thermo_dist='auto',
+        global_parameter_functions=None, function_variables=tuple(),
+        checkpoint_dir_path=None
 ):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
@@ -2131,8 +2243,10 @@ def run_thermodynamic_trailblazing(
     and computing the standard deviation of the difference of potential energies
     between the two states at those configurations.
 
-    Two states are chosen for the protocol if their standard deviation is
-    within ``std_potential_threshold +- threshold_tolerance``.
+    The states of the protocol are chosen so that each pair has a distance
+    (in thermodynamic length) of ``thermodynamic_distance +- distance_tolerance``.
+    The thermodynamic length estimate (in kT) is based on the standard deviation
+    of the difference in potential energy between the two states.
 
     The function is capable of resuming when interrupted if ``checkpoint_dir_path``
     is specified. This will create two files called 'protocol.yaml' and
@@ -2163,19 +2277,33 @@ def run_thermodynamic_trailblazing(
         ``setter(thermodynamic_state, parameter_name, value)``. This
         is useful for example to set global parameter function variables
         with ``openmmtools.states.GlobalParameterState.set_function_variable``.
-    std_potential_threshold : float, optional
-        The threshold that determines how to separate the states between
-        each others.
-    threshold_tolerance : float, optional
-        The tolerance on the found standard deviation.
+    thermodynamic_distance : float, optional
+        The target distance (in thermodynamic length) between each pair of
+        states in kT. Default is 1.0 (kT).
+    distance_tolerance : float, optional
+        The tolerance on the found standard deviation. Default is 0.05 (kT).
     n_samples_per_state : int, optional
         How many samples to collect to estimate the overlap between two
-        states.
+        states. Default is 100.
     reversed_direction : bool, optional
-        If True, the algorithm starts from the final state and traverses
+        If ``True``, the algorithm starts from the final state and traverses
         the path from the end to the beginning. The returned path
         discretization will still be ordered from the beginning to the
-        end following the order in ``state_parameters``.
+        end following the order in ``state_parameters``. Default is ``False``.
+    bidirectional_redistribution : bool, optional
+        If ``True``, the states will be redistributed using the standard
+        deviation of the potential difference between states in both
+        directions. Default is ``True``.
+    bidirectional_search_thermo_dist : float or 'auto', optional
+        If ``bidirectional_redistribution`` is ``True``, the thermodynamic
+        distance between the sampled states used to collect data along
+        the path can be different than the thermodynamic distance after
+        redistribution. The default ('auto') caps the thermodynamic
+        distance used for trailblazing at 1 kT. Keeping this value small
+        lower the chance of obtaining very large stds in the opposite direction
+        due to rare, dominating events in sections of the path where the overlap
+        decreases quickly, which in turn may results in unreasonably long
+        protocols.
     global_parameter_functions : Dict[str, Union[str, openmmtools.states.GlobalParameterFunction]], optional
         Map a parameter name to a mathematical expression as a string
         or a ``openmmtools.states.GlobalParameterFunction`` object.
@@ -2207,6 +2335,15 @@ def run_thermodynamic_trailblazing(
 
     # Make sure that the state parameters to optimize have a clear order.
     assert (isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
+
+    # Determine the thermo distance to achieve during the search.
+    if not bidirectional_redistribution:
+        search_thermo_dist = thermodynamic_distance
+    else:
+        if bidirectional_search_thermo_dist == 'auto':
+            search_thermo_dist = min(1.0, thermodynamic_distance)
+        else:
+            search_thermo_dist = bidirectional_search_thermo_dist
 
     # Create unordered helper variable.
     state_parameter_dict = {x[0]: x[1] for x in state_parameters}
@@ -2261,22 +2398,37 @@ def run_thermodynamic_trailblazing(
     # Initialize protocol with the starting value.
     optimal_protocol = {par: [values[0]] for par, values in state_parameters}
 
+    # Keep track of potential std between states in both directions
+    # of the path so that we can redistribute the states later.
+    # At the end of the protocol this will have the same length
+    # of the protocol minus one. The inner lists are for the forward
+    # and reversed direction stds respectively.
+    states_stds = [[], []]
+
     # Check to see whether a trailblazing algorithm is already in progress,
     # and if so, restore to the previously checkpointed state.
     if checkpoint_dir_path is not None:
-        optimal_protocol, trajectory_file, resumed_sampler_state = _resume_thermodynamic_trailblazing(
+        optimal_protocol, states_stds, trajectory_file, resumed_sampler_state = _resume_thermodynamic_trailblazing(
             checkpoint_dir_path, optimal_protocol)
         # Start from the last saved conformation.
         if resumed_sampler_state is not None:
             sampler_state = resumed_sampler_state
-        # Determine path where to save updates of the protocol.
-        protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
+
+    # We keep track of the previous state in the optimal protocol
+    # that we'll use to compute the stds in the opposite direction.
+    if len(states_stds[0]) == 0:
+        previous_thermo_state = None
+    else:
+        previous_thermo_state = copy.deepcopy(thermodynamic_state)
 
     # Make sure that thermodynamic_state is in the last explored
     # state, whether the algorithm was resumed or not.
     for state_parameter in optimal_protocol:
         parameter_setters[state_parameter](thermodynamic_state, state_parameter,
                                            optimal_protocol[state_parameter][-1])
+        if previous_thermo_state is not None:
+            parameter_setters[state_parameter](previous_thermo_state, state_parameter,
+                                               optimal_protocol[state_parameter][-2])
 
     # We change only one parameter at a time.
     for state_parameter, values in state_parameters:
@@ -2290,23 +2442,24 @@ def run_thermodynamic_trailblazing(
 
         # Gather data until we get to the last value.
         while optimal_protocol[state_parameter][-1] != values[-1]:
-            # Simulate current thermodynamic state to obtain energies.
+            # Simulate current thermodynamic state to collect samples.
             sampler_states = []
             simulated_energies = np.zeros(n_samples_per_state)
             for i in range(n_samples_per_state):
                 mcmc_move.apply(thermodynamic_state, sampler_state)
-                context, _ = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
-                sampler_state.apply_to_context(context, ignore_velocities=True)
-                simulated_energies[i] = thermodynamic_state.reduced_potential(context)
                 sampler_states.append(copy.deepcopy(sampler_state))
 
+            # Keep track of the thermo state we use for the reweighting.
+            reweighted_thermo_state = None
+
             # Find first state that doesn't overlap with simulated one
-            # with std(du) within std_potential_threshold +- threshold_tolerance.
+            # with std(du) within search_thermo_dist +- distance_tolerance.
             # We stop anyway if we reach the last value of the protocol.
             std_energy = 0.0
             current_parameter_value = optimal_protocol[state_parameter][-1]
-            while (abs(std_energy - std_potential_threshold) > threshold_tolerance and
-                   not (current_parameter_value == values[1] and std_energy < std_potential_threshold)):
+            while (abs(std_energy - search_thermo_dist) > distance_tolerance and
+                   not (current_parameter_value == values[1] and std_energy < search_thermo_dist)):
+
                 # Determine next parameter value to compute.
                 if np.isclose(std_energy, 0.0):
                     # This is the first iteration or the two state overlap significantly
@@ -2318,30 +2471,58 @@ def run_thermodynamic_trailblazing(
                     derivative_std_energy = ((std_energy - old_std_energy) /
                                              (current_parameter_value - old_parameter_value))
                     old_parameter_value = current_parameter_value
-                    current_parameter_value += (std_potential_threshold - std_energy) / derivative_std_energy
+                    current_parameter_value += (search_thermo_dist - std_energy) / derivative_std_energy
 
                 # Keep current_parameter_value inside bound interval.
                 if search_direction * current_parameter_value > values[1]:
                     current_parameter_value = values[1]
                 assert search_direction * (optimal_protocol[state_parameter][-1] - current_parameter_value) < 0
 
-                # Get context in new thermodynamic state.
-                parameter_setters[state_parameter](thermodynamic_state, state_parameter, current_parameter_value)
-                context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+                # Determine the thermo states at which we need to compute the energies.
+                # If this is the first attempt, compute also the reduced potential of
+                # the simulated energies and the previous state to estimate the standard
+                # deviation in the opposite direction.
+                if reweighted_thermo_state is None:
+                    # First attempt.
+                    reweighted_thermo_state = copy.deepcopy(thermodynamic_state)
+                    computed_thermo_states = [reweighted_thermo_state, thermodynamic_state]
+                    if previous_thermo_state is not None:
+                        computed_thermo_states.append(previous_thermo_state)
+                else:
+                    computed_thermo_states = [reweighted_thermo_state]
 
-                # Compute the energies at the sampled positions.
-                reweighted_energies = np.zeros(n_samples_per_state)
+                # Set the reweighted state to the current parameter value.
+                parameter_setters[state_parameter](reweighted_thermo_state, state_parameter, current_parameter_value)
+
+                # Compute all energies.
+                energies = np.empty(shape=(len(computed_thermo_states), n_samples_per_state))
                 for i, sampler_state in enumerate(sampler_states):
-                    sampler_state.apply_to_context(context, ignore_velocities=True)
-                    reweighted_energies[i] = thermodynamic_state.reduced_potential(context)
+                    energies[:,i] = mmtools.states.reduced_potential_at_states(
+                        sampler_state, computed_thermo_states, mmtools.cache.global_context_cache)
 
-                # Compute standard deviation of the difference.
+                # Cache the simulated energies for the next iteration.
+                if len(computed_thermo_states) > 1:
+                    simulated_energies = energies[1]
+
+                # Compute the energy difference std in the direction: simulated state -> previous state.
+                if len(computed_thermo_states) > 2:
+                    denergies = energies[2] - simulated_energies
+                    states_stds[1].append(float(np.std(denergies, ddof=1)))
+
+                # Compute the energy difference std between the currently simulated and the reweighted states.
                 old_std_energy = std_energy
-                denergies = reweighted_energies - simulated_energies
-                std_energy = np.std(denergies)
+                denergies = energies[0] - simulated_energies
+                std_energy = np.std(denergies, ddof=1)
                 logger.debug('trailblazing: state_parameter {}, simulated_value {}, current_parameter_value {}, '
                              'std_du {}'.format(state_parameter, optimal_protocol[state_parameter][-1],
                                                 current_parameter_value, std_energy))
+
+            # Store energy difference std in the direction: simulated state -> reweighted state.
+            states_stds[0].append(float(std_energy))
+
+            # Update variables for next iteration.
+            previous_thermo_state = copy.deepcopy(thermodynamic_state)
+            thermodynamic_state = reweighted_thermo_state
 
             # Update the optimal protocol with the new value of this parameter.
             # The other parameters remain fixed.
@@ -2356,16 +2537,18 @@ def run_thermodynamic_trailblazing(
 
             # Save the updated checkpoint file to disk.
             if checkpoint_dir_path is not None:
-                # Update protocol.
-                with open(protocol_file_path, 'w') as file_stream:
-                    yaml.dump(optimal_protocol, file_stream)
-                # Update positions of the state that we just simulated.
-                trajectory_file.write_sampler_state(sampler_state)
+                _cache_trailblaze_data(checkpoint_dir_path, optimal_protocol, states_stds,
+                                       trajectory_file, sampler_state)
 
     if checkpoint_dir_path is not None:
         # We haven't simulated the last state so we just set the positions of the second to last.
         trajectory_file.write_sampler_state(sampler_state)
         trajectory_file.close()
+
+    # Redistribute the states using the standard deviation estimates in both directions.
+    if bidirectional_redistribution:
+        optimal_protocol = _redistribute_trailblaze_states(
+            optimal_protocol, states_stds, thermodynamic_distance)
 
     # If we have traversed the path in the reversed direction, re-invert
     # the order of the discretized path.
