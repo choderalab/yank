@@ -22,7 +22,7 @@ requirements:
     - scipy
     - openmm >=7.3
     - mdtraj >=1.7.2
-    - openmmtools >=0.18.3
+    - openmmtools >=0.19.0
     - pymbar
     - docopt
     - openmoltools >=0.7.5
