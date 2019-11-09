@@ -850,9 +850,9 @@ class ExperimentBuilder(object):
                     iteration = None
                     phase_status = 'pending'
                 except OSError:
-                    # The simulation is probably running.
+                    # The simulation is probably running and the netcdf file is locked.
                     iteration = None
-                    phase_status = 'unavailable'
+                    phase_status = 'unavailable (probably currently running)'
                 else:
                     iteration = phase_status.iteration
                     if _is_phase_completed(phase_status, number_of_iterations):
