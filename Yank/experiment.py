@@ -3156,7 +3156,7 @@ class ExperimentBuilder(object):
             # If we have generated samples with trailblaze, we start the
             # simulation from those samples. Also, we can turn off minimization
             # as it has been already performed before trailblazing.
-            if exp_opts['start_from_trailblaze_samples'] is True:
+            if not use_dummy_protocol and exp_opts['start_from_trailblaze_samples'] is True:
                 trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
                     experiment_path, phase_name)
                 try:
