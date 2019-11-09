@@ -798,6 +798,10 @@ class ExperimentBuilder(object):
         in the experiments have been completed, "pending" if they are both
         pending, and "ongoing" otherwise.
 
+        Sometimes the netcdf file can't be read while the simulation is
+        running. In this case, the status of the phase (n.b., not the
+        experiment) is set to "unavailable".
+
         Yields
         ------
         experiment_status : namedtuple
@@ -845,6 +849,10 @@ class ExperimentBuilder(object):
                 except FileNotFoundError:
                     iteration = None
                     phase_status = 'pending'
+                except OSError:
+                    # The simulation is probably running.
+                    iteration = None
+                    phase_status = 'unavailable'
                 else:
                     iteration = phase_status.iteration
                     if _is_phase_completed(phase_status, number_of_iterations):
