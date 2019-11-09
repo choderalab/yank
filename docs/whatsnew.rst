@@ -6,6 +6,15 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.25.1 - Bugfix and more robust yank status command
+---------------------------------------------------
+
+Bugfixes
+^^^^^^^^
+- The command ``yank status`` now handles gracefully the case where it attempts to open a locked netcdf file (`#855 <https://github.com/choderalab/yank/pull/855>`_).
+- Fix bug causing YANK to crash sometimes when the option ``bidirectional_redistribution`` was activated (`#1192 <https://github.com/choderalab/yank/pull/1192>`_).
+
+
 0.25.0 - Moved multistate and mpi modules and new trailblaze algorithm
 ----------------------------------------------------------------------
 
@@ -21,7 +30,7 @@ New features
 - The thermodynamic trailblazing algorithm used for the authomatic generation of the alchemical path is now capable of
   resuming after an unexpected interruption or crash. The samples generated during the process are used to initialize
   the replicas of the replica exchange or SAMS free energy calculation. This behavior can be controlled through the
-  YAML ``start_from_trailblaze_samples`` `option <http://getyank.org/latest/yamlpages/options.html#start-from-trailblaze-samples>`_ (`#1176 <https://github.com/choderalab/yank/pull/1176>`_, `#1180 <https://github.com/choderalab/yank/pull/1180>`_).
+  ``start_from_trailblaze_samples`` YAML `option <http://getyank.org/latest/yamlpages/options.html#start-from-trailblaze-samples>`_ (`#1176 <https://github.com/choderalab/yank/pull/1176>`_, `#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - It is possible to control more options of the thermodynamic trailblazing algorithm and to discretize an alchemical
   path given through mathematical expressions enslaved to a generic variable (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - Added a ``--setup-only`` flag in the ``yank script`` CLI command to run the automatic setup pipeline without running
@@ -29,7 +38,7 @@ New features
 
 Bugfixes
 ^^^^^^^^
-- Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unkown experiment name would
+- Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unnkown experiment name would
   fail silently without error (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
 - Fixed a problem that would prevent YANK to work with Cerberus >= 1.2 (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - Fixed the error message displayed when the anisotropic dispersion correction cutoff was too big for the box dimension
