@@ -245,29 +245,71 @@ class TestThermodynamicTrailblazing:
             'lambda_sterics':        [1.0, 1.0, 1.0, 0.5, 0.0]
         }
 
-        # Each test case is a tuple (states_stds, expected_redistributed_protocol).
+        # Each test case is a tuple (states_stds, expected_redistributed_protocol, expected_states_map).
         test_cases = [
             (
-                [
-                    [0.5, 0.5, 0.5, 0.5],
-                    [1.5, 1.5, 1.5]
-                ], {
-                    'lambda_electrostatics': [1.0, 0.75, 0.5, 0.25, 0.0,  0.0, 0.0, 0.0],
-                    'lambda_sterics':        [1.0,  1.0, 1.0,  1.0, 1.0, 0.75, 0.5, 0.0]
-                }
+                [[0.5, 0.5, 0.5, 0.5],
+                 [1.5, 1.5, 1.5]],
+                {'lambda_electrostatics': [1.0, 0.75, 0.5, 0.25, 0.0,  0.0, 0.0, 0.0],
+                 'lambda_sterics':        [1.0,  1.0, 1.0,  1.0, 1.0, 0.75, 0.5, 0.0]},
+                [0, 0, 1, 1, 2, 2, 3, 4]
             ),
             (
-                [
-                    [0.5, 0.5, 0.5, 0.5],
-                    [0.0, 0.0, 0.0]
-                ], {
-                    'lambda_electrostatics': [1.0, 0.0,  0.0, 0.0],
-                    'lambda_sterics':        [1.0, 1.0, 0.25, 0.0]
-                }
+                [[0.5, 0.5, 0.5, 0.5],
+                 [0.0, 0.0, 0.0]],
+                {'lambda_electrostatics': [1.0, 0.0,  0.0, 0.0],
+                 'lambda_sterics':        [1.0, 1.0, 0.25, 0.0]},
+                [0, 2, 3, 4]
             ),
         ]
 
-        for states_stds, expected_redistributed_protocol in test_cases:
-            redistributed_protocol = _redistribute_trailblaze_states(
+        for states_stds, expected_redistributed_protocol, expected_states_map in test_cases:
+            redistributed_protocol, states_map = _redistribute_trailblaze_states(
                 optimal_protocol, states_stds, thermodynamic_distance=0.5)
-            assert expected_redistributed_protocol == redistributed_protocol, redistributed_protocol
+            assert expected_redistributed_protocol == redistributed_protocol, \
+                f'{expected_redistributed_protocol} != {redistributed_protocol}'
+            assert expected_states_map == states_map, f'{expected_states_map} != {states_map}'
+
+    def test_read_trailblaze_checkpoint_coordinates(self):
+        """read_trailblaze_checkpoint_coordinates() returns the correct number of SamplerStates."""
+        # Create a harmonic oscillator system to test.
+        compound_state, sampler_state = self.get_harmonic_oscillator()
+        mcmc_move = self.get_langevin_dynamics_move()
+
+        # The end states differ only in the spring constant
+        k_initial = getattr(compound_state, self.PAR_NAME_K)
+        k_final = 250 * k_initial
+
+        # Each test case is (bidirectional_redistribution, thermodynamic_distance, bidirectional_search_thermo_dist).
+        test_cases = [
+            (False, 1.0, 'auto'),
+            (True, 2.0, 1.0),
+            (True, 0.5, 1.0),
+        ]
+
+        for bidirectional_redistribution, thermodynamic_distance, bidirectional_search_thermo_dist in test_cases:
+            with mmtools.utils.temporary_directory() as checkpoint_dir_path:
+                # Compute the protocol.
+                protocol = run_thermodynamic_trailblazing(
+                    compound_state, sampler_state, mcmc_move,
+                    state_parameters=[
+                        (self.PAR_NAME_X0, [0.0, 1.0]),
+                        (self.PAR_NAME_K, [k_initial, k_final])
+                    ],
+                    thermodynamic_distance=1.0,
+                    bidirectional_redistribution=bidirectional_redistribution,
+                    bidirectional_search_thermo_dist=bidirectional_search_thermo_dist,
+                    checkpoint_dir_path=checkpoint_dir_path
+                )
+
+                # The number of frames return should be equal to the number of
+                # states in the protocol. If this was redistributed
+                sampler_states = read_trailblaze_checkpoint_coordinates(checkpoint_dir_path)
+                len_protocol = len(protocol['testsystems_HarmonicOscillator_x0'])
+                err_msg = (
+                    f'bidirectional_redistribution={bidirectional_redistribution}, '
+                    f'thermodynamic_distance={thermodynamic_distance}, '
+                    f'bidirectional_search_thermo_dist={bidirectional_search_thermo_dist}: '
+                    f'{len(sampler_states)} != {len_protocol}: {protocol}'
+                )
+                assert len(sampler_states) == len_protocol, err_msg

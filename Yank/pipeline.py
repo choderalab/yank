@@ -16,14 +16,15 @@ Utility functions to help setting up Yank configurations.
 # GLOBAL IMPORTS
 # =============================================================================================
 
+import collections
+import copy
+import inspect
+import itertools
+import json
+import logging
 import os
 import re
 import sys
-import copy
-import inspect
-import logging
-import itertools
-import collections
 
 import mdtraj
 import mpiplus
@@ -2019,6 +2020,7 @@ def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
         If no file with the coordinates was found.
     """
     positions_file_path = os.path.join(checkpoint_dir_path, 'coordinates.dcd')
+    states_map_file_path = os.path.join(checkpoint_dir_path, 'states_map.json')
 
     # Open the file if it exist.
     try:
@@ -2031,6 +2033,17 @@ def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
         sampler_states = trajectory_file.read_as_sampler_states()
     finally:
         trajectory_file.close()
+
+    # If the protocol was redistributed, use the states map to create
+    # a new set of sampler states that can be used as starting conditions
+    # for the redistributed protocol.
+    try:
+        with open(states_map_file_path, 'r') as f:
+            states_map = json.load(f)
+        sampler_states = [sampler_states[i] for i in states_map]
+    except FileNotFoundError:
+        pass
+
     return sampler_states
 
 
@@ -2056,8 +2069,6 @@ def _resume_thermodynamic_trailblazing(checkpoint_dir_path, initial_protocol):
         The last saved SamplerState or None if no frame was saved yet.
 
     """
-    import json
-
     # We save the protocol in a YAML file and the positions in netcdf.
     protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
     stds_file_path = os.path.join(checkpoint_dir_path, 'states_stds.json')
@@ -2124,7 +2135,6 @@ def _resume_thermodynamic_trailblazing(checkpoint_dir_path, initial_protocol):
 def _cache_trailblaze_data(checkpoint_dir_path, optimal_protocol, states_stds,
                            trajectory_file, sampler_state):
     """Store on disk current state of the trailblaze run."""
-    import json
 
     # Determine the file paths of the stored data.
     protocol_file_path = os.path.join(checkpoint_dir_path, 'protocol.yaml')
@@ -2159,12 +2169,20 @@ def _redistribute_trailblaze_states(old_protocol, states_stds, thermodynamic_dis
     -------
     new_protocol : Dict[str, List[float]]
         The new estimate of the optimal protocol.
+    states_map : List[int]
+        states_map[i] is the index of the state in the old protocol that
+        is closest to the i-th state in the new protocol. This allows to
+        map coordinates generated during trailblazing to the redistributed
+        protocol.
     """
     # The parameter names in a fixed order.
     parameter_names = [par_name for par_name in old_protocol]
 
     # Initialize the new protocol from the first state the optimal protocol.
     new_protocol = {par_name: [values[0]] for par_name, values in old_protocol.items()}
+
+    # The first state of the new protocol always maps to the first state of the old one.
+    states_map = [0]
 
     def _get_old_protocol_state(state_idx):
         """Return a representation of the thermo state as a list of parameter values."""
@@ -2220,10 +2238,17 @@ def _redistribute_trailblaze_states(old_protocol, states_stds, thermodynamic_dis
         # Update cumulative thermo length.
         new_protocol_cum_thermo_length += thermodynamic_distance
 
+        # Update states map.
+        closest_state_idx = current_state_idx if differential <= 0.5 else current_state_idx+1
+        states_map.append(closest_state_idx)
+
         # Update redistributed protocol.
         _add_state_to_new_protocol(new_state)
 
-    return new_protocol
+    # The last state of the new protocol always maps to the last state of the old one.
+    states_map.append(len(old_protocol_thermo_length)-1)
+
+    return new_protocol, states_map
 
 
 def run_thermodynamic_trailblazing(
@@ -2547,8 +2572,21 @@ def run_thermodynamic_trailblazing(
 
     # Redistribute the states using the standard deviation estimates in both directions.
     if bidirectional_redistribution:
-        optimal_protocol = _redistribute_trailblaze_states(
+        optimal_protocol, states_map = _redistribute_trailblaze_states(
             optimal_protocol, states_stds, thermodynamic_distance)
+
+    # Save the states map for reading the coordinates correctly.
+    if checkpoint_dir_path is not None:
+        states_map_file_path = os.path.join(checkpoint_dir_path, 'states_map.json')
+
+        if bidirectional_redistribution:
+            with open(states_map_file_path, 'w') as f:
+                json.dump(states_map, f)
+        elif os.path.isfile(states_map_file_path):
+            # If there's an old file because the path was previously redistributed,
+            # we delete it so that read_trailblaze_checkpoint_coordinates will
+            # return the coordinates associated to the most recently-generated path.
+            os.remove(states_map_file_path)
 
     # If we have traversed the path in the reversed direction, re-invert
     # the order of the discretized path.
