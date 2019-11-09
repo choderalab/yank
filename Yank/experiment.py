@@ -850,9 +850,9 @@ class ExperimentBuilder(object):
                     iteration = None
                     phase_status = 'pending'
                 except OSError:
-                    # The simulation is probably running.
+                    # The simulation is probably running and the netcdf file is locked.
                     iteration = None
-                    phase_status = 'unavailable'
+                    phase_status = 'unavailable (probably currently running)'
                 else:
                     iteration = phase_status.iteration
                     if _is_phase_completed(phase_status, number_of_iterations):
@@ -3156,7 +3156,7 @@ class ExperimentBuilder(object):
             # If we have generated samples with trailblaze, we start the
             # simulation from those samples. Also, we can turn off minimization
             # as it has been already performed before trailblazing.
-            if exp_opts['start_from_trailblaze_samples'] is True:
+            if not use_dummy_protocol and exp_opts['start_from_trailblaze_samples'] is True:
                 trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
                     experiment_path, phase_name)
                 try:
