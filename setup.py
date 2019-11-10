@@ -9,9 +9,9 @@ import subprocess
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.25.2"  # Primary base version of the build
-DEVBUILD = None  # Dev build status, Either None or Integer
-ISRELEASED = True  # Are we releasing this as a full cut?
+VERSION = "0.25.3"  # Primary base version of the build
+DEVBUILD = 0  # Dev build status, Either None or Integer
+ISRELEASED = False  # Are we releasing this as a full cut?
 __version__ = VERSION
 ########################
 CLASSIFIERS = """\
