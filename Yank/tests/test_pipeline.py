@@ -280,6 +280,23 @@ class TestThermodynamicTrailblazing:
         k_initial = getattr(compound_state, self.PAR_NAME_K)
         k_final = 250 * k_initial
 
+        # Helper function.
+        def _call_run_thermodynamic_trailblazing(
+            thermodynamic_distance, bidirectional_redistribution,
+            bidirectional_search_thermo_dist, checkpoint_dir_path
+        ):
+            return run_thermodynamic_trailblazing(
+                compound_state, sampler_state, mcmc_move,
+                state_parameters=[
+                    (self.PAR_NAME_X0, [0.0, 1.0]),
+                    (self.PAR_NAME_K, [k_initial, k_final])
+                ],
+                thermodynamic_distance=thermodynamic_distance,
+                bidirectional_redistribution=bidirectional_redistribution,
+                bidirectional_search_thermo_dist=bidirectional_search_thermo_dist,
+                checkpoint_dir_path=checkpoint_dir_path
+            )
+
         # Each test case is (bidirectional_redistribution, thermodynamic_distance, bidirectional_search_thermo_dist).
         test_cases = [
             (False, 1.0, 'auto'),
@@ -290,20 +307,14 @@ class TestThermodynamicTrailblazing:
         for bidirectional_redistribution, thermodynamic_distance, bidirectional_search_thermo_dist in test_cases:
             with mmtools.utils.temporary_directory() as checkpoint_dir_path:
                 # Compute the protocol.
-                protocol = run_thermodynamic_trailblazing(
-                    compound_state, sampler_state, mcmc_move,
-                    state_parameters=[
-                        (self.PAR_NAME_X0, [0.0, 1.0]),
-                        (self.PAR_NAME_K, [k_initial, k_final])
-                    ],
-                    thermodynamic_distance=1.0,
-                    bidirectional_redistribution=bidirectional_redistribution,
-                    bidirectional_search_thermo_dist=bidirectional_search_thermo_dist,
-                    checkpoint_dir_path=checkpoint_dir_path
+                protocol = _call_run_thermodynamic_trailblazing(
+                    thermodynamic_distance, bidirectional_redistribution,
+                    bidirectional_search_thermo_dist, checkpoint_dir_path
                 )
 
-                # The number of frames return should be equal to the number of
-                # states in the protocol. If this was redistributed
+                # The number of frames returned should be equal to the number of
+                # states in the protocol. If this was redistributed, this might
+                # be different than the number of frames generated.
                 sampler_states = read_trailblaze_checkpoint_coordinates(checkpoint_dir_path)
                 len_protocol = len(protocol['testsystems_HarmonicOscillator_x0'])
                 err_msg = (
@@ -313,3 +324,10 @@ class TestThermodynamicTrailblazing:
                     f'{len(sampler_states)} != {len_protocol}: {protocol}'
                 )
                 assert len(sampler_states) == len_protocol, err_msg
+
+                # Now, resuming should give me the same exact protocol.
+                resumed_protocol = _call_run_thermodynamic_trailblazing(
+                    thermodynamic_distance, bidirectional_redistribution,
+                    bidirectional_search_thermo_dist, checkpoint_dir_path
+                )
+                assert protocol == resumed_protocol

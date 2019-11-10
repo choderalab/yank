@@ -2,9 +2,18 @@
 Release history
 ***************
 
-This section features and improvements of note in each release.
+This section lists features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
+
+0.25.2 - Bugfix release
+-----------------------
+
+Bugfixes
+^^^^^^^^
+- Fixed a bug that causes YANK to crash in when thermodynamic trailblazing is interrupted and then resumed with the
+option ``bidirectional_redistribution`` set. (`#1195 <https://github.com/choderalab/yank/pull/1195>`_).
+
 
 0.25.1 - Bugfix and more robust yank status command
 ---------------------------------------------------

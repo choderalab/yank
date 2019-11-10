@@ -2000,13 +2000,17 @@ class _DCDTrajectoryFile(mdtraj.formats.dcd.DCDTrajectoryFile):
                       (a, b, c), (alpha, beta, gamma))
 
 
-def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
+def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path, redistributed=True):
     """Read positions and box vectors stored as checkpoint by the trailblaze algorithm.
 
     Parameters
     ----------
     checkpoint_dir_path : str
         The path to the directory containing the checkpoint information.
+    redistributed : bool, optional
+        If True, the function will check if the states were redistributed,
+        and will returned the set of coordinates that are more representative
+        of the redistributed protocol.
 
     Returns
     -------
@@ -2037,12 +2041,13 @@ def read_trailblaze_checkpoint_coordinates(checkpoint_dir_path):
     # If the protocol was redistributed, use the states map to create
     # a new set of sampler states that can be used as starting conditions
     # for the redistributed protocol.
-    try:
-        with open(states_map_file_path, 'r') as f:
-            states_map = json.load(f)
-        sampler_states = [sampler_states[i] for i in states_map]
-    except FileNotFoundError:
-        pass
+    if redistributed:
+        try:
+            with open(states_map_file_path, 'r') as f:
+                states_map = json.load(f)
+            sampler_states = [sampler_states[i] for i in states_map]
+        except FileNotFoundError:
+            pass
 
     return sampler_states
 
@@ -2092,7 +2097,10 @@ def _resume_thermodynamic_trailblazing(checkpoint_dir_path, initial_protocol):
 
     # Check if there's an existing positions information.
     try:
-        sampler_states = read_trailblaze_checkpoint_coordinates(checkpoint_dir_path)
+        # We want the coordinates of the states that were sampled
+        # during the search not the states after redistribution.
+        sampler_states = read_trailblaze_checkpoint_coordinates(
+            checkpoint_dir_path, redistributed=False)
     except FileNotFoundError:
         len_trajectory = 0
     else:
