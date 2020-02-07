@@ -1706,6 +1706,14 @@ class ExperimentBuilder(object):
             type: string
             dependencies: [phase1_path, phase2_path]
             check_with: directory_exists
+        charmm_parameter_files:
+            required: no
+            type: list
+            schema:
+                type: string
+                check_with: file_exists
+            dependencies: [phase1_path, phase2_path]
+
 
         # Solvents
         solvent:
@@ -3081,6 +3089,7 @@ class ExperimentBuilder(object):
         # Get system files.
         system_files_paths = self._db.get_system(system_id)
         gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
+        charmm_parameter_files = self._db.systems[system_id].get('charmm_parameter_files', None)
 
         # Prepare Yank arguments
         phases = [None, None]
@@ -3107,7 +3116,7 @@ class ExperimentBuilder(object):
             logger.info("Reading phase {}".format(phase_name))
             system, topology, sampler_state = pipeline.read_system_files(
                 positions_file_path, parameters_file_path, system_options,
-                gromacs_include_dir=gromacs_include_dir)
+                gromacs_include_dir=gromacs_include_dir, charmm_parameter_files=charmm_parameter_files)
 
             # Identify system components. There is a ligand only in the complex phase.
             if phase_idx == 0:

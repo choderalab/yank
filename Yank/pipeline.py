@@ -411,7 +411,7 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
 
 
 def read_system_files(positions_file_path, parameters_file_path, system_options,
-                      gromacs_include_dir=None):
+                      gromacs_include_dir=None, charmm_parameter_files=None):
     """Create a Yank arguments for a phase from system files.
 
     Parameters
@@ -419,7 +419,7 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
     positions_file_path : str
         Path to system position file (e.g. 'complex.inpcrd/.gro/.pdb').
     parameters_file_path : str
-        Path to system parameters file (e.g. 'complex.prmtop/.top/.xml').
+        Path to system parameters file (e.g. 'complex.prmtop/.top/.xml/.psf').
     system_options : dict
         ``system_options[phase]`` is a a dictionary containing options to
         pass to ``createSystem()``. If the parameters file is an OpenMM
@@ -427,6 +427,8 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
     gromacs_include_dir : str, optional
         Path to directory in which to look for other files included
         from the gromacs top file.
+    charmm_parameter_files : str, optional
+        Path to additional parameter files
 
     Returns
     -------
@@ -493,6 +495,24 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
 
         system = create_system(parameters_file, box_vectors, create_system_args, system_options)
 
+    # Read CHARMM format psf and pdb files
+    elif parameters_file_extension == '.psf':
+        logger.debug("psf: {}".format(parameters_file_path))
+        logger.debug("pdb: {}".format(positions_file_path))
+
+        parameters_file = openmm.app.CharmmPsfFile(parameters_file_path)
+        positions_file = openmm.app.PDBFile(positions_file_path)
+        params = openmm.app.CharmmParameterSet(*charmm_parameter_files)
+
+        box_vectors = positions_file.topology.getPeriodicBoxVectors()
+        if box_vectors is None:
+            box_vectors = system.getDefaultPeriodicBoxVectors()
+
+        parameters_file.setBox(box_vectors[0][0], box_vectors[1][1], box_vectors[2][2])
+        create_system_args = set(inspect.getargspec(openmm.app.CharmmPsfFile.createSystem).args)
+        system_options['params'] = params
+        system = create_system(parameters_file, box_vectors, create_system_args, system_options)
+            
     # Unsupported file format.
     else:
         raise ValueError('Unsupported format for parameter file {}'.format(parameters_file_extension))
@@ -1158,7 +1178,7 @@ class SetupDatabase:
                       parameters_path=os.path.join(system_dir, 'solvent2.prmtop'))
             ]
         else:
-            parameter_file_extensions = {'prmtop', 'top', 'xml'}
+            parameter_file_extensions = {'prmtop', 'top', 'xml', 'psf'}
             system_files_paths = []
             for phase_path_name in ['phase1_path', 'phase2_path']:
                 file_paths = self.systems[system_id][phase_path_name]
