@@ -121,7 +121,7 @@ Detailed Options List
     * :ref:`switch_distance <yaml_solvents_switch_distance>`
     * :ref:`rigid_water <yaml_solvents_rigid_water>`
     * :ref:`implicit_solvent <yaml_solvents_implicit_solvent>`
-    * :ref:`implicit_solvent_salt_concentration <yaml_options_implicit_solvent_salt_conc>`
+    * :ref:`implicit_solvent_salt_conc <yaml_options_implicit_solvent_salt_conc>`
     * :ref:`solute_dielectric <yaml_options_solute_dielectric>`
     * :ref:`solvent_dielectric <yaml_options_solvent_dielectric>`
     * :ref:`ewald_error_tolerance <yaml_options_ewald_error_tol>`

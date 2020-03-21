@@ -45,9 +45,10 @@ way to specify the charges, proteins however can rely on built in force field pa
 
 Valid Filetypes: PDB, mol2, sdf, cvs
 
-**Note:** If CVS is specified and there is only one moleucle, the first column must be a SMILES string.
-If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability),
-then each row is its own molecule where the second column is the SMILES string.
+**Note:** A CVS file is expected to have one molecule per row, each containing the SMILES string of the molecule. The
+``select`` keyword can be used to run a subset of the molecules or ``all`` of them. If CSV is specified and there is
+only one column, the first column must be a SMILES string. If multiple columns are used, then the SMILES should be in
+the second column.
 
 
 
