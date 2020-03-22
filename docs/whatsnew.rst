@@ -6,6 +6,17 @@ This section lists features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+
+0.25.3 - Development
+--------------------
+
+Bugfixes
+^^^^^^^^
+- Fixed a bug that causes solute-only trajectories to be extracted with an incorrect order when the ions appear before
+the solute atoms in the system (`#1213 <https://github.com/choderalab/yank/pull/1213>`_).
+- A few fixes to the documentation (`#1213 <https://github.com/choderalab/yank/pull/1213>`_).
+
+
 0.25.2 - Bugfix release
 -----------------------
 

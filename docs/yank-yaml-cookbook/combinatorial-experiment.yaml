@@ -127,7 +127,7 @@ solvents:
   GBSA:
     nonbonded_method: NoCutoff                      # Implicit solvent using GBSA/OBC2 model.
     implicit_solvent: OBC2
-    implicit_solvent_salt_concentration: 1.0*mole/liter
+    implicit_solvent_salt_conc: 1.0*mole/liter
     solute_dielectric: 1.5
     solvent_dielectric: 80.0
   PME:

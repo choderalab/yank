@@ -151,11 +151,11 @@ protocols:
         thermodynamic_distance: 1.0  # in kT
         distance_tolerance: 0.05  # in kT
         # Whether to traverse the path in the forward (given by 'alchemical_path') or reversed direction.
-        reversed_direction: true
+        reversed_direction: false
         # If set, the states are redistributed after trailblazing using the std estimated in both directions.
         # Optionally, the samples can be obtained from states at a different thermo length than thermodynamic_distance.
         bidirectional_redistribution: true
-        bidirectional_search_thermo_dist: 0.5
+        bidirectional_search_thermo_dist: 'auto'
         # A variable controlling the path if 'alchemical_path' contains mathematical expressions.
         function_variable_name: lambda
 
