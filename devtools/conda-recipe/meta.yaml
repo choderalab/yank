@@ -23,7 +23,7 @@ requirements:
     - openmm >=7.3
     - mdtraj >=1.7.2
     - openmmtools >=0.19.0
-    - pymbar
+    - pymbar==3.0.3
     - docopt
     - openmoltools >=0.7.5
     - mpiplus
