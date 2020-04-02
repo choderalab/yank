@@ -2,12 +2,41 @@
 Release history
 ***************
 
-This section features and improvements of note in each release.
+This section lists features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.25.0 Current development
---------------------------
+
+0.25.3 - Development
+--------------------
+
+Bugfixes
+^^^^^^^^
+- Fixed a bug that causes solute-only trajectories to be extracted with an incorrect order when the ions appear before
+the solute atoms in the system (`#1213 <https://github.com/choderalab/yank/pull/1213>`_).
+- A few fixes to the documentation (`#1213 <https://github.com/choderalab/yank/pull/1213>`_).
+
+
+0.25.2 - Bugfix release
+-----------------------
+
+Bugfixes
+^^^^^^^^
+- Fixed a bug that causes YANK to crash in when thermodynamic trailblazing is interrupted and then resumed with the
+option ``bidirectional_redistribution`` set. (`#1195 <https://github.com/choderalab/yank/pull/1195>`_).
+
+
+0.25.1 - Bugfix and more robust yank status command
+---------------------------------------------------
+
+Bugfixes
+^^^^^^^^
+- The command ``yank status`` now handles gracefully the case where it attempts to open a locked netcdf file (`#855 <https://github.com/choderalab/yank/pull/855>`_).
+- Fix bug causing YANK to crash sometimes when the option ``bidirectional_redistribution`` was activated (`#1192 <https://github.com/choderalab/yank/pull/1192>`_).
+
+
+0.25.0 - Moved multistate and mpi modules and new trailblaze algorithm
+----------------------------------------------------------------------
 
 API-breaking changes
 ^^^^^^^^^^^^^^^^^^^^
@@ -21,7 +50,7 @@ New features
 - The thermodynamic trailblazing algorithm used for the authomatic generation of the alchemical path is now capable of
   resuming after an unexpected interruption or crash. The samples generated during the process are used to initialize
   the replicas of the replica exchange or SAMS free energy calculation. This behavior can be controlled through the
-  YAML ``start_from_trailblaze_samples`` `option <http://getyank.org/latest/yamlpages/options.html#start-from-trailblaze-samples>`_ (`#1176 <https://github.com/choderalab/yank/pull/1176>`_, `#1180 <https://github.com/choderalab/yank/pull/1180>`_).
+  ``start_from_trailblaze_samples`` YAML `option <http://getyank.org/latest/yamlpages/options.html#start-from-trailblaze-samples>`_ (`#1176 <https://github.com/choderalab/yank/pull/1176>`_, `#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - It is possible to control more options of the thermodynamic trailblazing algorithm and to discretize an alchemical
   path given through mathematical expressions enslaved to a generic variable (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
 - Added a ``--setup-only`` flag in the ``yank script`` CLI command to run the automatic setup pipeline without running
@@ -29,15 +58,27 @@ New features
 
 Bugfixes
 ^^^^^^^^
-- Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unkown experiment name would
+- Fix a bug in which a list of ``experiments: [exp1, exp2]`` in the YAML file containing an unnkown experiment name would
   fail silently without error (`#1178 <https://github.com/choderalab/yank/pull/1178>`_).
 - Fixed a problem that would prevent YANK to work with Cerberus >= 1.2 (`#1180 <https://github.com/choderalab/yank/pull/1180>`_).
+- Fixed the error message displayed when the anisotropic dispersion correction cutoff was too big for the box dimension
+  (`#1181 <https://github.com/choderalab/yank/pull/1181>`_).
 
 Enhancements
 ^^^^^^^^^^^^
 - By default, the automatic determination of the alchemical path now starts with the harmonic/flat-bottom restraint
   turned off and activate it in intermediate states instead of keeping the restraint activated throughout the calculation
   and reweighting in the analysis stage (`#1176 <https://github.com/choderalab/yank/pull/1176>`_).
+
+Known issues
+^^^^^^^^^^^^
+- Using parallel MPI processes causes poor mixing of the odd thermodynamic states while the mixing of the even states is
+  normal. We're still investigating whether the issue is caused by a change in the MPI library or an internal bug. For
+  now, we recommend running calculations using only 1 GPU (see also `openmmtools#449 <https://github.com/choderalab/openmmtools/issues/449>`_
+  and `#1130 <https://github.com/choderalab/yank/issues/1130>`_).
+- Simulations restored from a checkpoint file have their velocities reset to zero (`#1115 <https://github.com/choderalab/yank/issues/1115>`_).
+- Forward and backward convergence analysis free energy traces in the Jupter notebook are incorrect (`#971 <https://github.com/choderalab/yank/issues/971>`_).
+- Setup will fail if .mol2 atom substructure ID matches filename (`#703 <https://github.com/choderalab/yank/issues/703>`_).
 
 
 0.24.1 Bugfix release

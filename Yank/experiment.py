@@ -234,7 +234,7 @@ class AlchemicalPhaseFactory(object):
             if self.options['store_solute_trajectory']:
                 # "Solute" is basically just not water. Includes all non-water atoms and ions
                 # Topography ensures the union of solute_atoms and ions_atoms is a null set
-                solute_atoms = self.topography.solute_atoms + self.topography.ions_atoms
+                solute_atoms = sorted(self.topography.solute_atoms + self.topography.ions_atoms)
                 if checkpoint_interval == 1:
                     logger.warning("WARNING! You have specified both a solute-only trajectory AND a checkpoint "
                                    "interval of 1! You are about write the trajectory of the solute twice!\n"
@@ -797,6 +797,10 @@ class ExperimentBuilder(object):
         in the experiments have been completed, "pending" if they are both
         pending, and "ongoing" otherwise.
 
+        Sometimes the netcdf file can't be read while the simulation is
+        running. In this case, the status of the phase (n.b., not the
+        experiment) is set to "unavailable".
+
         Yields
         ------
         experiment_status : namedtuple
@@ -844,6 +848,10 @@ class ExperimentBuilder(object):
                 except FileNotFoundError:
                     iteration = None
                     phase_status = 'pending'
+                except OSError:
+                    # The simulation is probably running and the netcdf file is locked.
+                    iteration = None
+                    phase_status = 'unavailable (probably currently running)'
                 else:
                     iteration = phase_status.iteration
                     if _is_phase_completed(phase_status, number_of_iterations):
@@ -1501,15 +1509,21 @@ class ExperimentBuilder(object):
                 n_samples_per_state:
                     type: integer
                     default: 100
-                std_potential_threshold:
+                thermodynamic_distance:
                     type: float
                     default: 0.5
-                threshold_tolerance:
+                distance_tolerance:
                     type: float
                     default: 0.05
                 reversed_direction:
                     type: boolean
                     default: yes
+                bidirectional_redistribution:
+                    type: boolean
+                    default: yes
+                bidirectional_search_thermo_dist:
+                    required: no
+                    type: float
                 function_variable_name:
                     required: no
                     type: string
@@ -2440,11 +2454,15 @@ class ExperimentBuilder(object):
                 phase_factory.options['number_of_equilibration_iterations'] = 0
 
             # We only need to create a single thermo state for the equilibration,
-            # but AlchemicalPhase currently doesn't support alchemical functions yet
-            # so we need to set the state manually.
-            equilibration_protocol = {par[0]: [par[1][0]] for par in state_parameters}
+            # and we need to equilibrate in the state used to start the algorithm.
+            if trailblazer_options['reversed_direction']:
+                equilibration_state_idx = -1
+            else:
+                equilibration_state_idx = 0
+            # AlchemicalPhase doesn't support alchemical functions yet so we need to set the state manually.
+            equilibration_protocol = {par[0]: [par[1][equilibration_state_idx]] for par in state_parameters}
             if function_variable_name is not None:
-                variable_value = equilibration_protocol.pop(function_variable_name)[0]
+                variable_value = equilibration_protocol.pop(function_variable_name)[equilibration_state_idx]
                 expression_context = {function_variable_name: variable_value}
                 for parameter_name, alchemical_function in alchemical_functions.items():
                     equilibration_protocol[parameter_name] = [alchemical_function(expression_context)]
@@ -2495,7 +2513,125 @@ class ExperimentBuilder(object):
         self._generate_yaml(experiment, script_path, overwrite_protocol=protocol)
 
     @staticmethod
-    def _determine_trailblaze_path(phase_factory, alchemical_path):
+    def _generate_lambda_alchemical_function(lambda0, lambda1):
+        """Generate an alchemical function expression for a variable.
+
+        The function will go from 0 to 1 between lambda0 and lambda1 and
+        remain constant for lambda values above or below the given ones.
+        """
+        if lambda0 < lambda1:
+            # The function increases from lambda0 to lambda1.
+            return (f'1 - ({lambda1} - lambda) / ({lambda1} - {lambda0}) * step({lambda1} - lambda) - '
+                    f'(lambda - {lambda0}) / ({lambda1} - {lambda0}) * step({lambda0} - lambda)')
+        else:
+            # The function decreases from lambda0 to lambda1.
+            return (f'({lambda0} - lambda) / ({lambda0} - {lambda1}) * step({lambda0} - lambda) - '
+                    f'(({lambda0} - lambda) / ({lambda0} - {lambda1}) - 1)* step({lambda1} - lambda)')
+
+    @classmethod
+    def _generate_auto_alchemical_functions(cls, phase_factory):
+        """Generate the default auto protocol with AlchemicalFunctions.
+
+        Using alchemical functions allow us to "cut corners" and avoid forcing
+        states when variables are completely turned off/on if not necessary to
+        maintain a constant thermodynamic length between states (e.g. lambda_electrostatics=0
+        and lambda_sterics=1).
+
+        On the other hand, these "corners" are tricky because the thermodynamic
+        tensor can change a lot at these points and the Newton-like algorithm
+        has more troubles converging.
+        """
+        alchemical_functions = {}
+
+        # In the normal path, we turn on the restraint from lambda=3 to lambda=2,
+        # then we turn off the electrostatics from lambda=2 to lambda=1,
+        # and finally the sterics from lambda=1 to lambda=0.
+        is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
+                     len(phase_factory.topography.solvent_atoms) == 0)
+
+        # Initialize lambda end states. lambda_end_states[0] and [1]
+        # are the coupled and decoupled states respectively
+        lambda_end_states = [0, 0]
+
+        # Starting from the decoupled state, first turn the RMSD restraints on 0 to 1.
+        # At this point the restraint is activated and lambda_restraint == 1
+        # so the alchemical function have to go from 0 to -1 between
+        # lambda == 1 and lambda == 0.
+        if isinstance(phase_factory.restraint, restraints.RMSD):
+            lambda_end_states[0] += 1
+            alchemical_function = cls._generate_lambda_alchemical_function(*lambda_end_states)
+            alchemical_functions['lambda_restraints'] = ' - (' + alchemical_function + ')'
+
+        # Remove the sterics right before that. However, there's no need
+        # to go through electrostatics if this is a vacuum calculation and
+        # we are only decoupling the Lennard-Jones interactions.
+        if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
+            alchemical_functions['lambda_sterics'] = '1.0'
+        else:
+            alchemical_function = cls._generate_lambda_alchemical_function(lambda_end_states[0],
+                                                                           lambda_end_states[0]+1)
+            alchemical_functions['lambda_sterics'] = alchemical_function
+            lambda_end_states[0] += 1
+
+        # Same for electrostatics.
+        if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
+            alchemical_functions['lambda_electrostatics'] = '1.0'
+        else:
+            alchemical_function = cls._generate_lambda_alchemical_function(lambda_end_states[0],
+                                                                           lambda_end_states[0]+1)
+            alchemical_functions['lambda_electrostatics'] = alchemical_function
+            lambda_end_states[0] += 1
+
+        # Finally turn off the restraint if there is any.
+        if phase_factory.restraint is not None:
+            alchemical_function = cls._generate_lambda_alchemical_function(lambda_end_states[0]+1,
+                                                                           lambda_end_states[0])
+            # If this is a RMSD restraint, there should be already a segment
+            # of the function in which the RMSD restraint is turned off.
+            try:
+                alchemical_functions['lambda_restraints'] = alchemical_function + alchemical_functions['lambda_restraints']
+            except KeyError:
+                alchemical_functions['lambda_restraints'] = alchemical_function
+            lambda_end_states[0] += 1
+
+        # Convert strings to actual alchemical function objects.
+        for parameter_name, alchemical_function in alchemical_functions.items():
+            alchemical_functions[parameter_name] = mmtools.alchemy.AlchemicalFunction(alchemical_function)
+
+        # The end states for lambda feeded to the trailblaze function have
+        # to go from the coupled to the decoupled direction.
+        state_parameters = [('lambda', lambda_end_states)]
+
+        return alchemical_functions, state_parameters
+
+    @staticmethod
+    def _generate_auto_state_parameters(phase_factory):
+        """Generate the default auto protocol as a sequence of state_parameters."""
+        is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
+                         len(phase_factory.topography.solvent_atoms) == 0)
+        state_parameters = []
+
+        # First, turn on the restraint if there are any.
+        if phase_factory.restraint is not None:
+            state_parameters.append(('lambda_restraints', [0.0, 1.0]))
+        # We support only lambda sterics and electrostatics for now.
+        if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
+            state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+        else:
+            state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
+        if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
+            state_parameters.append(('lambda_sterics', [1.0, 1.0]))
+        else:
+            state_parameters.append(('lambda_sterics', [1.0, 0.0]))
+        # Turn the RMSD restraints off slowly at the end
+        if isinstance(phase_factory.restraint, restraints.RMSD):
+            state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+
+        return state_parameters
+
+    @classmethod
+    def _determine_trailblaze_path(cls, phase_factory, alchemical_path,
+                                   generate_alchemical_functions=False):
         """Determine the path to discretize feeded to the trailblaze algorithm.
 
         Parameters
@@ -2505,33 +2641,23 @@ class ExperimentBuilder(object):
         alchemical_path : Union[str, Dict[str, Union[str, float Quantity]]]
             Either 'auto' or the dictionary including mathematical
             expressions or end states of the path to discretize.
+        generate_alchemical_functions : bool, optional
+            If True, ``_generate_auto_alchemical_functions`` is used instead
+            of ``_generate_auto_state_parameters`` this slightly reduces the
+            number of intermediate states but it slows down the convergence
+            of the trailblaze algorithm.
         """
-        state_parameters = []
-        alchemical_functions = {}
-
         # If alchemical_path is set to 'auto', discretize the default path.
         if alchemical_path == 'auto':
-            is_vacuum = (len(phase_factory.topography.receptor_atoms) == 0 and
-                         len(phase_factory.topography.solvent_atoms) == 0)
-            state_parameters = []
-
-            # First, turn on the restraint if there are any.
-            if phase_factory.restraint is not None:
-                state_parameters.append(('lambda_restraints', [0.0, 1.0]))
-            # We support only lambda sterics and electrostatics for now.
-            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
-                state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+            if generate_alchemical_functions:
+                alchemical_functions, state_parameters = cls._generate_auto_alchemical_functions(phase_factory)
             else:
-                state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
-            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
-                state_parameters.append(('lambda_sterics', [1.0, 1.0]))
-            else:
-                state_parameters.append(('lambda_sterics', [1.0, 0.0]))
-            # Turn the RMSD restraints off slowly at the end
-            if isinstance(phase_factory.restraint, restraints.RMSD):
-                state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+                alchemical_functions = {}
+                state_parameters = cls._generate_auto_state_parameters(phase_factory)
         else:
             # Otherwise, differentiate between mathematical expressions and the function variable to build.
+            state_parameters = []
+            alchemical_functions = {}
             for parameter_name, value in alchemical_path.items():
                 if isinstance(value, str):
                     alchemical_functions[parameter_name] = mmtools.alchemy.AlchemicalFunction(value)
@@ -3029,7 +3155,7 @@ class ExperimentBuilder(object):
             # If we have generated samples with trailblaze, we start the
             # simulation from those samples. Also, we can turn off minimization
             # as it has been already performed before trailblazing.
-            if exp_opts['start_from_trailblaze_samples'] is True:
+            if not use_dummy_protocol and exp_opts['start_from_trailblaze_samples'] is True:
                 trailblaze_checkpoint_dir_path = self._get_trailblaze_checkpoint_dir_path(
                     experiment_path, phase_name)
                 try:

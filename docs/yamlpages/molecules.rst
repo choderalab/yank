@@ -45,9 +45,10 @@ way to specify the charges, proteins however can rely on built in force field pa
 
 Valid Filetypes: PDB, mol2, sdf, cvs
 
-**Note:** If CVS is specified and there is only one moleucle, the first column must be a SMILES string.
-If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability),
-then each row is its own molecule where the second column is the SMILES string.
+**Note:** A CVS file is expected to have one molecule per row, each containing the SMILES string of the molecule. The
+``select`` keyword can be used to run a subset of the molecules or ``all`` of them. If CSV is specified and there is
+only one column, the first column must be a SMILES string. If multiple columns are used, then the SMILES should be in
+the second column.
 
 
 
@@ -503,8 +504,8 @@ The region definition supports multiple selection formats:
   molecules instead. This feature is not in yet, but is planned. The regions framework is the pre-cursor to this
   feature. See
   `Daylight's website for more information on SMARTS <http://www.daylight.com/dayhtml/doc/theory/theory.smarts.html>`_.
-* List of Ints: Select atoms by integers, this applies only to the final system, so numbers will probably not align
-  with the atom numbers from the input files.
+* List of Ints: Select atoms by integers, this applies only to the final system, so the indices may not align with the
+  with the atom indices from the input files if the setup pipeline adds/remove atoms (e.g. hydrogen or capping atoms).
 * Single Int: Same as the list of ints, but with a single entry, subject to same rules
 
 **OPTIONAL**

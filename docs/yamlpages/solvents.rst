@@ -168,13 +168,13 @@ Valid Options: HCT / OBC1 / OBC2 / GBn / GBn2
 
 .. rst-class:: html-toggle
 
-``implicit_solvent_salt_concentration``
----------------------------------------
+``implicit_solvent_salt_conc``
+------------------------------
 .. code-block:: yaml
 
    solvents:
      {UserDefinedSolvent}:
-       implicit_solvent_salt_concentration: 1.0 * moles / liter
+       implicit_solvent_salt_conc: 1.0 * moles / liter
 
 Specify the salt concentration of the implicit model. Requires an ``implicit_solvent``.
 
