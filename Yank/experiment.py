@@ -2611,22 +2611,36 @@ class ExperimentBuilder(object):
                          len(phase_factory.topography.solvent_atoms) == 0)
         state_parameters = []
 
+        if not isinstance(phase_factory.topography.ligand_atoms, tuple): # not a relative system
         # First, turn on the restraint if there are any.
-        if phase_factory.restraint is not None:
-            state_parameters.append(('lambda_restraints', [0.0, 1.0]))
-        # We support only lambda sterics and electrostatics for now.
-        if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
-            state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+            if phase_factory.restraint is not None:
+                state_parameters.append(('lambda_restraints', [0.0, 1.0]))
+            # We support only lambda sterics and electrostatics for now.
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
+                state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
+                state_parameters.append(('lambda_sterics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_sterics', [1.0, 0.0]))
+            # Turn the RMSD restraints off slowly at the end
+            if isinstance(phase_factory.restraint, restraints.RMSD):
+                state_parameters.append(('lambda_restraints', [1.0, 0.0]))
         else:
-            state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
-        if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
-            state_parameters.append(('lambda_sterics', [1.0, 1.0]))
-        else:
-            state_parameters.append(('lambda_sterics', [1.0, 0.0]))
-        # Turn the RMSD restraints off slowly at the end
-        if isinstance(phase_factory.restraint, restraints.RMSD):
-            state_parameters.append(('lambda_restraints', [1.0, 0.0]))
-
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
+                state_parameters.append(('lambda_electrostatics_0', [1.0, 1.0]))
+                state_parameters.append(('lambda_electrostatics_1', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_electrostatics_0', [1.0, 0.0]))
+                state_parameters.append(('lambda_electrostatics_1', [0.0, 1.0]))
+            if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
+                state_parameters.append(('lambda_sterics_0', [1.0, 1.0]))
+                state_parameters.append(('lambda_sterics_1', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_sterics_0', [1.0, 0.0]))
+                state_parameters.append(('lambda_sterics_1', [0.0, 1.0]))
+            # TODO: Handle restraints in relative free energy calculations 
         return state_parameters
 
     @classmethod
