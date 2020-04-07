@@ -3102,6 +3102,7 @@ class ExperimentBuilder(object):
         assert isinstance(protocol, collections.OrderedDict)
         phase_names = list(protocol.keys())
         phase_paths = self._get_nc_file_paths(experiment_path, experiment)
+        is_relative = False
         for phase_idx, (phase_name, phase_path) in enumerate(zip(phase_names, phase_paths)):
             # Check if we need to resume a phase. If the phase has been
             # already created, Experiment will resume from the storage.
@@ -3125,6 +3126,8 @@ class ExperimentBuilder(object):
             # Identify system components. There is a ligand only in the complex phase.
             if phase_idx == 0:
                 ligand_atoms = ligand_dsl
+                if len(ligand_atoms) == 2 and isinstance(ligand_atoms[0], list) and isinstance(ligand_atoms[1], list):
+                    is_relative = True
             else:
                 ligand_atoms = None
             topography = Topography(topology, ligand_atoms=ligand_atoms,
@@ -3147,7 +3150,7 @@ class ExperimentBuilder(object):
             # and modified it according to the user options.
             phase_protocol = protocol[phase_name]['alchemical_path']
             alchemical_region = AlchemicalPhase._build_default_alchemical_region(system, topography,
-                                                                                 phase_protocol)
+                                                                                 phase_protocol, is_relative)
             alchemical_region = [region._replace(**alchemical_region_opts) for region in alchemical_region]
 
             # Apply restraint only if this is the first phase. AlchemicalPhase

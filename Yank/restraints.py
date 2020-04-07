@@ -1204,13 +1204,13 @@ class FlatBottom(RadiallySymmetricRestraint):
             The topography with labeled receptor and ligand atoms.
 
         """
-        # Determine number of atoms.
-        n_atoms = len(topography.receptor_atoms)
-
-        # Check that restrained receptor atoms are in expected range.
-        if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
-            raise ValueError('Receptor atoms {} were selected for restraint, but system '
-                             'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
+        if not self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+            # Determine number of atoms.
+            n_atoms = len(topography.receptor_atoms)
+            # Check that restrained receptor atoms are in expected range.
+            if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
+                raise ValueError('Receptor atoms {} were selected for restraint, but system '
+                                 'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
 
         # Compute well radius if the user hasn't specified it in the constructor.
         if self.well_radius is None:
