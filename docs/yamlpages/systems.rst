@@ -96,7 +96,7 @@ Arbitrary Phase Free Energies Setup by User
        gromacs_include_dir: include/
 
 YANK will allow users to specify arbitrary free energy calculations with systems they have prepared themselves.
-Both Amber and GROMACS input file types are accepted. It is also possible to specify a pair of ``[*.pdb, *.xml]``
+Amber (``[*.prmtop, *.inpcrd]``), GROMACS (``[*.top, *.gro]``) and CHARMM (``[*.psf, *.pdb]``) input file types are accepted. It is also possible to specify a pair of ``[*.pdb, *.xml]``
 files for each phase, where the XML contains a serialized OpenMM system.
 MDTraj is required to use this options since picking the ligand out of the files is done with an MDTraj DSL.
 
@@ -116,3 +116,4 @@ MDTraj is required to use this options since picking the ligand out of the files
 * ``gromacs_include_dir``: *Optional*, Tells YANK where the GROMACS include directory is to pull files and parameters from.
   This is particularly helpful if your topology file does not contain all parameters.
   Path is relative to the YAML script.
+* ``charmm_parameter_files``: *Optional*, Gives YANK a list of CHARMM-format parameter files that provide all the necessary force field parameters for the ``*.psf`` file. For example, ``charmm_parameter_files: [par_all36m_prot.prm, par_all36_carb.prm, toppar_water_ions.str]``. 
