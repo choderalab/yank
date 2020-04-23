@@ -10,6 +10,10 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 0.25.3 - Development
 --------------------
 
+New features
+^^^^^^^^^^^^
+- Added support for CHARMM-format inputs in arbitrary phase free energies setup by user using ``phase1_path`` and ``phase2_path`` keywords (`#1207 <https://github.com/choderalab/yank/pull/1207>`_).
+
 Bugfixes
 ^^^^^^^^
 - Fixed a bug that causes solute-only trajectories to be extracted with an incorrect order when the ions appear before
