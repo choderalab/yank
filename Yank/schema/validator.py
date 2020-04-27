@@ -187,10 +187,11 @@ class YANKCerberusValidator(cerberus.Validator):
 
     def _check_with_specify_lambda_electrostatics_and_sterics(self, field, value):
         """Check that the keys of a dictionary contain both lambda_electrostatics and lambda_sterics."""
+
         if ((isinstance(value, dict) or isinstance(value, collections.OrderedDict)) and
              not (('lambda_sterics' in value and 'lambda_electrostatics' in value) or
-             ('lambda_sterics_0' in value and 'lambda_electrostatics_0' in value and
-               'lambda_sterics_1' in value and 'lambda_electrostatics_1' in value))):
+             ('lambda_sterics_0' in value and 'lambda_electrostatics_0' in value and 
+              'lambda_sterics_1' in value and 'lambda_electrostatics_1' in value))):
             self._error(field, "Missing required keys lambda_sterics and/or lambda_electrostatics")
 
     def _check_with_math_expressions_variables_are_given(self, field, value):

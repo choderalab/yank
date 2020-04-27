@@ -1350,9 +1350,9 @@ class AlchemicalPhase(object):
     def _build_default_alchemical_region(system, topography, protocol, is_relative):
         """Create a default AlchemicalRegion if the user hasn't provided one."""
         # TODO: we should probably have a second region that annihilate sterics of counterions.
-        alchemical_region_kwargs = {}
         alchemical_region_0_kwargs = {}
-        alchemical_region_1_kwargs = {} 
+        if is_relative:
+            alchemical_region_1_kwargs = {}
         # Modify ligand if this is a receptor-ligand phase, or
         # solute if this is a transfer free energy calculation.
         if len(topography.ligand_atoms) > 0:
@@ -1367,50 +1367,51 @@ class AlchemicalPhase(object):
                 for residue in chain._residues:
                     resnames.append(f'resname {residue.name}')
             alchemical_atoms = tuple([topography.select(r) for r in resnames])
-
         # In periodic systems, we alchemically modify the ligand/solute
         # counterions to make sure that the solvation box is always neutral.
         if system.usesPeriodicBoundaryConditions():           
-            if not is_relative:
-                alchemical_counterions = mpiplus.run_single_node(0, pipeline.find_alchemical_counterions,
-                                                                 system, topography, alchemical_region_name,
-                                                                 is_relative, broadcast_result=True)
-                alchemical_atoms += alchemical_counterions
-              
-                # Sort them by index for safety. We don't want to
-                # accidentally exchange two atoms' positions.
-                alchemical_atoms = sorted(alchemical_atoms)
-                alchemical_region_kwargs['alchemical_atoms'] = alchemical_atoms
- 
-            else:
+            alchemical_counterions = mpiplus.run_single_node(0, pipeline.find_alchemical_counterions,
+                                                             system, topography, alchemical_region_name,
+                                                             is_relative, broadcast_result=True)  
+
+            if is_relative:
                 ions_to_dummies, dummies_to_ions = mpiplus.run_single_node(0, pipeline.find_alchemical_counterions,
                                                                            system, topography, alchemical_region_name,
-                                                                           is_relative, broadcast_result=True)                
+                                                                           is_relative, broadcast_result=True)
                 if ions_to_dummies:
                     alchemical_atoms[0] += ions_to_dummies
                 if dummies_to_ions:
                     alchemical_atoms[1] += dummies_to_ions
+                # Sort them by index for safety. We don't want to
+                # accidentally exchange two atoms' positions.
                 alchemical_atoms = [sorted(atoms) for atoms in alchemical_atoms]
                 alchemical_region_0_kwargs['alchemical_atoms'] = alchemical_atoms[0]
                 alchemical_region_1_kwargs['alchemical_atoms'] = alchemical_atoms[1]
+
+            else:
+                alchemical_atoms += alchemical_counterions            
+                alchemical_atoms = sorted(alchemical_atoms)
+                alchemical_region_0_kwargs[0]['alchemical_atoms'] = alchemical_atoms
+ 
         # Check if we need to modify bonds/angles/torsions.
         for element_type in ['bonds', 'angles', 'torsions']:
             if 'lambda_' + element_type in protocol:
                 modify_it = True
             else:
                 modify_it = None
-            if not is_relative:
-                alchemical_region_kwargs['alchemical_' + element_type] = modify_it
-            else:
+            if is_relative:
                 alchemical_region_0_kwargs['alchemical_' + element_type] = modify_it
                 alchemical_region_1_kwargs['alchemical_' + element_type] = modify_it
+            else:
+                alchemical_region_0_kwargs['alchemical_' + element_type] = modify_it
         # Create alchemical region.
-        if is_relative:
+        if is_relative:            
             alchemical_region = [mmtools.alchemy.AlchemicalRegion(name='0', **alchemical_region_0_kwargs),
                                  mmtools.alchemy.AlchemicalRegion(name='1', **alchemical_region_1_kwargs)]
-
+ 
         else:
-            alchemical_region = [mmtools.alchemy.AlchemicalRegion(**alchemical_region_kwargs)]
+            alchemical_region = [mmtools.alchemy.AlchemicalRegion(**alchemical_region_0_kwargs)]
+
         return alchemical_region
 
     @staticmethod

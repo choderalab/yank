@@ -2571,9 +2571,10 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
 
         # Check if all parameters are defined.
         self._check_parameters_defined()
+
         # Merge receptor and ligand atoms in a single array for easy manipulation.
         restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
-       
+
         # Create RMSDForce CV for all restrained atoms
         rmsd_cv = openmm.RMSDForce(self.reference_sampler_state.positions, restrained_atoms)
 
