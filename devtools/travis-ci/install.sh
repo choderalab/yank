@@ -3,26 +3,32 @@ pushd .
 cd $HOME
 
 # Install Miniconda
-MINICONDA=Miniconda3-latest-Linux-x86_64.sh
+if [ "$TRAVIS_OS_NAME" == "osx" ]; then
+    # Make OSX md5 mimic md5sum from linux, alias does not work
+    md5sum () {
+        command md5 -r "$@"
+    }
+    MINICONDA=Miniconda3-latest-MacOSX-x86_64.sh
+else
+    MINICONDA=Miniconda3-latest-Linux-x86_64.sh
+    export PYTHON_VER=$TRAVIS_PYTHON_VERSION
+fi
 MINICONDA_HOME=$HOME/miniconda
 MINICONDA_MD5=$(curl -s https://repo.continuum.io/miniconda/ | grep -A3 $MINICONDA | sed -n '4p' | sed -n 's/ *<td>\(.*\)<\/td> */\1/p')
 wget -q https://repo.continuum.io/miniconda/$MINICONDA
-# Parse version out of file as fall back
-# Sed cuts out everything before the first digit, then traps the first digit and everything after
-MINICONDA_DL_VER=$(head $MINICONDA | grep VER | sed -n 's/[^0-9]*\([0-9.]*\)/\1/p')
-MINICONDA_FILE_VER="Miniconda3-$MINICONDA_DL_VER-Linux-x86_64.sh"
-MINICONDA_MD5_VER=$(curl -s https://repo.continuum.io/miniconda/ | grep -A3 $MINICONDA_FILE_VER | sed -n '4p' | sed -n 's/ *<td>\(.*\)<\/td> */\1/p')
 if [[ $MINICONDA_MD5 != $(md5sum $MINICONDA | cut -d ' ' -f 1) ]]; then
-    if [[ $MINICONDA_MD5_VER != $(md5sum $MINICONDA | cut -d ' ' -f 1) ]]; then
-        echo "Miniconda MD5 mismatch"
-        exit 1
-    fi
+    echo "Miniconda MD5 mismatch"
+    exit 1
 fi
 bash $MINICONDA -b -p $MINICONDA_HOME
 
 # Configure miniconda
 export PIP_ARGS="-U"
 export PATH=$MINICONDA_HOME/bin:$PATH
+conda config --add channels conda-forge
+conda config --set always_yes yes
+conda install conda conda-build jinja2 anaconda-client
+conda update --quiet --all
 
-# Restore original directory
 popd
+© 2020 GitHub, Inc.
