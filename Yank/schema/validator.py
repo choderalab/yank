@@ -138,8 +138,7 @@ class YANKCerberusValidator(cerberus.Validator):
             ('amber', {'inpcrd', 'prmtop'}),
             ('amber', {'rst7', 'prmtop'}),
             ('gromacs', {'gro', 'top'}),
-            ('openmm', {'pdb', 'xml'}),
-            ('charmm', {'pdb', 'psf'})
+            ('openmm', {'pdb', 'xml'})
         ]
         file_extension_type = None
         for extension_type, valid_extensions in expected_extensions:
