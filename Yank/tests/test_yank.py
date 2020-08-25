@@ -71,20 +71,23 @@ def test_topography():
 
 def test_topography_subset_regions():
     """Test that topography subset region selection works"""
-    # This test relies on all other tests for topography passing
+    # This test relies on all other tests for topography passing.
     host_guest_explicit = testsystems.HostGuestExplicit()
     topography = Topography(host_guest_explicit.topology, ligand_atoms='resname B2')
     ligand_list = list(range(126, 156))
     receptor_list = list(range(126))
     n_slice = 3  # Number of atoms to slice from front and back
     assert topography.ligand_atoms == ligand_list
+
+    # Add regions that will be tested.
     topography.add_region('lig_dsl', 'resname B2')
     topography.add_region('lig_list', ligand_list)
     topography.add_region('rec_list', receptor_list)
     topography.add_region('rec_lig_slice', receptor_list[-n_slice:] + ligand_list[:n_slice])
-    # Selection list: selection, subset, sort_by, result
+
+    # Selection list: selection, subset, sort_by, expected result.
     selections = (
-        # DSL select, same DSL subset, small to large
+        # DSL select, same DSL subset, small to large index.
         ('resname B2', 'resname B2', 'index', ligand_list),
         # DSL select, region subset
         ('resname B2', 'lig_list', 'index', ligand_list),
@@ -98,11 +101,11 @@ def test_topography_subset_regions():
         ('lig_list', 'resname CB7', 'index', []),
         # compound Region, partial subset in bad order, order of region
         ('lig_list or rec_list', 'rec_lig_slice', 'region_order', ligand_list[:n_slice] + receptor_list[-n_slice:])
-                )
+    )
     for selection, subset, sort_by, result in selections:
         selected = topography.select(selection, sort_by=sort_by, subset=subset, as_set=False)
-        assert result == selected, "Failed to match {}, subset {}, by {} to {},\ngot {}".format(selection, subset,
-                                                                                                sort_by, result,
+        assert result == selected, (f"Failed to match {selection}, subset {subset}, "
+                                    f"by {sort_by} to {result},\ngot {selected}")
                                                                                                 selected)
 
 
@@ -110,7 +113,8 @@ def test_topography_regions():
     """Test that topography regions are created and fetched"""
     toluene_vacuum = testsystems.TolueneVacuum()
     topography = Topography(toluene_vacuum.topology)
-    # Should do nothing and return nothing without error
+
+    # Should do nothing and return nothing without error.
     assert topography.remove_region('Nothing') is None
     topography.add_region('A hard list', [0, 1, 2])
     assert 'A hard list' in topography
@@ -118,12 +122,13 @@ def test_topography_regions():
     topography.remove_region('A junk list')
     assert 'A junk list' not in topography
     assert topography.get_region('A hard list') == [0, 1, 2]
-    # Confirm that string typing is handled
+
+    # Confirm that string typing is handled.
     topography.add_region('carbon', 'element C')
     assert len(topography.get_region('carbon')) > 0
     with nose.tools.assert_raises(ValueError):
         topography.add_region('failure', 'Bad selection string')
-    # Ensure region was not added
+    # Ensure region was not added.
     assert 'failure' not in topography
 
 
