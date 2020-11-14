@@ -5,7 +5,7 @@ channels:
   - omnia
   - openeye
   - salilab
-requirements:
+dependencies:
   - compilers
   - python
   - pip

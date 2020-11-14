@@ -84,7 +84,7 @@ jobs:
           conda list
 
       - name: Decrypt licenses
-        # TODO: MODELLER license?
+        # TODO: MODELLER
         shell: bash -l {0}
         env:
           OE_LICENSE_TEXT: ${{ secrets.OE_LICENSE }}
@@ -116,28 +116,3 @@ jobs:
           python devtools/travis-ci/set_doc_version.py
           # Prepare versions.json
           python devtools/travis-ci/update_versions_json.py
-
-  docs:
-    name: Docs
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Additional info about the build
-        shell: bash
-        run: |
-          uname -a
-          df -h
-          ulimit -a
-
-      # More info on options: https://github.com/conda-incubator/setup-miniconda
-      - uses: conda-incubator/setup-miniconda@v2
-        with:
-          python-version: ${{ matrix.cfg.python-version }}
-          environment-file: devtools/conda-envs/test_env.yaml
-          activate-environment: test
-          auto-update-conda: true
-          auto-activate-base: false
-          show-channel-urls: true
-
-
-
