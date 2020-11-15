@@ -1,3 +1,4 @@
+[![GH Actions Status](https://github.com/choderalab/perses/workflows/CI/badge.svg)](https://github.com/choderalab/perses/actions?query=branch%3Amaster)
 [![Travis Build Status](https://travis-ci.org/choderalab/yank.png)](https://travis-ci.org/choderalab/yank)
 [![Anaconda Cloud Badge](https://anaconda.org/omnia/yank/badges/version.svg)](https://anaconda.org/omnia/yank)
 [![Anaconda Cloud Downloads](https://anaconda.org/omnia/yank/badges/downloads.svg)](https://anaconda.org/omnia/yank)
