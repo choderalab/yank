@@ -30,7 +30,10 @@ from functools import wraps
 
 import mpiplus
 import numpy as np
-import simtk.unit as units
+try:
+    import openmm.unit as units
+except ImportError: # OpenMM < 7.6
+    import simtk.unit as units
 import openmmtools as mmtools
 from pymbar import timeseries
 

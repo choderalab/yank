@@ -18,7 +18,11 @@ import math
 import copy
 
 import numpy as np
-from simtk import openmm, unit
+try:
+    import openmm
+    from openmm import unit
+except ImportError: # OpenMM < 7.6
+    from simtk import openmm, unit
 import openmmtools as mmtools
 from openmmtools import testsystems, states, multistate
 import nose

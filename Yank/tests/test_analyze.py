@@ -20,7 +20,10 @@ from nose.tools import assert_raises, assert_equal
 import openmmtools as mmtools
 import pymbar
 from pymbar.utils import ParameterError
-from simtk import unit
+try:
+    from openmm import unit
+except ImportError: # OpenMM < 7.6
+    from simtk import unit
 from openmmtools.multistate import (MultiStateReporter, MultiStateSampler,
                                     ReplicaExchangeSampler, SAMSSampler, utils)
 

@@ -106,7 +106,7 @@ molecules:
 
 # Here we specify the parameters of our solvent. The list of
 # configuration here is not 100% complete. In general, all parameters
-# of simtk.openmm.app.amberprmtopfile.AmberPrmtopFile.createSystem()
+# of openmm.app.amberprmtopfile.AmberPrmtopFile.createSystem()
 # can be specified in this section.
 # -----------------------------------------------------------------
 solvents:

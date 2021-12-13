@@ -30,7 +30,11 @@ import mpiplus
 import numpy as np
 import openmmtools as mmtools
 import pandas
-from simtk import unit, openmm
+try:
+    import openmm
+    from openmm import unit
+except ImportError: # OpenMM < 7.6
+    from simtk import unit, openmm
 
 from . import pipeline
 from .restraints import RestraintState, RestraintParameterError, V0
@@ -56,7 +60,7 @@ class Topography(object):
 
     Parameters
     ----------
-    topology : mdtraj.Topology or simtk.openmm.app.Topology
+    topology : mdtraj.Topology or openmm.app.Topology
         The topology object specifying the system.
     ligand_atoms : iterable of int or str, optional
         The atom indices of the ligand. A string is interpreted as an mdtraj
@@ -707,7 +711,7 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
 
         Parameters
         ----------
-        tolerance : simtk.unit.Quantity
+        tolerance : openmm.unit.Quantity
             Minimization tolerance (units of energy/mole/length, default is
             ``1.0 * unit.kilojoules_per_mole / unit.nanometers``).
         max_iterations : int
@@ -897,7 +901,7 @@ class AlchemicalPhase(object):
         restraint : ReceptorLigandRestraint, optional
             Restraint to add between protein and ligand. This must be specified
             for ligand-receptor systems in non-periodic boxes.
-        anisotropic_dispersion_cutoff : simtk.openmm.Quantity, 'auto', or None, optional, default None
+        anisotropic_dispersion_cutoff : openmm.Quantity, 'auto', or None, optional, default None
             If specified, this is the cutoff at which to reweight long range
             interactions of the end states to correct for anisotropic dispersions.
 
@@ -1097,7 +1101,7 @@ class AlchemicalPhase(object):
 
         Parameters
         ----------
-        tolerance : simtk.unit.Quantity, optional
+        tolerance : openmm.unit.Quantity, optional
             Minimization tolerance (units of energy/mole/length, default is
             ``1.0 * unit.kilojoules_per_mole / unit.nanometers``).
         max_iterations : int, optional
@@ -1151,7 +1155,7 @@ class AlchemicalPhase(object):
             The ligand will be placed close to a random receptor atom at
             a distance that is normally distributed with standard deviation
             ``sigma_multiplier * receptor_radius_of_gyration`` (default is 2.0).
-        close_cutoff : simtk.unit.Quantity, optional
+        close_cutoff : openmm.unit.Quantity, optional
             Each random placement proposal will be rejected if the ligand
             ends up being closer to the receptor than this cutoff (units of
             length, default is ``1.5*unit.angstrom``).

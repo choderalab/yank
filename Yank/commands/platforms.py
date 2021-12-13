@@ -34,7 +34,10 @@ Description:
 
 
 def dispatch(args):
-    from simtk import openmm
+    try:
+        import openmm
+    except ImportError: # OpenMM < 7.6
+        from simtk import openmm
     print("Available OpenMM platforms:")
     for platform_index in range(openmm.Platform.getNumPlatforms()):
         print("{0:5d} {1:s}".format(platform_index, openmm.Platform.getPlatform(platform_index).getName()))

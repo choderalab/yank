@@ -16,7 +16,10 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib import gridspec
 from pymbar import MBAR
 import seaborn as sns
-from simtk import unit as units
+try:
+    from openmm import unit as units
+except ImportError: # OpenMM < 7.6
+    from simtk import unit as units
 from openmmtools import multistate
 
 from .. import analyze
