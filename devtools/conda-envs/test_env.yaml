@@ -29,6 +29,7 @@ dependencies:
   - pdbfixer
   - openeye-toolkits
   - modeller
+  - parmed
   # test
   - nose
   - nose-timer
