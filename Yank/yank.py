@@ -1412,6 +1412,12 @@ class AlchemicalPhase(object):
         """
         sampler_state = sampler_states[sampler_state_id]
 
+        # Temporarily disable the barostat during minimization by setting the
+        # pressure to None. (Otherwise, the minimizer will modify the box
+        # vectors and may cause instabilities which are very difficult to debug.)
+        pressure = thermodynamic_state.pressure
+        thermodynamic_state.pressure = None
+
         # Use the FIRE minimizer
         integrator = mmtools.integrators.FIREMinimizationIntegrator(tolerance=tolerance)
 
@@ -1442,6 +1448,9 @@ class AlchemicalPhase(object):
                 openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
             else:
                 raise e
+
+        # Restore the barostat
+        thermodynamic_state.pressure = pressure
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
