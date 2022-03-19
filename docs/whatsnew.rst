@@ -19,6 +19,7 @@ Bugfixes
 - Fixed a bug that causes solute-only trajectories to be extracted with an incorrect order when the ions appear before
 the solute atoms in the system (`#1213 <https://github.com/choderalab/yank/pull/1213>`_).
 - A few fixes to the documentation (`#1213 <https://github.com/choderalab/yank/pull/1213>`_).
+- Updated yaml loader to use FullLoader (related to `#1152 <https://github.com/choderalab/yank/issues/1152>`)
 
 
 0.25.2 - Bugfix release
