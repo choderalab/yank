@@ -55,8 +55,8 @@ def _is_phase_completed(status, number_of_iterations):
     """Check if the stored simulation is completed.
 
     When the simulation is resumed, the number of iterations to run
-    in the YAML script could be updated, so we can't rely entirely on
-    the is_completed field in the ReplicaExchange.Status object.
+    in the YAML script could be updated, so we don't rely entirely on
+    the is_converged field in the ReplicaExchange.Status object.
 
     Parameters
     ----------
@@ -66,11 +66,10 @@ def _is_phase_completed(status, number_of_iterations):
         The total number of iterations that the simulation must perform.
 
     """
-    # TODO allow users to change online analysis options on resuming.
     if status.target_error is None and status.iteration < number_of_iterations:
         is_completed = False
     else:
-        is_completed = status.is_completed
+        is_completed = status.is_converged or (status.iteration >= number_of_iterations)
     return is_completed
 
 
@@ -410,7 +409,7 @@ class Experiment(object):
                         continue
                     alchemical_phase = AlchemicalPhase.from_storage(phase)
 
-                # TODO allow users to change online analysis options on resuming.
+                # Allow users to change online analysis options on resuming.
                 # Update total number of iterations. This may write the new number
                 # of iterations in the storage file so we do it only if necessary.
                 if alchemical_phase.number_of_iterations != self.number_of_iterations:
