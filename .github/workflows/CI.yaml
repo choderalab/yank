@@ -19,13 +19,19 @@ jobs:
       fail-fast: false
       matrix:
         cfg:
-          - { os: ubuntu-latest, python-version: 3.7, docs: true,  openmm: latest }
-          - { os: macos-latest,  python-version: 3.7, docs: true,  openmm: latest }
-          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: latest }
-          - { os: ubuntu-latest, python-version: 3.7, docs: false, openmm: nightly }
-          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: nightly }
-          - { os: ubuntu-latest, python-version: 3.7, docs: false, openmm: conda-forge }
-          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: conda-forge }
+          - { os: ubuntu-latest, python-version: "3.7", docs: true,  openmm: latest }
+          - { os: macos-latest,  python-version: "3.7", docs: true,  openmm: latest }
+          - { os: ubuntu-latest, python-version: "3.8", docs: false, openmm: latest }
+          - { os: ubuntu-latest, python-version: "3.9", docs: false, openmm: latest }
+          - { os: ubuntu-latest, python-version: "3.10", docs: false, openmm: latest }
+          - { os: ubuntu-latest, python-version: "3.7", docs: false, openmm: nightly }
+          - { os: ubuntu-latest, python-version: "3.8", docs: false, openmm: nightly }
+          - { os: ubuntu-latest, python-version: "3.9", docs: false, openmm: nightly }
+          - { os: ubuntu-latest, python-version: "3.10", docs: false, openmm: nightly }
+          - { os: ubuntu-latest, python-version: "3.7", docs: false, openmm: conda-forge }
+          - { os: ubuntu-latest, python-version: "3.8", docs: false, openmm: conda-forge }
+          - { os: ubuntu-latest, python-version: "3.9", docs: false, openmm: conda-forge }
+          - { os: ubuntu-latest, python-version: "3.10", docs: false, openmm: conda-forge }
 
     env:
       OPENMM: ${{ matrix.cfg.openmm }}
@@ -33,7 +39,7 @@ jobs:
       PACKAGENAME: yank
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Additional info about the build
         shell: bash
@@ -103,7 +109,7 @@ jobs:
           popd
 
       - name: Codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v3
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
