@@ -31,7 +31,12 @@ import functools
 import itertools
 import contextlib
 import subprocess
-import collections
+
+try:
+    from collections import MutableMapping, Mapping
+except ImportError:
+    # Support python 3.10
+    from collections.abc import MutableMapping, Mapping
 
 from pkg_resources import resource_filename
 
@@ -1791,7 +1796,7 @@ def generate_development_feature(feature_dict):
         require instantiation. Function names are all given the `dev_` prefix to avoid clashes with other names its
         a part of its psudo-mixin properties
     """
-    base_err = ('This feature cannot be used because it has been marked as "Developmental" and ' 
+    base_err = ('This feature cannot be used because it has been marked as "Developmental" and '
                 'the following conditions have not been met:\n')
     valid = True  # Assume valid until proven otherwise
     check_dict = {}
