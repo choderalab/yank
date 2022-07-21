@@ -51,6 +51,7 @@ jobs:
           auto-update-conda: true
           auto-activate-base: false
           show-channel-urls: true
+          mamba-version: "*"
 
       - name: Refine test environment
         shell: bash -l {0}
