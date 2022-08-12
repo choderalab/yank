@@ -296,7 +296,7 @@ class ExperimentAnalyzer(object):
             err_msg = 'Cannot find analysis.yaml script in {}'.format(store_directory)
             raise RuntimeError(err_msg)
         with open(analysis_script_path, 'r') as f:
-            analysis = yaml.load(f)
+            analysis = yaml.load(f, Loader=yaml.FullLoader)
         phases_names = []
         signs = {}
         analyzers = {}
