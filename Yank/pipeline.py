@@ -33,8 +33,13 @@ import openmmtools as mmtools
 import openmoltools as moltools
 import yaml
 from pdbfixer import PDBFixer
-from simtk import openmm, unit
-from simtk.openmm.app import PDBFile
+try:
+    import openmm
+    from openmm import unit
+    from openmm.app import PDBFile
+except ImportError: # OpenMM < 7.6
+    from simtk import openmm, unit
+    from simtk.openmm.app import PDBFile
 
 
 from . import utils
@@ -175,12 +180,12 @@ def compute_radius_of_gyration(positions):
 
     Parameters
     ----------
-    positions : simtk.unit.Quantity with units compatible with angstrom
+    positions : openmm.unit.Quantity with units compatible with angstrom
        The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
 
     Returns
     -------
-    radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
+    radius_of_gyration : openmm.unit.Quantity with units compatible with angstrom
        The radius of gyration
 
     """
@@ -209,7 +214,7 @@ def compute_net_charge(system, atom_indices):
 
     Parameters
     ----------
-    system : simtk.openmm.System
+    system : openmm.System
         The system object containing the atoms of interest.
     atom_indices : list of int
         Indices of the atoms of interest.
@@ -245,7 +250,7 @@ def find_alchemical_counterions(system, topography, region_name):
 
     Parameters
     ----------
-    system : simtk.openmm.System
+    system : openmm.System
         The system object containing the atoms of interest.
     topography : yank.Topography
         The topography object holding the indices of the ions and the
@@ -328,7 +333,7 @@ def get_leap_recommended_pbradii(implicit_solvent):
     --------
     >>> get_leap_recommended_pbradii('OBC2')
     'mbondi2'
-    >>> from simtk.openmm.app import HCT
+    >>> from openmm.app import HCT
     >>> get_leap_recommended_pbradii(HCT)
     'mbondi'
 
@@ -347,7 +352,7 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
 
     Parameters
     ----------
-    parameters_file : simtk.openmm.app.AmberPrmtopFile or GromacsTopFile
+    parameters_file : openmm.app.AmberPrmtopFile or GromacsTopFile
         The file used to create they system.
     box_vectors : list of Vec3
         The default box vectors of the system will be set to this value.
@@ -358,7 +363,7 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
 
     Returns
     -------
-    system : simtk.openmm.System
+    system : openmm.System
         The system created.
 
     """
@@ -432,7 +437,7 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
 
     Returns
     -------
-    system : simtk.openmm.System
+    system : openmm.System
         The OpenMM System built from the given files.
     topology : openmm.app.Topology
         The OpenMM Topology built from the given files.
@@ -512,7 +517,7 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
         create_system_args = set(inspect.getargspec(openmm.app.CharmmPsfFile.createSystem).args)
         system_options['params'] = params
         system = create_system(parameters_file, box_vectors, create_system_args, system_options)
-            
+
     # Unsupported file format.
     else:
         raise ValueError('Unsupported format for parameter file {}'.format(parameters_file_extension))

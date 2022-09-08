@@ -11,7 +11,7 @@ In the examples, these user defined names are marked as ``{UserDefinedSolvent}``
 You can define as many ``{UserDefinedSolvent}`` as you like. These solvents will be used in other YAML headers.
 
 Most of the solvent options are tied directly to OpenMM options of the same name in the primary function
-``simtk.openmm.app.amberprmtopfile.AmberPrmtopFile.createSystem()``, however, there are other options tied to LEaP preparation instructions.
+``openmm.app.amberprmtopfile.AmberPrmtopFile.createSystem()``, however, there are other options tied to LEaP preparation instructions.
 Similarly, the ``solvents`` section is where you specify Periodic Boundary Conditions (PBC) and long range electrostatic treatments.
 Each of the arguments in this category is optional and the default option will be assumed if not specified.
 
@@ -358,7 +358,7 @@ Valid Options (0 * molar): <Quantity Concentration> [1]_
 .. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option.
    e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom.
    Compound units are also parsed such as ``kilogram / meter**3`` for density.
-   Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
+   Only full unit names as they appear in the openmm.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
 
 
 

@@ -151,7 +151,10 @@ def dispatch(args):
 
 def extract_analyzer_kwargs(args, quantities_as_strings=False):
 
-    import simtk.unit as unit
+    try:
+        import openmm.unit as unit
+    except ImportError: # OpenMM < 7.6
+        import simtk.unit as unit
 
     """Return a dictionary with the keyword arguments to pass to the analyzer."""
     analyzer_kwargs = {}

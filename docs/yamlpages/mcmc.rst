@@ -33,7 +33,7 @@ keyword is ``type``. YANK supports all the ``MCMCMove`` classes defined in the
 
 * ``SequenceMove``: Container MCMC move describing a sequence of other moves.
 * ``LangevinSplittingDynamicsMove``: High-quality Langevin integrator family based on symmetric Strang splittings, using g-BAOAB :cite:`LeimkuhlerMatthews2016` as default
-* ``LangevinDynamicsMove``: Leapfrog Langevin dynamics integrator from OpenMM (``simtk.openmm.LangevinIntegrator``); not recommended
+* ``LangevinDynamicsMove``: Leapfrog Langevin dynamics integrator from OpenMM (``openmm.LangevinIntegrator``); not recommended
 * ``GHMCMove``: Metropolized Langevin integrator, when exact sampling is required; not recommended for large systems
 * ``HMCMove``: Hybrid Monte Carlo integrator, when exact sampling is required; not recommended for large systems
 * ``MonteCarloBarostatMove``: Explicit Monte Carlo barostat; not recommended, since this can be incorporated within Langevin dynamics moves instead

@@ -52,7 +52,10 @@ def dispatch(args):
     import doctest
     import pkgutil
     import subprocess
-    import simtk.openmm as mm
+    try:
+        import openmm as mm
+    except ImportError: # OpenMM < 7.6
+        import simtk.openmm as mm
     from .. import version
     from . import platforms
 

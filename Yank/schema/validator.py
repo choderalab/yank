@@ -8,8 +8,12 @@ from collections.abc import Mapping, Sequence
 
 import cerberus
 import cerberus.errors
-import simtk.unit as unit
-from simtk.openmm import app
+try:
+    import openmm.unit as unit
+    from openmm import app
+except ImportError: # OpenMM < 7.6
+    import simtk.unit as unit
+    from simtk.openmm import app
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2
 
