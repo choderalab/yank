@@ -708,7 +708,7 @@ def test_validation_wrong_solvents():
             {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'}),
         ("blabla:\n- unknown field",
             {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'}),
-        ("''implicit_solvent'' cannot be coerced: module ''simtk.openmm.app'' has no\n  attribute ''OBX2'''",
+        ("''implicit_solvent'' cannot be coerced: module ''openmm.app'' has no\n  attribute ''OBX2'''",
             {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBX2'}),
         ("''implicit_solvent_salt_conc'' cannot be coerced: Units of 1.0\*angstrom",
             {'implicit_solvent': 'OBC2', 'implicit_solvent_salt_conc': '1.0*angstrom'})

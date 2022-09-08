@@ -873,6 +873,6 @@ Valid Options: [yes]/no
 
 .. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom.
    Compound units are also parsed such as ``kilogram / meter**3`` for density.
-   Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
+   Only full unit names as they appear in the openmm.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
 
 |

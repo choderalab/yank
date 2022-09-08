@@ -32,7 +32,11 @@ import scipy.integrate
 import mdtraj as md
 import openmmtools as mmtools
 from openmmtools.states import GlobalParameterState
-from simtk import openmm, unit
+try:
+    import openmm
+    from openmm import unit
+except ImportError: # OpenMM < 7.6
+    from simtk import openmm, unit
 
 from . import pipeline
 from .utils import methoddispatch, generate_development_feature
@@ -663,7 +667,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         Returns
         -------
-        force : simtk.openmm.Force
+        force : openmm.Force
            The created restraint force.
 
         """
@@ -798,7 +802,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
            positions of object to identify atom closes to centroid
         indices : list of int, optional, default=None
            List of atoms indices for which closest atom to centroid is to be computed.
-        masses : simtk.unit.Quantity of natoms with units compatible with amu
+        masses : openmm.unit.Quantity of natoms with units compatible with amu
            Masses of particles used to weight distance calculation, if not None (default: None)
 
         Returns
@@ -871,7 +875,7 @@ class Harmonic(RadiallySymmetricRestraint):
 
     Parameters
     ----------
-    spring_constant : simtk.unit.Quantity, optional
+    spring_constant : openmm.unit.Quantity, optional
         The spring constant K (see energy expression above) in units compatible
         with joule/nanometer**2/mole (default is None).
     restrained_receptor_atoms : iterable of int, int, or str, optional
@@ -958,7 +962,7 @@ class Harmonic(RadiallySymmetricRestraint):
 
         Returns
         -------
-        force : simtk.openmm.Force
+        force : openmm.Force
            The created restraint force.
 
         """
@@ -1041,10 +1045,10 @@ class FlatBottom(RadiallySymmetricRestraint):
 
     Parameters
     ----------
-    spring_constant : simtk.unit.Quantity, optional
+    spring_constant : openmm.unit.Quantity, optional
         The spring constant K (see energy expression above) in units compatible
         with joule/nanometer**2/mole (default is None).
-    well_radius : simtk.unit.Quantity, optional
+    well_radius : openmm.unit.Quantity, optional
         The distance r0 (see energy expression above) at which the harmonic
         restraint is imposed in units of distance (default is None).
     restrained_receptor_atoms : iterable of int, int, or str, optional
@@ -1137,7 +1141,7 @@ class FlatBottom(RadiallySymmetricRestraint):
 
         Returns
         -------
-        force : simtk.openmm.Force
+        force : openmm.Force
            The created restraint force.
 
         """
@@ -1319,22 +1323,22 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
-    K_r : simtk.unit.Quantity, optional
+    K_r : openmm.unit.Quantity, optional
         The spring constant for the restrained distance ``|r3 - l1|`` (units
         compatible with kilocalories_per_mole/angstrom**2).
-    r_aA0 : simtk.unit.Quantity, optional
+    r_aA0 : openmm.unit.Quantity, optional
         The equilibrium distance between r3 and l1 (units of length).
-    K_thetaA, K_thetaB : simtk.unit.Quantity, optional
+    K_thetaA, K_thetaB : openmm.unit.Quantity, optional
         The spring constants for ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with kilocalories_per_mole/radians**2).
-    theta_A0, theta_B0 : simtk.unit.Quantity, optional
+    theta_A0, theta_B0 : openmm.unit.Quantity, optional
         The equilibrium angles of ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with radians).
-    K_phiA, K_phiB, K_phiC : simtk.unit.Quantity, optional
+    K_phiA, K_phiB, K_phiC : openmm.unit.Quantity, optional
         The spring constants for ``dihedral(r1, r2, r3, l1)``,
         ``dihedral(r2, r3, l1, l2)`` and ``dihedral(r3,l1,l2,l3)`` (units compatible
         with kilocalories_per_mole/radians**2).
-    phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
+    phi_A0, phi_B0, phi_C0 : openmm.unit.Quantity, optional
         The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
         and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
 
@@ -1717,7 +1721,7 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
 
         Parameters
         ----------
-        positions : n_atoms x 3 simtk.unit.Quantity
+        positions : n_atoms x 3 openmm.unit.Quantity
             Reference positions to use for imposing restraints (units of length).
         atoms : iterable of int
             The indices of the atoms to test.
@@ -2019,22 +2023,22 @@ class Boresch(BoreschLike):
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
-    K_r : simtk.unit.Quantity, optional
+    K_r : openmm.unit.Quantity, optional
         The spring constant for the restrained distance ``|r3 - l1|`` (units
         compatible with kilocalories_per_mole/angstrom**2).
-    r_aA0 : simtk.unit.Quantity, optional
+    r_aA0 : openmm.unit.Quantity, optional
         The equilibrium distance between r3 and l1 (units of length).
-    K_thetaA, K_thetaB : simtk.unit.Quantity, optional
+    K_thetaA, K_thetaB : openmm.unit.Quantity, optional
         The spring constants for ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with kilocalories_per_mole/radians**2).
-    theta_A0, theta_B0 : simtk.unit.Quantity, optional
+    theta_A0, theta_B0 : openmm.unit.Quantity, optional
         The equilibrium angles of ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with radians).
-    K_phiA, K_phiB, K_phiC : simtk.unit.Quantity, optional
+    K_phiA, K_phiB, K_phiC : openmm.unit.Quantity, optional
         The spring constants for ``dihedral(r1, r2, r3, l1)``,
         ``dihedral(r2, r3, l1, l2)`` and ``dihedral(r3,l1,l2,l3)`` (units compatible
         with kilocalories_per_mole/radians**2).
-    phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
+    phi_A0, phi_B0, phi_C0 : openmm.unit.Quantity, optional
         The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
         and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
 
@@ -2291,22 +2295,22 @@ class PeriodicTorsionBoresch(Boresch):
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
-    K_r : simtk.unit.Quantity, optional
+    K_r : openmm.unit.Quantity, optional
         The spring constant for the restrained distance ``|r3 - l1|`` (units
         compatible with kilocalories_per_mole/angstrom**2).
-    r_aA0 : simtk.unit.Quantity, optional
+    r_aA0 : openmm.unit.Quantity, optional
         The equilibrium distance between r3 and l1 (units of length).
-    K_thetaA, K_thetaB : simtk.unit.Quantity, optional
+    K_thetaA, K_thetaB : openmm.unit.Quantity, optional
         The spring constants for ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with kilocalories_per_mole/radians**2).
-    theta_A0, theta_B0 : simtk.unit.Quantity, optional
+    theta_A0, theta_B0 : openmm.unit.Quantity, optional
         The equilibrium angles of ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with radians).
-    K_phiA, K_phiB, K_phiC : simtk.unit.Quantity, optional
+    K_phiA, K_phiB, K_phiC : openmm.unit.Quantity, optional
         The spring constants for ``dihedral(r1, r2, r3, l1)``,
         ``dihedral(r2, r3, l1, l2)`` and ``dihedral(r3,l1,l2,l3)`` (units compatible
         with kilocalories_per_mole/radians**2).
-    phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
+    phi_A0, phi_B0, phi_C0 : openmm.unit.Quantity, optional
         The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
         and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
 
@@ -2412,9 +2416,9 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
         If no selection is given, all ligand atoms will be restrained.
         If an empty list is provided, no receptor atoms will be restrained.
         (default is None).
-    K_RMSD : simtk.unit.Quantity, optional, default=0.6*kilocalories_per_mole/angstrom**2
+    K_RMSD : openmm.unit.Quantity, optional, default=0.6*kilocalories_per_mole/angstrom**2
         The spring constant (units compatible with kilocalories_per_mole/angstrom**2).
-    RMSD0 : simtk.unit.Quantity, optional, default=2.0*angstrom
+    RMSD0 : openmm.unit.Quantity, optional, default=2.0*angstrom
         The RMSD at which the restraint becomes nonzero.
     reference_sampler_state : openmmtools.states.SamplerState or None, Optional
         Reference sampler state with coordinates to use as the structure to align the RMSD to.

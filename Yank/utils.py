@@ -38,7 +38,10 @@ from pkg_resources import resource_filename
 import mdtraj
 import parmed
 import numpy as np
-from simtk import unit
+try:
+    from openmm import unit
+except ImportError: # OpenMM < 7.6
+    from simtk import unit
 
 import openmmtools as mmtools
 
@@ -841,13 +844,13 @@ def quantity_from_string(expression, compatible_units=None):
     """Create a Quantity object from a string expression.
 
     All the functions in the standard module math are available together
-    with most of the methods inside the ``simtk.unit`` module.
+    with most of the methods inside the ``openmm.unit`` module.
 
     Parameters
     ----------
     expression : str
         The mathematical expression to rebuild a Quantity as a string.
-    compatible_units : simtk.unit.Unit, optional
+    compatible_units : openmm.unit.Unit, optional
        If given, the result is checked for compatibility against the
        specified units, and an exception raised if not compatible.
 
@@ -987,7 +990,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         contained in ``template_parameters``.
     process_units_str: bool
         If True, the function will attempt to convert the strings whose template
-        type is simtk.unit.Quantity.
+        type is openmm.unit.Quantity.
     float_to_int : bool
         If True, floats in parameters whose template type is int are truncated.
     ignore_none : bool
@@ -1791,7 +1794,7 @@ def generate_development_feature(feature_dict):
         require instantiation. Function names are all given the `dev_` prefix to avoid clashes with other names its
         a part of its psudo-mixin properties
     """
-    base_err = ('This feature cannot be used because it has been marked as "Developmental" and ' 
+    base_err = ('This feature cannot be used because it has been marked as "Developmental" and '
                 'the following conditions have not been met:\n')
     valid = True  # Assume valid until proven otherwise
     check_dict = {}

@@ -32,8 +32,13 @@ import cerberus.errors
 import openmmtools as mmtools
 import openmoltools as moltools
 import yaml
-from simtk import unit, openmm
-from simtk.openmm.app import PDBFile, AmberPrmtopFile
+try:
+    import openmm
+    from openmm import unit
+    from openmm.app import PDBFile, AmberPrmtopFile
+except ImportError: # OpenMM < 7.6
+    from simtk import unit, openmm
+    from simtk.openmm.app import PDBFile, AmberPrmtopFile
 
 from . import utils, pipeline, restraints, schema
 from .yank import AlchemicalPhase, Topography
@@ -2243,7 +2248,7 @@ class ExperimentBuilder(object):
 
         Returns
         -------
-        platform : simtk.openmm.Platform
+        platform : openmm.Platform
            The configured platform.
 
         Raises

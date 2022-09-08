@@ -13,7 +13,11 @@ import abc
 import textwrap
 
 import openmoltools as omt
-from simtk import openmm, unit
+try:
+    import openmm
+    from openmm import unit
+except ImportError: # OpenMM < 7.6
+    from simtk import openmm, unit
 
 from nose import tools
 from yank.utils import * # TODO: Don't use 'import *'
