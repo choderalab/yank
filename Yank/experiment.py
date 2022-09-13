@@ -651,7 +651,6 @@ class ExperimentBuilder(object):
             yaml_content = script.copy()
 
         self._raw_yaml = yaml_content.copy()
-
         # Check that YAML loading was successful
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
@@ -1678,7 +1677,7 @@ class ExperimentBuilder(object):
         # DSL Schema
         ligand_dsl:
             required: no
-            type: string
+            type: [string, list]
             dependencies: [phase1_path, phase2_path]
         solvent_dsl:
             required: no
@@ -1754,7 +1753,7 @@ class ExperimentBuilder(object):
             check_with: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
         ligand:
             required: no
-            type: string
+            type: [string, list]
             dependencies: [receptor, solvent]
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             excludes: [solute, phase1_path, phase2_path]
@@ -2625,16 +2624,16 @@ class ExperimentBuilder(object):
             state_parameters.append(('lambda_restraints', [0.0, 1.0]))
         # We support only lambda sterics and electrostatics for now.
         if is_vacuum and not phase_factory.alchemical_regions.annihilate_electrostatics:
-            state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+           state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
         else:
-            state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
+           state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
         if is_vacuum and not phase_factory.alchemical_regions.annihilate_sterics:
-            state_parameters.append(('lambda_sterics', [1.0, 1.0]))
+           state_parameters.append(('lambda_sterics', [1.0, 1.0]))
         else:
-            state_parameters.append(('lambda_sterics', [1.0, 0.0]))
+           state_parameters.append(('lambda_sterics', [1.0, 0.0]))
         # Turn the RMSD restraints off slowly at the end
         if isinstance(phase_factory.restraint, restraints.RMSD):
-            state_parameters.append(('lambda_restraints', [1.0, 0.0]))
+           state_parameters.append(('lambda_restraints', [1.0, 0.0]))
 
         return state_parameters
 
@@ -3098,6 +3097,7 @@ class ExperimentBuilder(object):
         assert isinstance(protocol, collections.OrderedDict)
         phase_names = list(protocol.keys())
         phase_paths = self._get_nc_file_paths(experiment_path, experiment)
+        is_relative = False
         for phase_idx, (phase_name, phase_path) in enumerate(zip(phase_names, phase_paths)):
             # Check if we need to resume a phase. If the phase has been
             # already created, Experiment will resume from the storage.
@@ -3121,8 +3121,22 @@ class ExperimentBuilder(object):
             # Identify system components. There is a ligand only in the complex phase.
             if phase_idx == 0:
                 ligand_atoms = ligand_dsl
+                if len(ligand_atoms) == 2 and isinstance(ligand_atoms[0], list) and isinstance(ligand_atoms[1], list):
+                    is_relative = True
             else:
                 ligand_atoms = None
+                topography = Topography(topology, ligand_atoms=ligand_atoms,
+                                    solvent_atoms=solvent_dsl)
+
+                solute_atoms = getattr(topography, 'solute_atoms')
+                topo = topography.topology.subset(solute_atoms)
+                resnames = []
+                for chain in topo._chains:
+                    for residue in chain._residues:
+                        resnames.append(f'resname {residue.name}')
+                if len(set(resnames)) == 2:
+                    is_relative = True
+ 
             topography = Topography(topology, ligand_atoms=ligand_atoms,
                                     solvent_atoms=solvent_dsl)
 
@@ -3143,8 +3157,8 @@ class ExperimentBuilder(object):
             # and modified it according to the user options.
             phase_protocol = protocol[phase_name]['alchemical_path']
             alchemical_region = AlchemicalPhase._build_default_alchemical_region(system, topography,
-                                                                                 phase_protocol)
-            alchemical_region = alchemical_region._replace(**alchemical_region_opts)
+                                                                                 phase_protocol, is_relative)
+            alchemical_region = [region._replace(**alchemical_region_opts) for region in alchemical_region]
 
             # Apply restraint only if this is the first phase. AlchemicalPhase
             # will take care of raising an error if the phase type does not support it.

@@ -251,7 +251,11 @@ class _AtomSelector(object):
         """
 
         topography = self.topography
-        topography_set = set(getattr(topography, topography_key))
+        if isinstance(getattr(topography, topography_key)[0], list) and isinstance(getattr(topography, topography_key)[1], list):
+            topography_set = set([index for sublist in getattr(topography, topography_key) for
+                                                   index in sublist])
+        else:
+            topography_set = set(getattr(topography, topography_key))
         # Ensure additions are sets
         additional_sets = [set(additional_set) for additional_set in additional_sets]
         if len(additional_sets) == 0:
@@ -259,7 +263,6 @@ class _AtomSelector(object):
             additional_intersect = topography_set
         else:
             additional_intersect = set.intersection(*additional_sets)
-
         @functools.singledispatch
         def compute_atom_set(passed_atoms):
             """Helper function for doing set operations on heavy ligand atoms of all other types"""
@@ -412,6 +415,8 @@ class ReceptorLigandRestraint(ABC):
                       for parameter_name in parameter_names}
         return parameters
 
+    def _is_ligand_ligand_restraint(self, restrained_ligand_atoms):
+        return len(restrained_ligand_atoms) == 2 and isinstance(restrained_ligand_atoms[0], list) and isinstance(restrained_ligand_atoms[1], list)
 
 class _RestrainedAtomsProperty(object):
     """
@@ -433,8 +438,11 @@ class _RestrainedAtomsProperty(object):
 
     def __set__(self, instance, new_restrained_atoms):
         # If we set the restrained attributes to None, no reason to check things.
-        if new_restrained_atoms is not None:
-            new_restrained_atoms = self._validate_atoms(new_restrained_atoms)
+        if (new_restrained_atoms):
+            if instance._is_ligand_ligand_restraint(new_restrained_atoms):
+                new_restrained_atoms = [self._validate_atoms(atoms) for atoms in new_restrained_atoms]
+            else:
+                new_restrained_atoms = self._validate_atoms(new_restrained_atoms)
         setattr(instance, self._attribute_name, new_restrained_atoms)
 
     @methoddispatch
@@ -445,7 +453,6 @@ class _RestrainedAtomsProperty(object):
         except AttributeError:
             restrained_atoms = list(restrained_atoms)
         return restrained_atoms
-
 
 # ==============================================================================
 # Base class for radially-symmetric receptor-ligand restraints.
@@ -528,7 +535,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         def _validate_atoms(self, restrained_atoms):
             restrained_atoms = super()._validate_atoms(restrained_atoms)
             if len(restrained_atoms) > 1:
-                logger.debug(self._CENTROID_COMPUTE_STRING.format("more than one", self._atoms_type))
+                logger.debug(self._CENTROID_COMPUTE_STRING.format("more than one", self._atoms_type))     
             return restrained_atoms
 
         @_validate_atoms.register(str)
@@ -571,9 +578,12 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             raise RestraintParameterError('Restraint {}: Undefined restrained '
                                           'atoms.'.format(self.__class__.__name__))
 
-        # Create restraint force.
-        restraint_force = self._get_restraint_force(self.restrained_receptor_atoms,
-                                                    self.restrained_ligand_atoms)
+        # Create restraint force
+        if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+            restraint_force = self._get_restraint_force(*self.restrained_ligand_atoms)
+        else:
+            restraint_force = self._get_restraint_force(self.restrained_receptor_atoms,
+                                                        self.restrained_ligand_atoms)
 
         # Set periodic conditions on the force if necessary.
         restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
@@ -700,10 +710,17 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     @property
     def _are_restrained_atoms_defined(self):
         """Check if the restrained atoms are defined well enough to make a restraint"""
-        for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
-            # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
-            if atoms is None or not (isinstance(atoms, list) and len(atoms) > 0):
-                return False
+        if self.restrained_ligand_atoms:
+            if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+                for atoms in self.restrained_ligand_atoms:
+                # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
+                    if atoms is None or any(isinstance(atom, str) for atom in atoms) or not (isinstance(atoms, list) and len(atoms) > 0):
+                        return False            
+            else:
+                for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
+                    if atoms is None or not (isinstance(atoms, list) and len(atoms) > 0):
+                        return False
+
         return True
 
     def _get_restraint_force(self, particles1, particles2):
@@ -743,7 +760,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # If receptor and ligand atoms are explicitly provided, use those.
         restrained_ligand_atoms = self.restrained_ligand_atoms
-        restrained_receptor_atoms = self.restrained_receptor_atoms
+        if not self._is_ligand_ligand_restraint(restrained_ligand_atoms):
+            restrained_receptor_atoms = self.restrained_receptor_atoms
+                
 
         @functools.singledispatch
         def compute_atom_set(input_atoms, topography_key, mapping_function):
@@ -760,7 +779,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                                "Atoms not part of {0} will be ignored.".format(topography_key))
                 final_atoms = list(intersect_set)
             else:
-                final_atoms = list(input_atoms)
+                final_atoms = list(input_atoms_set)
             return final_atoms
 
         @compute_atom_set.register(type(None))
@@ -775,18 +794,30 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         def compute_atom_str(input_string, topography_key, _):
             """Helper for string parsing"""
             selection = topography.select(input_string, as_set=True)
-            selection_with_top = selection & set(getattr(topography, topography_key))
+            if isinstance(getattr(topography, topography_key)[0], list) and isinstance(getattr(topography, topography_key)[1], list):
+                selection_with_top = selection & set([index for sublist in getattr(topography, topography_key) for
+                                                   index in sublist])
+            else:
+                selection_with_top = selection & set(getattr(topography, topography_key))
             # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
             # If they come out as np.int64's, OpenMM complains
             return [*map(int, selection_with_top)]
-
-        self.restrained_ligand_atoms = compute_atom_set(restrained_ligand_atoms,
+        
+        if self._is_ligand_ligand_restraint(restrained_ligand_atoms):
+            self.restrained_ligand_atoms = []
+            for element in restrained_ligand_atoms:
+                for value in element:
+                    self.restrained_ligand_atoms.append(compute_atom_set(value,
                                                         'ligand_atoms',
-                                                        self._closest_atom_to_centroid)
-        self.restrained_receptor_atoms = compute_atom_set(restrained_receptor_atoms,
-                                                          'receptor_atoms',
-                                                          self._closest_atom_to_centroid)
+                                                         self._closest_atom_to_centroid))
+        else:
+            self.restrained_ligand_atoms = compute_atom_set(restrained_ligand_atoms,
+                                                            'ligand_atoms',
+                                                             self._closest_atom_to_centroid)
 
+            self.restrained_receptor_atoms = compute_atom_set(restrained_receptor_atoms,
+                                                              'receptor_atoms',
+                                                             self._closest_atom_to_centroid)
     @staticmethod
     def _closest_atom_to_centroid(positions, indices=None, masses=None):
         """
@@ -962,6 +993,7 @@ class Harmonic(RadiallySymmetricRestraint):
            The created restraint force.
 
         """
+
         # Create bond force and lambda_restraints parameter to control it.
         if len(particles1) == 1 and len(particles2) == 1:
             # CustomCentroidBondForce works only on 64bit platforms. When the
@@ -1172,13 +1204,13 @@ class FlatBottom(RadiallySymmetricRestraint):
             The topography with labeled receptor and ligand atoms.
 
         """
-        # Determine number of atoms.
-        n_atoms = len(topography.receptor_atoms)
-
-        # Check that restrained receptor atoms are in expected range.
-        if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
-            raise ValueError('Receptor atoms {} were selected for restraint, but system '
-                             'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
+        if not self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+            # Determine number of atoms.
+            n_atoms = len(topography.receptor_atoms)
+            # Check that restrained receptor atoms are in expected range.
+            if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
+                raise ValueError('Receptor atoms {} were selected for restraint, but system '
+                                 'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
 
         # Compute well radius if the user hasn't specified it in the constructor.
         if self.well_radius is None:
@@ -1471,7 +1503,11 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
         n_particles = 6  # number of particles involved in restraint: p1 ... p6
         restraint_force = openmm.CustomCompoundBondForce(n_particles, energy_function)
         restraint_force.addGlobalParameter('lambda_restraints', 1.0)
-        restraint_force.addBond(self.restrained_receptor_atoms + self.restrained_ligand_atoms, [])
+
+        if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+            restraint_force.addBond(self.restrained_ligand_atoms[0] + self.restrained_ligand_atoms[1], [])
+        else:
+            restraint_force.addBond(self.restrained_receptor_atoms + self.restrained_ligand_atoms, [])
         restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
@@ -1705,10 +1741,17 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
     @property
     def _are_restrained_atoms_defined(self):
         """Check if the restrained atoms are defined well enough to make a restraint"""
-        for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
-            # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
-            if atoms is None or not (isinstance(atoms, list) and len(atoms) == 3):
-                return False
+        if self.restrained_ligand_atoms:
+            if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+                for atoms in self.restrained_ligand_atoms:
+                # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
+                    if atoms is None or any(isinstance(atom, str) for atom in atoms) or not (isinstance(atoms, list) and len(atoms) > 0):
+                        return False
+        else:
+            for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
+                # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
+                if atoms is None or not (isinstance(atoms, list) and len(atoms) == 3):
+                    return False
         return True
 
     @staticmethod
@@ -1912,7 +1955,10 @@ class BoreschLike(ReceptorLigandRestraint, ABC):
                 setattr(self, attr_name, attr_value)
 
         # Merge receptor and ligand atoms in a single array for easy manipulation.
-        restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
+        if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+            restrained_atoms = self.restrained_ligand_atoms[0] + self.restrained_ligand_atoms[1]
+        else:
+            restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
 
         # Set spring constants uniformly, as in Ref [1] Table 1 caption.
         _assign_if_undefined('K_r', 20.0 * unit.kilocalories_per_mole / unit.angstrom**2)
@@ -2496,7 +2542,7 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
         def _validate_atoms(self, restrained_atoms):
             restrained_atoms = super()._validate_atoms(restrained_atoms)
             # TODO: Determine the minimum number of atoms needed for this restraint (can it be 0?)
-            if len(restrained_atoms) < 3 and not (len(restrained_atoms) == 0 and self._allowed_empty):
+            if len(restrained_atoms) < 3 and not (len(restrained_atoms) == 0 and self._allowed_empty) and not (isinstance(element, str) for element in restrained_atoms):
                 raise ValueError('At least three {} atoms are required to impose an '
                                  'RMSD restraint.'.format(self._atoms_type))
             return restrained_atoms
@@ -2620,7 +2666,7 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
     def _are_restrained_atoms_defined(self):
         """Check if the restrained atoms are defined well enough to make a restraint"""
         for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
-            # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
+        # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
             if not self._are_single_atoms_defined(atoms):
                 return False
         return True
@@ -2635,14 +2681,23 @@ class RMSD(OpenMM73, ReceptorLigandRestraint):
     def _pick_restrained_atoms(self, topography):
         """Select the restrained atoms to use for this system"""
         atom_selector = _AtomSelector(topography)
-        for atom_word, top_key in zip(["restrained_ligand_atoms", "restrained_receptor_atoms"],
-                                      ["ligand_atoms",            "receptor_atoms"]):
-            atoms = getattr(self, atom_word)
-            if self._are_single_atoms_defined(atoms):
-                continue
-            defined_atoms = atom_selector.compute_atom_intersect(atoms, top_key)
-            setattr(self, atom_word, defined_atoms)
-
+        atoms = getattr(self, "restrained_receptor_atoms")
+        if not self._are_single_atoms_defined(atoms):
+       	    defined_atoms = atom_selector.compute_atom_intersect(atoms, "receptor_atoms")
+            setattr(self, "restrained_receptor_atoms", defined_atoms)
+        atoms = getattr(self, "restrained_ligand_atoms")
+        if self._is_ligand_ligand_restraint(self.restrained_ligand_atoms):
+            defined_atoms = []
+            for element in self.restrained_ligand_atoms:
+                if isinstance(element[0], str):
+                    defined_atoms += atom_selector.compute_atom_intersect(element[0], "ligand_atoms")
+                elif isinstance(element, list) and len(element) > 0:
+                    defined_atoms += element
+            setattr(self, "restrained_ligand_atoms", defined_atoms)
+        else:
+            if not self._are_single_atoms_defined(atoms):
+                defined_atoms = atom_selector.compute_atom_intersect(atoms, "ligand_atoms")
+                setattr(self, "restrained_ligand_atoms", defined_atoms)
 
 if __name__ == '__main__':
     import doctest

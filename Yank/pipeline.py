@@ -234,7 +234,7 @@ def compute_net_charge(system, atom_indices):
     return net_charge
 
 
-def find_alchemical_counterions(system, topography, region_name):
+def find_alchemical_counterions(system, topography, region_name, is_relative):
     """Return the atom indices of the ligand or solute counter ions.
 
     In periodic systems, the solvation box needs to be neutral, and
@@ -273,32 +273,92 @@ def find_alchemical_counterions(system, topography, region_name):
     if len(atom_indices) == 0:
         raise ValueError("Cannot find counterions for region {}. "
                          "The region has no atoms.")
-
-    # If the net charge of alchemical atoms is 0, we don't need counterions.
-    mol_net_charge = compute_net_charge(system, atom_indices)
-    logger.debug('{} net charge: {}'.format(region_name, mol_net_charge))
-    if mol_net_charge == 0:
-        return []
-
     # Find net charge of all ions in the system.
     ions_net_charges = [(ion_id, compute_net_charge(system, [ion_id]))
-                        for ion_id in topography.ions_atoms]
+                         for ion_id in topography.ions_atoms]
     topology = topography.topology
-    ions_names_charges = [(topology.atom(ion_id).residue.name, ion_net_charge)
-                          for ion_id, ion_net_charge in ions_net_charges]
-    logger.debug('Ions net charges: {}'.format(ions_names_charges))
+    if not is_relative:
+        # If the net charge of alchemical atoms is 0, we don't need counterions.
+        mol_net_charge = compute_net_charge(system, atom_indices)
+        logger.debug('{} net charge: {}'.format(region_name, mol_net_charge))
+        if mol_net_charge == 0:
+            return []
 
-    # Find minimal subset of counterions whose charges sums to -mol_net_charge.
+        ions_names_charges = [(topology.atom(ion_id).residue.name, ion_net_charge)
+                              for ion_id, ion_net_charge in ions_net_charges]
+        logger.debug('Ions net charges: {}'.format(ions_names_charges))
+
+        # Find minimal subset of counterions whose charges sums to -mol_net_charge.
+        return ions_subset(ions_net_charges, -mol_net_charge)
+
+        # We couldn't find any subset of counterions neutralizing the region.
+        raise ValueError('Impossible to find a solution for region {}. '
+                         'Net charge: {}, system ions: {}.'.format(
+            region_name, mol_net_charge, ions_names_charges))
+
+    else:
+        if region_name == 'solute_atoms':
+            topo = topology.subset(atom_indices)
+            resnames = []
+            for chain in topo._chains:
+                for residue in chain._residues:
+                    resnames.append(f'resname {residue.name}')
+            atom_indices = tuple([topography.select(r) for r in resnames])
+
+        ions_net_charges = [(ion_id, compute_net_charge(system, [ion_id]))
+                            for ion_id in topography.ions_atoms]
+        ignore = [ions[0] for ions in ions_net_charges] + atom_indices[0] + atom_indices[1]
+        indices = [atom.index for atom in topology.atoms if atom.index not in ignore]
+        net_charge = compute_net_charge(system, indices)
+        charge_init = net_charge + compute_net_charge(system, atom_indices[0])
+        charge_end = net_charge + compute_net_charge(system, atom_indices[1])
+        if (charge_init*charge_end) > 0:
+            if abs(charge_init) > abs(charge_end):
+                ions_to_dummies = int(charge_end - charge_init)
+                dummies_to_ions = None
+            elif abs(charge_init) < abs(charge_end):
+                ions_to_dummies = None
+                dummies_to_ions = int(-(charge_end - charge_init))
+            else:
+                ions_to_dummies = None
+                dummies_to_ions = None
+        else:
+            ions_to_dummies = int(-charge_init)
+            dummies_to_ions = int(-charge_end)
+
+        counterions = ions_subset(ions_net_charges, -charge_init)
+        avail_ions = [(id, c) for (id, c) in ions_net_charges if id not in counterions]
+        ions_to_dummies_idx = None
+        dummies_to_ions_idx = None
+        if ions_to_dummies:
+            ions_to_dummies_idx = counterions[:abs(ions_to_dummies)]
+        if dummies_to_ions:
+            dummies_to_ions_idx = ions_subset(avail_ions, dummies_to_ions)
+    
+        return ions_to_dummies_idx, dummies_to_ions_idx
+
+def ions_subset(ions_net_charges, counterions):
+    """
+    Finds minimal subset of ion indexes whose charge sums to counterions
+    Parameters
+    ----------
+        ions_net_charges : list of tuples
+            (index, charge) of ions in system.
+        counterions : int
+             Total charge.
+
+        Returns
+        -------
+            counterions_indices : list of int
+            Indices of ions.
+
+     """
+
     for n_ions in range(1, len(ions_net_charges) + 1):
         for ion_subset in itertools.combinations(ions_net_charges, n_ions):
             counterions_indices, counterions_charges = zip(*ion_subset)
-            if sum(counterions_charges) == -mol_net_charge:
-                return counterions_indices
-
-    # We couldn't find any subset of counterions neutralizing the region.
-    raise ValueError('Impossible to find a solution for region {}. '
-                     'Net charge: {}, system ions: {}.'.format(
-        region_name, mol_net_charge, ions_names_charges))
+            if sum(counterions_charges) == counterions:
+                return(counterions_indices)
 
 
 # See Amber manual Table 4.1 http://ambermd.org/doc12/Amber15.pdf
