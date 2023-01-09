@@ -106,6 +106,7 @@ def test_topography_subset_regions():
         selected = topography.select(selection, sort_by=sort_by, subset=subset, as_set=False)
         assert result == selected, (f"Failed to match {selection}, subset {subset}, "
                                     f"by {sort_by} to {result},\ngot {selected}")
+                                                                                                selected)
 
 
 def test_topography_regions():
@@ -393,14 +394,14 @@ class TestAlchemicalPhase(object):
 
         # Test case: (system, topography, topography_region)
         test_cases = [
-            (self.host_guest_implicit[1].system, self.host_guest_implicit[3], 'ligand_atoms'),
-            (self.host_guest_explicit[1].system, self.host_guest_explicit[3], 'ligand_atoms'),
-            (self.alanine_explicit[1].system, self.alanine_explicit[3], 'solute_atoms'),
-            (sodium_chloride.system, negative_solute, 'solute_atoms'),
-            (sodium_chloride.system, positive_solute, 'solute_atoms')
+            (self.host_guest_implicit[1].system, self.host_guest_implicit[3], self.host_guest_implicit[2], 'ligand_atoms'),
+            (self.host_guest_explicit[1].system, self.host_guest_explicit[3], self.host_guest_explicit[2], 'ligand_atoms'),
+            (self.alanine_explicit[1].system, self.alanine_explicit[3], self.alanine_explicit[2], 'solute_atoms'),
+            (sodium_chloride.system, negative_solute, sodium_chloride[2], 'solute_atoms'),
+            (sodium_chloride.system, positive_solute, sodium_chloride[2], 'solute_atoms')
         ]
 
-        for system, topography, alchemical_region_name in test_cases:
+        for system, topography, sampler_state, alchemical_region_name in test_cases:
             expected_alchemical_atoms = getattr(topography, alchemical_region_name)
 
             # Compute net charge of alchemical atoms.
@@ -411,7 +412,7 @@ class TestAlchemicalPhase(object):
 
             for protocol in protocols:
                 alchemical_region = AlchemicalPhase._build_default_alchemical_region(
-                    system, topography, protocol)
+                    system, topography, sampler_state, protocol)
                 assert alchemical_region.alchemical_atoms == expected_alchemical_atoms
 
                 # The alchemical region must be neutralized.

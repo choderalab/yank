@@ -14,7 +14,6 @@ Test pipeline functions in pipeline.py.
 # =============================================================================
 
 from yank.pipeline import *
-from yank.pipeline import _redistribute_trailblaze_states
 
 from nose.tools import assert_raises_regexp
 

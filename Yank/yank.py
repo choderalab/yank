@@ -325,11 +325,11 @@ class Topography(object):
             no effect.
 
         """
+
         selection = copy.deepcopy(selection)
         topology = self.topology
-
-        # Make sure that the subset of atoms is a list of atom indices
-        # and slice the topology will be matching against accordingly.
+        # Handle subset. Define a subset topology to manipulate, then define a common call to convert subset atom
+        # into absolute atom
         if subset is not None:
             subset = self.select(subset, sort_by='index', as_set=False, subset=None)
             topology = self.topology.subset(subset)
@@ -1007,7 +1007,7 @@ class AlchemicalPhase(object):
         # Handle default alchemical region.
         if alchemical_regions is None:
             alchemical_regions = self._build_default_alchemical_region(
-                reference_system, topography, protocol)
+                reference_system, topography, sampler_states[0], protocol)
 
         # Check that we have atoms to alchemically modify.
         if len(alchemical_regions.alchemical_atoms) == 0:
@@ -1331,7 +1331,7 @@ class AlchemicalPhase(object):
         return thermodynamic_state
 
     @staticmethod
-    def _build_default_alchemical_region(system, topography, protocol):
+    def _build_default_alchemical_region(system, topography, sampler_state, protocol):
         """Create a default AlchemicalRegion if the user hasn't provided one."""
         # TODO: we should probably have a second region that annihilate sterics of counterions.
         alchemical_region_kwargs = {}
@@ -1348,8 +1348,8 @@ class AlchemicalPhase(object):
         # counterions to make sure that the solvation box is always neutral.
         if system.usesPeriodicBoundaryConditions():
             alchemical_counterions = mpiplus.run_single_node(0, pipeline.find_alchemical_counterions,
-                                                             system, topography, alchemical_region_name,
-                                                             broadcast_result=True)
+                                                             system, topography, sampler_state,
+                                                             alchemical_region_name, broadcast_result=True)
             alchemical_atoms += alchemical_counterions
 
             # Sort them by index for safety. We don't want to

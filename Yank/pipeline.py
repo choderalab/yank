@@ -233,15 +233,55 @@ def compute_net_charge(system, atom_indices):
     net_charge = int(round(net_charge / unit.elementary_charge))
     return net_charge
 
+def order_counterions(system, topography, sampler_state):
+    """Order the counterions in decreasing distance to the ligand/solute.
 
-def find_alchemical_counterions(system, topography, region_name):
+    Parameters
+    ----------
+    system  : simtk.openmm.System
+        The system object containing the atoms of interest.
+    topography : Yank topography
+        The topography object holding the indices of the ions and the
+        ligand (for binding free energy) or solute (for transfer free
+        energy).
+    sampler_state : openmmtools.mdtools.sampler_state
+        State with positions 
+
+    Returns
+    -------
+    ion_index, charge : list
+        List of ion index and charge
+
+    """
+    pos_unit = sampler_state.positions.unit
+    # atoms of the ligand/solute which are part of the alchemical transformation
+    alchemical_atoms = topography.ligand_atoms
+    # if no ligand present but a charged solute
+    if not alchemical_atoms:
+        alchemical_atoms = topography.solute_atoms
+    alchemical_positions = sampler_state.positions[alchemical_atoms] / pos_unit
+    # compute minimal distance between each ion and the alchemical atoms
+    ions_distances = np.zeros(len(topography.ions_atoms))
+    for i, ion_id in enumerate(topography.ions_atoms):
+        ion_position = sampler_state.positions[ion_id] / pos_unit 
+        ions_distances[i] = compute_min_dist([ion_position], alchemical_positions)
+        logger.debug('Min distance of ion {} {}: {}'.format(ion_id,
+                                                            topography.topology.atom(ion_id).residue.name,
+                                                            ions_distances[i]))
+    # list with ion_id ordered in decreasing distance of the ligand
+    ordered_ion_id = [topography.ions_atoms[ion_id] for ion_id in np.argsort(ions_distances)[::-1]]
+    return [(ion_id, compute_net_charge(system, [ion_id]))
+                        for ion_id in ordered_ion_id]
+
+def find_alchemical_counterions(system, topography, sampler_state, region_name):
     """Return the atom indices of the ligand or solute counter ions.
 
     In periodic systems, the solvation box needs to be neutral, and
     if the decoupled molecule is charged, it will cause trouble. This
     can be used to find a set of ions in the system that neutralize
     the molecule, so that the solvation box will remain neutral all
-    the time.
+    the time. Ions are selected starting with the ones with the largest
+    distance to the ligand.
 
     Parameters
     ----------
@@ -251,6 +291,8 @@ def find_alchemical_counterions(system, topography, region_name):
         The topography object holding the indices of the ions and the
         ligand (for binding free energy) or solute (for transfer free
         energy).
+    sampler_state : openmmtools.mdtools.sampler_state
+        State with positions 
     region_name : str
         The region name in the topography (e.g. "ligand_atoms") for
         which to find counter ions.
@@ -280,19 +322,20 @@ def find_alchemical_counterions(system, topography, region_name):
     if mol_net_charge == 0:
         return []
 
-    # Find net charge of all ions in the system.
-    ions_net_charges = [(ion_id, compute_net_charge(system, [ion_id]))
-                        for ion_id in topography.ions_atoms]
+    # Find net charge of all ions in the system and order them according to the 
+    # largest distance from the ligand/solute
+    ions_net_charges = order_counterions(system, topography, sampler_state)
     topology = topography.topology
     ions_names_charges = [(topology.atom(ion_id).residue.name, ion_net_charge)
                           for ion_id, ion_net_charge in ions_net_charges]
-    logger.debug('Ions net charges: {}'.format(ions_names_charges))
+
 
     # Find minimal subset of counterions whose charges sums to -mol_net_charge.
     for n_ions in range(1, len(ions_net_charges) + 1):
         for ion_subset in itertools.combinations(ions_net_charges, n_ions):
             counterions_indices, counterions_charges = zip(*ion_subset)
             if sum(counterions_charges) == -mol_net_charge:
+                logger.debug('Index of alchemical counter ion {}'.format(counterions_indices))
                 return counterions_indices
 
     # We couldn't find any subset of counterions neutralizing the region.

@@ -3142,7 +3142,8 @@ class ExperimentBuilder(object):
             # Start from AlchemicalPhase default alchemical region
             # and modified it according to the user options.
             phase_protocol = protocol[phase_name]['alchemical_path']
-            alchemical_region = AlchemicalPhase._build_default_alchemical_region(system, topography,
+            alchemical_region = AlchemicalPhase._build_default_alchemical_region(system, topography, 
+                                                                                 sampler_state,
                                                                                  phase_protocol)
             alchemical_region = alchemical_region._replace(**alchemical_region_opts)
 
