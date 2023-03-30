@@ -1411,45 +1411,72 @@ class AlchemicalPhase(object):
         """Minimize the specified sampler state at the given thermodynamic state.
         """
         sampler_state = sampler_states[sampler_state_id]
+        # NOTE: At this point, sampler_state.potential_energy is None. Initialize below.
 
-        # Use the FIRE minimizer
-        integrator = mmtools.integrators.FIREMinimizationIntegrator(tolerance=tolerance)
+        logger.debug('Sampler state {}/{}:'.format(sampler_state_id + 1, len(sampler_states)))
+
+        # Temporarily disable the barostat during minimization by setting the
+        # pressure to None. (Otherwise, the minimizer will modify the box
+        # vectors and may cause instabilities which are very difficult to debug.)
+        pressure = thermodynamic_state.pressure
+        thermodynamic_state.pressure = None
+
+        # Use Gradient Descent first for numerical stability.
+        integrator_grad = mmtools.integrators.GradientDescentMinimizationIntegrator()
+        context_grad = thermodynamic_state.create_context(integrator_grad)
+        # Initialize sampler_state.potential_energy using a context
+        sampler_state.apply_to_context(context_grad)
+        sampler_state.update_from_context(context_grad)
+
+        # Compute the energy of the system for logging.
+        energy = thermodynamic_state.reduced_potential(sampler_state)
+        volume = sampler_state.volume.value_in_unit(unit.nanometer**3)
+        bv = sampler_state.box_vectors
+        [bxx, byy, bzz] = [v.value_in_unit(unit.nanometer) for v in [bv[0][0], bv[1][1], bv[2][2]]]
+        logger.debug('energy {:8.3f}kT box_volume {:6.4f}nm**3 bxx {:2.4f}nm  byy {:2.4f}nm  bzz {:2.4f}nm'.format(
+            energy, volume, bxx, byy, bzz))
+
+        # If pressure is not None, use one timestep less than the barostat
+        # frequency so we absolutely do not apply any barostat moves.
+        bar_freq = thermodynamic_state.barostat.getFrequency() - 1 if thermodynamic_state.pressure is not None else 25 - 1
+        logger.debug('Using Gradient Descent: num_iterations {}'.format(bar_freq))
+        integrator_grad.step(bar_freq)
+        sampler_state.update_from_context(context_grad)
+        del context_grad
+
+        # Compute the energy of the system for logging.
+        energy = thermodynamic_state.reduced_potential(sampler_state)
+        volume = sampler_state.volume.value_in_unit(unit.nanometer**3)
+        bv = sampler_state.box_vectors
+        [bxx, byy, bzz] = [v.value_in_unit(unit.nanometer) for v in [bv[0][0], bv[1][1], bv[2][2]]]
+        logger.debug('energy {:8.3f}kT box_volume {:6.4f}nm**3 bxx {:2.4f}nm  byy {:2.4f}nm  bzz {:2.4f}nm'.format(
+            energy, volume, bxx, byy, bzz))
 
         # Create context
-        context = thermodynamic_state.create_context(integrator)
+        context = thermodynamic_state.create_context(integrator_grad)
 
         # Set initial positions and box vectors.
         sampler_state.apply_to_context(context)
 
-        # Compute the initial energy of the system for logging.
-        initial_energy = thermodynamic_state.reduced_potential(context)
-        logger.debug('Sampler state {}/{}: initial energy {:8.3f}kT'.format(
-            sampler_state_id + 1, len(sampler_states), initial_energy))
+        # Use L-BFGS minimizer because (if pressure is not None) FIRE modifies
+        # the box vectors and can be unstable.
+        logger.debug('Using L-BFGS: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
+        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+        sampler_state.update_from_context(context)
 
-        # Minimize energy.
-        try:
-            if max_iterations == 0:
-                logger.debug('Using FIRE: tolerance {} minimizing to convergence'.format(tolerance))
-                while integrator.getGlobalVariableByName('converged') < 1:
-                    integrator.step(50)
-            else:
-                logger.debug('Using FIRE: tolerance {} max_iterations {}'.format(tolerance, max_iterations))
-                integrator.step(max_iterations)
-        except Exception as e:
-            if str(e) == 'Particle coordinate is nan':
-                logger.debug('NaN encountered in FIRE minimizer; falling back to L-BFGS after resetting positions')
-                sampler_state.apply_to_context(context)
-                openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
-            else:
-                raise e
+        # Restore the barostat
+        thermodynamic_state.pressure = pressure
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)
 
-        # Compute the final energy of the system for logging.
-        final_energy = thermodynamic_state.reduced_potential(context)
-        logger.debug('Sampler state {}/{}: final energy {:8.3f}kT'.format(
-            sampler_state_id + 1, len(sampler_states), final_energy))
+        # Compute the energy of the system for logging.
+        energy = thermodynamic_state.reduced_potential(sampler_state)
+        volume = sampler_state.volume.value_in_unit(unit.nanometer**3)
+        bv = sampler_state.box_vectors
+        [bxx, byy, bzz] = [v.value_in_unit(unit.nanometer) for v in [bv[0][0], bv[1][1], bv[2][2]]]
+        logger.debug('energy {:8.3f}kT box_volume {:6.4f}nm**3 bxx {:2.4f}nm  byy {:2.4f}nm  bzz {:2.4f}nm'.format(
+            energy, volume, bxx, byy, bzz))
 
         # Clean up the integrator
         del context
