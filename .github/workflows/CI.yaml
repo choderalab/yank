@@ -19,13 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         cfg:
-          - { os: ubuntu-latest, python-version: 3.7, docs: true,  openmm: latest }
-          - { os: macos-latest,  python-version: 3.7, docs: true,  openmm: latest }
-          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: latest }
-          - { os: ubuntu-latest, python-version: 3.7, docs: false, openmm: nightly }
-          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: nightly }
-          - { os: ubuntu-latest, python-version: 3.7, docs: false, openmm: conda-forge }
-          - { os: ubuntu-latest, python-version: 3.8, docs: false, openmm: conda-forge }
+          - { os: ubuntu-latest, python-version: "3.9", docs: false, openmm: conda-forge }
+          - { os: ubuntu-latest, python-version: "3.10", docs: false, openmm: conda-forge }
+          - { os: ubuntu-latest, python-version: "3.11", docs: false, openmm: conda-forge }
 
     env:
       OPENMM: ${{ matrix.cfg.openmm }}
@@ -33,7 +29,7 @@ jobs:
       PACKAGENAME: yank
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Additional info about the build
         shell: bash
@@ -57,21 +53,12 @@ jobs:
         shell: bash -l {0}
         run: |
           case ${{ matrix.cfg.openmm }} in
-            latest)
+            7.7)
               echo "Using latest release OpenMM."
-              conda install --quiet -c omnia openmm;;
-            rc)
-              echo "Using OpenMM rc"
-              conda install --quiet -c omnia/label/rc openmm;;
-            beta)
-              echo "Using OpenMM beta"
-              conda install --quiet -c omnia/label/beta openmm;;
-            nightly)
-              echo "Using OpenMM nightly dev build."
-              conda install --quiet -c omnia-dev openmm;;
+              conda install --quiet -c conda-forge openmm=7.7;;
             conda-forge)
               echo "Using OpenMM conda-forge testing build."
-              conda install --quiet -c conda-forge/label/test openmm;;
+              conda install --quiet -c conda-forge openmm;;
           esac
 
       - name: Install package
