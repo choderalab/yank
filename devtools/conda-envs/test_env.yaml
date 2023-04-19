@@ -15,7 +15,6 @@ dependencies:
   - mdtraj >=1.7.2
   - openmmtools >=0.18.3
   - pymbar <4
-  - ambermini >=16.16.0
   - docopt
   - openmoltools >=0.7.5
   - mpiplus
