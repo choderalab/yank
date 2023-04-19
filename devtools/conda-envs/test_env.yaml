@@ -2,7 +2,6 @@ name: test
 channels:
   - conda-forge
   - defaults
-  - omnia
   - openeye
   - salilab
 dependencies:
