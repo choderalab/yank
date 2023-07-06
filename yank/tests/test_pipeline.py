@@ -25,9 +25,9 @@ from nose.tools import assert_raises_regexp
 
 def test_compute_min_dist():
     """Test computation of minimum distance between two molecules"""
-    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)
-    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], float)
+    mol2_pos = np.array([[3, 3, 3], [3, 4, 5]], float)
+    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], float)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) == np.sqrt(3)
 
 
@@ -47,9 +47,9 @@ def test_compute_min_max_dist():
 
 def test_remove_overlap():
     """Test function remove_overlap()."""
-    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[1, 1, 1], [3, 4, 5]], np.float)
-    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], float)
+    mol2_pos = np.array([[1, 1, 1], [3, 4, 5]], float)
+    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], float)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) < 0.1
     mol1_pos = remove_overlap(mol1_pos, mol2_pos, mol3_pos, min_distance=0.1, sigma=2.0)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
@@ -57,9 +57,9 @@ def test_remove_overlap():
 
 def test_pull_close():
     """Test function pull_close()."""
-    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol3_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], float)
+    mol2_pos = np.array([[-1, -1, -1], [1, 1, 1]], float)
+    mol3_pos = np.array([[10, 10, 10], [13, 14, 15]], float)
     translation2 = pull_close(mol1_pos, mol2_pos, 1.5, 5)
     translation3 = pull_close(mol1_pos, mol3_pos, 1.5, 5)
     assert isinstance(translation2, np.ndarray)
@@ -72,7 +72,7 @@ def test_pack_transformation():
     BOX_SIZE = 5
     CLASH_DIST = 1
 
-    mol1 = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mol1 = np.array([[-1, -1, -1], [1, 1, 1]], float)
     mols = [np.copy(mol1),  # distance = 0
             mol1 + 2 * BOX_SIZE]  # distance > box
     mols_affine = [np.append(mol, np.ones((2, 1)), axis=1) for mol in mols]
