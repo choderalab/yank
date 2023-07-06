@@ -178,7 +178,7 @@ class TestMultiPhaseAnalyzer(object):
     @classmethod
     def setup_class(cls):
         """Shared test cases and variables."""
-        cls.checkpoint_interval = 2
+        cls.checkpoint_interval = 1
         # Make sure we collect the same number of samples for all tests to avoid instabilities in MBAR.
         base_steps = 50
         cls.n_steps = int(np.ceil(base_steps / cls.N_SAMPLERS))
