@@ -31,7 +31,12 @@ import functools
 import itertools
 import contextlib
 import subprocess
-import collections
+
+try:
+    from collections import MutableMapping, Mapping
+except ImportError:
+    # Support python 3.10
+    from collections.abc import MutableMapping, Mapping
 
 from pkg_resources import resource_filename
 
@@ -276,7 +281,7 @@ class CombinatorialLeaf(list):
         return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
 
 
-class CombinatorialTree(collections.MutableMapping):
+class CombinatorialTree(MutableMapping):
     """A tree that can be expanded in a combinatorial fashion.
 
     Each tree node with its subnodes is represented as a nested dictionary. Nodes can be
@@ -618,7 +623,7 @@ class CombinatorialTree(collections.MutableMapping):
             leaf_paths = []
             leaf_vals = []
             for child_key, child_val in node.items():
-                if isinstance(child_val, collections.Mapping):
+                if isinstance(child_val, Mapping):
                     subleaf_paths, subleaf_vals = recursive_find_leaves(child_val)
                     # prepend child key to path
                     leaf_paths.extend([(child_key,) + subleaf for subleaf in subleaf_paths])
@@ -760,7 +765,7 @@ def update_nested_dict(original, updated):
     """
     new = original.copy()
     for key, value in updated.items():
-        if isinstance(value, collections.Mapping):
+        if isinstance(value, Mapping):
             replacement = update_nested_dict(new.get(key, {}), value)
             new[key] = replacement
         else:
@@ -1791,7 +1796,7 @@ def generate_development_feature(feature_dict):
         require instantiation. Function names are all given the `dev_` prefix to avoid clashes with other names its
         a part of its psudo-mixin properties
     """
-    base_err = ('This feature cannot be used because it has been marked as "Developmental" and ' 
+    base_err = ('This feature cannot be used because it has been marked as "Developmental" and '
                 'the following conditions have not been met:\n')
     valid = True  # Assume valid until proven otherwise
     check_dict = {}

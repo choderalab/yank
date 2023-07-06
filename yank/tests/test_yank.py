@@ -5,7 +5,7 @@ Test YANK using simple models.
 
 DESCRIPTION
 
-This test suite generates a number of simple models to test the 'Yank' facility.
+This test suite generates a number of simple models to test the 'yank' facility.
 
 COPYRIGHT
 
@@ -644,7 +644,7 @@ def notest_LennardJonesPair(**kwargs):
 #                                        alchemical_states)
 #
 #     # Create new simulation.
-#     yank = Yank(store_dir, **options)
+#     yank = yank(store_dir, **options)
 #     yank.create(thermodynamic_state, alchemical_phase)
 #
 #     # Run the simulation.

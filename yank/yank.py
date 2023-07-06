@@ -5,7 +5,7 @@
 # ==============================================================================
 
 """
-Yank
+yank
 ====
 
 Interface for automated free energy calculations.

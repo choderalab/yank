@@ -37,10 +37,10 @@ molecules:
     strip_protons: yes
 
   imatinib:
-    filepath: clinical-kinase-inhibitors.csv        # Yank supports pdb, mol2, sdf and csv files. The last one
+    filepath: clinical-kinase-inhibitors.csv        # yank supports pdb, mol2, sdf and csv files. The last one
                                                     # must contain one row for each molecule. The second column
                                                     # must be the SMILES description of the molecule (the first
-                                                    # column if the csv file has only one). Yank can use the
+                                                    # column if the csv file has only one). yank can use the
                                                     # OpenEye toolkits to generate a molecule from its name or
                                                     # its SMILES description. Instead of using "filepath", you
                                                     # can directly use "smiles" or "name". For example, to
@@ -154,7 +154,7 @@ systems:                                                 # If you don't need com
     solvent: !Combinatorial [RF, vacuum]                 #   solvent: RF
     pack: yes                                            # If the ligand is far away from the receptor or if there
                                                          # are clashing atoms (defined as closer than 1.5 angstroms),
-                                                         # Yank will randomly translate and rotate the ligand until
+                                                         # yank will randomly translate and rotate the ligand until
                                                          # this is solved. Set this to "no" if you don't wan't to
                                                          # modify the initial position of the ligand as defined in
                                                          # your input file.

@@ -2,7 +2,6 @@ name: test
 channels:
   - conda-forge
   - defaults
-  - omnia
   - openeye
   - salilab
 dependencies:
@@ -16,19 +15,19 @@ dependencies:
   - mdtraj >=1.7.2
   - openmmtools >=0.18.3
   - pymbar <4
-  - ambermini >=16.16.0
   - docopt
   - openmoltools >=0.7.5
   - mpiplus
   - pyyaml
   - clusterutils
   - sphinxcontrib-bibtex
-  - cerberus ==1.1 # yank uses buggy cerberus 1.1 behavior as a feature ¯\_(ツ)_/¯
+  - cerberus
   - matplotlib
   - jupyter
   - pdbfixer
   - openeye-toolkits
   - modeller
+  - parmed
   # test
   - nose
   - nose-timer

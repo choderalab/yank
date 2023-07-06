@@ -222,7 +222,7 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-  ('index', 'Yank.tex', u'Yank Documentation',
+  ('index', 'yank.tex', u'yank Documentation',
    u'John Chodera', 'manual'),
 ]
 
@@ -252,7 +252,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'yank', u'Yank Documentation',
+    ('index', 'yank', u'yank Documentation',
      [u'John Chodera'], 1)
 ]
 
@@ -266,8 +266,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'Yank', u'Yank Documentation',
-   u'John Chodera', 'Yank', 'A flexible GPU-accelerated Python framework for alchemical free energy calculations.',
+  ('index', 'yank', u'yank Documentation',
+   u'John Chodera', 'yank', 'A flexible GPU-accelerated Python framework for alchemical free energy calculations.',
    'Miscellaneous'),
 ]
 
