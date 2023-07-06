@@ -54,7 +54,7 @@ def indent(input_string):
 
 
 def examples_paths():
-    """Return the absolute path to the Yank examples relevant to tests."""
+    """Return the absolute path to the yank examples relevant to tests."""
     data_dir = utils.get_data_filename(os.path.join('tests', 'data'))
     p_xylene_dir = os.path.join(data_dir, 'p-xylene-implicit')
     p_xylene_gro_dir = os.path.join(data_dir, 'p-xylene-gromacs-example')

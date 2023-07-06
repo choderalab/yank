@@ -8,7 +8,7 @@
 Pipeline
 ========
 
-Utility functions to help setting up Yank configurations.
+Utility functions to help setting up yank configurations.
 
 """
 
@@ -412,7 +412,7 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
 
 def read_system_files(positions_file_path, parameters_file_path, system_options,
                       gromacs_include_dir=None, charmm_parameter_files=None):
-    """Create a Yank arguments for a phase from system files.
+    """Create a yank arguments for a phase from system files.
 
     Parameters
     ----------

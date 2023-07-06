@@ -525,7 +525,7 @@ class ExperimentAnalyzer(object):
     @_copyout
     def get_experiment_free_energy_data(self):
         """
-        Get the free Yank Experiment free energy, broken down by phase and total experiment
+        Get the free yank Experiment free energy, broken down by phase and total experiment
 
         Output is of the form:
 
@@ -746,7 +746,7 @@ def get_analyzer(file_base_path, **analyzer_kwargs):
 
     Returns
     -------
-    analyzer : instance of implemented :class:`Yank*Analyzer`
+    analyzer : instance of implemented :class:`yank*Analyzer`
         Analyzer for the specific phase.
     """
     # Eventually extend this to get more reporters, but for now simple placeholder

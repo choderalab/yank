@@ -8,7 +8,7 @@
 Experiment
 ==========
 
-Tools to build Yank experiments from a YAML configuration file.
+Tools to build yank experiments from a YAML configuration file.
 
 This is not something that should be normally invoked by the user, and instead
 created by going through the Command Line Interface with the ``yank script`` command.
@@ -79,7 +79,7 @@ def _is_phase_completed(status, number_of_iterations):
 # ==============================================================================
 
 class YamlParseError(Exception):
-    """Represent errors occurring during parsing of Yank YAML file."""
+    """Represent errors occurring during parsing of yank YAML file."""
     def __init__(self, message):
         super(YamlParseError, self).__init__(message)
         logger.error(message)
@@ -683,7 +683,7 @@ class ExperimentBuilder(object):
         # Setup general logging
         utils.config_root_logger(self._options['verbose'], log_file_path=None)
 
-        # Configure ContextCache, platform and precision. A Yank simulation
+        # Configure ContextCache, platform and precision. A yank simulation
         # currently needs 3 contexts: 1 for the alchemical states and 2 for
         # the states with expanded cutoff.
         platform = self._configure_platform(self._options['platform'],
@@ -715,7 +715,7 @@ class ExperimentBuilder(object):
 
     def run_experiments(self, write_status=False):
         """
-        Set up and run all the Yank experiments.
+        Set up and run all the yank experiments.
 
         Parameters
         ----------
@@ -784,7 +784,7 @@ class ExperimentBuilder(object):
 
     def setup_experiments(self):
         """
-        Set up all systems required for the Yank experiments without running them.
+        Set up all systems required for the yank experiments without running them.
         """
         # All paths must be relative to the script directory
         with moltools.utils.temporary_cd(self._script_dir):
@@ -2076,7 +2076,7 @@ class ExperimentBuilder(object):
     # --------------------------------------------------------------------------
 
     def _check_resume_experiment(self, experiment_path, experiment):
-        """Check if Yank output files already exist.
+        """Check if yank output files already exist.
 
         Parameters
         ----------
@@ -3091,7 +3091,7 @@ class ExperimentBuilder(object):
         gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
         charmm_parameter_files = self._db.systems[system_id].get('charmm_parameter_files', None)
 
-        # Prepare Yank arguments
+        # Prepare yank arguments
         phases = [None, None]
         # protocol is an OrderedDict so phases are in the correct
         # order (e.g. [complex, solvent] or [solvent1, solvent2]).

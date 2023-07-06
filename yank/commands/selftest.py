@@ -67,8 +67,8 @@ def dispatch(args):
     print("YANK Selftest")
     print("-------------")
 
-    # Yank Version
-    print("Yank Version %s \n" % version.version)
+    # yank Version
+    print("yank Version %s \n" % version.version)
 
     # OpenMM Platforms
     if not (args['platforms'] > 0):  # Don't need to check for --skip since invalid without argument

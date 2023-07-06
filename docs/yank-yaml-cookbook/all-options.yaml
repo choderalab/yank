@@ -1,14 +1,14 @@
 # Here are listed all the options that is possible to specify in a
-# Yank YAML script. There are no mandatory options. If not specified,
+# yank YAML script. There are no mandatory options. If not specified,
 # an option assumes the default value listed below.
 ---
 options:
   # GENERAL OPTIONS
   # ---------------
   verbose: no                       # Turn on/off verbose output.
-  resume_setup: no                  # By default, Yank will raise an error when it detects
+  resume_setup: no                  # By default, yank will raise an error when it detects
   resume_simulation: no             # that it will have to overwrite an existing file. Set
-                                    # resume_setup and/or resume_simulation if you want Yank
+                                    # resume_setup and/or resume_simulation if you want yank
                                     # to resume from an existing setup (molecules and system
                                     # files) and/or simulation (netcdf4 trajectory files)
                                     # respectively instead.
